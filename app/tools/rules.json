@@ -1,0 +1,124 @@
+{
+  "rules": [
+    {
+      "id": "ito_127_appeal_commissioner_within",
+      "name": "Appeal to Commissioner (Appeals) - within deadline",
+      "domain": "income_tax",
+      "priority": 1,
+      "description": "An appeal shall be lodged with the Commissioner (Appeals) within thirty days of the date of service of the demand relating to the assessment, or of the notice of the decision or determination.",
+      "when": [
+        {"field": "event_type", "op": "eq", "value": "appeal_to_commissioner"},
+        {"field": "days_since_service", "op": "lte", "value": 30}
+      ],
+      "then": {
+        "status": "within_deadline",
+        "message": "Appeal to the Commissioner (Appeals) is within the statutory thirty-day window under section 127(5) of the Income Tax Ordinance 2001."
+      },
+      "source": {
+        "document": "IncomeTaxOrdinance2001_upto2025.pdf",
+        "section": "127(5)",
+        "sha256": "3eb83defefad0930b5d35dbbf6f3961f967a9330114f70058dac2f096a0b6812"
+      }
+    },
+    {
+      "id": "ito_127_appeal_commissioner_missed",
+      "name": "Appeal to Commissioner (Appeals) - deadline missed",
+      "domain": "income_tax",
+      "priority": 1,
+      "description": "The statutory window for lodging an appeal with the Commissioner (Appeals) is thirty days from the date of service.",
+      "when": [
+        {"field": "event_type", "op": "eq", "value": "appeal_to_commissioner"},
+        {"field": "days_since_service", "op": "gt", "value": 30}
+      ],
+      "then": {
+        "status": "deadline_missed",
+        "message": "The statutory thirty-day appeal window under section 127(5) of the Income Tax Ordinance 2001 has elapsed. Consult the ordinance for any lawful extension or alternative remedy."
+      },
+      "source": {
+        "document": "IncomeTaxOrdinance2001_upto2025.pdf",
+        "section": "127(5)",
+        "sha256": "3eb83defefad0930b5d35dbbf6f3961f967a9330114f70058dac2f096a0b6812"
+      }
+    },
+    {
+      "id": "ito_131_appeal_tribunal_within",
+      "name": "Appeal to Appellate Tribunal - within deadline",
+      "domain": "income_tax",
+      "priority": 2,
+      "description": "An appeal shall be preferred to the Appellate Tribunal within sixty days of the date of service of the order of the Commissioner (Appeals).",
+      "when": [
+        {"field": "event_type", "op": "eq", "value": "appeal_to_appellate_tribunal"},
+        {"field": "days_since_service", "op": "lte", "value": 60}
+      ],
+      "then": {
+        "status": "within_deadline",
+        "message": "Appeal to the Appellate Tribunal is within the statutory sixty-day window under section 131 of the Income Tax Ordinance 2001."
+      },
+      "source": {
+        "document": "IncomeTaxOrdinance2001_upto2025.pdf",
+        "section": "131(1)",
+        "sha256": "3eb83defefad0930b5d35dbbf6f3961f967a9330114f70058dac2f096a0b6812"
+      }
+    },
+    {
+      "id": "ito_131_appeal_tribunal_missed",
+      "name": "Appeal to Appellate Tribunal - deadline missed",
+      "domain": "income_tax",
+      "priority": 2,
+      "description": "The statutory window for preferring an appeal to the Appellate Tribunal is sixty days from the date of service of the Commissioner (Appeals) order.",
+      "when": [
+        {"field": "event_type", "op": "eq", "value": "appeal_to_appellate_tribunal"},
+        {"field": "days_since_service", "op": "gt", "value": 60}
+      ],
+      "then": {
+        "status": "deadline_missed",
+        "message": "The statutory sixty-day appeal window to the Appellate Tribunal under section 131 of the Income Tax Ordinance 2001 has elapsed."
+      },
+      "source": {
+        "document": "IncomeTaxOrdinance2001_upto2025.pdf",
+        "section": "131(1)",
+        "sha256": "3eb83defefad0930b5d35dbbf6f3961f967a9330114f70058dac2f096a0b6812"
+      }
+    },
+    {
+      "id": "ito_114_revised_return_within",
+      "name": "Revised return - within window",
+      "domain": "income_tax",
+      "priority": 3,
+      "description": "A revised return may be filed within sixty days of filing of the original return.",
+      "when": [
+        {"field": "event_type", "op": "eq", "value": "revised_return"},
+        {"field": "days_since_filing", "op": "lte", "value": 60}
+      ],
+      "then": {
+        "status": "within_deadline",
+        "message": "The revised return is within the statutory sixty-day window under section 114 of the Income Tax Ordinance 2001."
+      },
+      "source": {
+        "document": "IncomeTaxOrdinance2001_upto2025.pdf",
+        "section": "114",
+        "sha256": "3eb83defefad0930b5d35dbbf6f3961f967a9330114f70058dac2f096a0b6812"
+      }
+    },
+    {
+      "id": "ito_114_revised_return_missed",
+      "name": "Revised return - window elapsed",
+      "domain": "income_tax",
+      "priority": 3,
+      "description": "The window for filing a revised return is sixty days from filing of the original return.",
+      "when": [
+        {"field": "event_type", "op": "eq", "value": "revised_return"},
+        {"field": "days_since_filing", "op": "gt", "value": 60}
+      ],
+      "then": {
+        "status": "deadline_missed",
+        "message": "The statutory sixty-day window for a revised return under section 114 of the Income Tax Ordinance 2001 has elapsed."
+      },
+      "source": {
+        "document": "IncomeTaxOrdinance2001_upto2025.pdf",
+        "section": "114",
+        "sha256": "3eb83defefad0930b5d35dbbf6f3961f967a9330114f70058dac2f096a0b6812"
+      }
+    }
+  ]
+}

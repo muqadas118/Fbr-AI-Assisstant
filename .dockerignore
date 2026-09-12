@@ -1,0 +1,51 @@
+# Repository metadata
+/.git/
+
+# Environment files
+/.env*
+!/.env.example
+
+# Local agent and configuration directories
+/.claude/
+/.kilo/
+
+# Uploaded and source data
+/data/
+/uploads/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Databases and vector artifacts
+/database/
+/databases/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.duckdb
+*.mdb
+*.accdb
+*.npy
+*.faiss.index
+
+# Root-generated HTML and operational artifacts
+/fbr_app*.html
+/fbr_auth*.html
+/reports/
+/logs/
+/backups/
+/backup/
+*.log
+*.logs
+*.bak
+*.backup
+
+# Frontend dependencies, builds, and local environment files
+/frontend/node_modules/
+/frontend/dist/
+/frontend/coverage/
+/frontend/.env*
+!/frontend/.env.example

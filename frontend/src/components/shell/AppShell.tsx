@@ -1,0 +1,66 @@
+import { useEffect, useState } from "react";
+import { Outlet } from "react-router-dom";
+import { Sidebar, type SidebarConfig } from "./Sidebar";
+import { Header } from "./Header";
+import { Main } from "./Main";
+import { Notification } from "./Notification";
+import { ErrorBoundary } from "./ErrorBoundary";
+import { api } from "@/lib/api";
+import { PERSONAL_SECTIONS } from "@/state/personalNav";
+import { BUSINESS_SECTIONS } from "@/state/businessNav";
+
+const SHELL_CONFIG: Record<"personal" | "business", SidebarConfig> = {
+  personal: {
+    sections: PERSONAL_SECTIONS,
+    sectionLabel: "Personal",
+    footerText: "Part 1 · Personal",
+    navLabel: "Personal workspace navigation",
+    testId: "personal-nav",
+  },
+  business: {
+    sections: BUSINESS_SECTIONS,
+    sectionLabel: "Business",
+    footerText: "Part 2 · Business",
+    navLabel: "Business workspace navigation",
+    testId: "business-nav",
+  },
+};
+
+export function AppShell({ variant = "personal" }: { variant?: "personal" | "business" }) {
+  const config = SHELL_CONFIG[variant];
+  const [collapsed, setCollapsed] = useState(false);
+  const [apiHealthy, setApiHealthy] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .health()
+      .then(() => {
+        if (!cancelled) setApiHealthy(true);
+      })
+      .catch(() => {
+        if (!cancelled) setApiHealthy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div className={`app-shell ${collapsed ? "app-shell--collapsed" : ""}`} data-testid="app-shell">
+      <Sidebar collapsed={collapsed} {...config} />
+      <div className="app-shell__column">
+        <Header
+          onToggleSidebar={() => setCollapsed((c) => !c)}
+          apiHealthy={apiHealthy}
+        />
+        <ErrorBoundary>
+          <Main>
+            <Outlet />
+          </Main>
+        </ErrorBoundary>
+      </div>
+      <Notification />
+    </div>
+  );
+}

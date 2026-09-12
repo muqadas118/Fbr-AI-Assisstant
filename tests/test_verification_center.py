@@ -1,0 +1,188 @@
+"""
+Test Suite for Verification Center
+===================================
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import unittest
+
+from app.verification_center import (
+    NTNVerifier, NTNStatus, get_ntn_verifier,
+    FilerStatusChecker, FilerStatus, get_filer_status_checker,
+    BusinessVerifier, RegistrationType, get_business_verifier,
+    VerificationAPI, get_verification_api,
+    VerificationRequest, VerificationResponse,
+)
+
+
+class TestNTNVerifier(unittest.TestCase):
+    """Test NTN verifier."""
+
+    def setUp(self):
+        self.verifier = NTNVerifier()
+
+    def test_valid_format(self):
+        result = self.verifier.verify("1234567-8")
+        self.assertIn(result.status, [
+            NTNStatus.ACTIVE, NTNStatus.SUSPENDED,
+            NTNStatus.BLOCKED, NTNStatus.INACTIVE,
+        ])
+
+    def test_invalid_format(self):
+        result = self.verifier.verify("invalid")
+        self.assertEqual(result.status, NTNStatus.INVALID_FORMAT)
+        self.assertFalse(result.is_valid)
+
+    def test_short_ntn(self):
+        result = self.verifier.verify("12345")
+        self.assertEqual(result.status, NTNStatus.INVALID_FORMAT)
+
+    def test_active_ntn(self):
+        # Use NTN ending in 1 (ACTIVE per simulation)
+        result = self.verifier.verify("1234567-1")
+        self.assertEqual(result.status, NTNStatus.ACTIVE)
+        self.assertTrue(result.is_valid)
+        self.assertIsNotNone(result.name)
+
+    def test_suspended_ntn(self):
+        result = self.verifier.verify("1234567-3")
+        self.assertEqual(result.status, NTNStatus.SUSPENDED)
+        self.assertFalse(result.is_valid)
+
+    def test_caching(self):
+        result1 = self.verifier.verify("1234567-8")
+        result2 = self.verifier.verify("1234567-8")
+        # Should be same instance due to cache
+        self.assertIs(result1, result2)
+
+    def test_bulk_verify(self):
+        results = self.verifier.bulk_verify(["1234567-1", "1234567-2", "1234567-3"])
+        self.assertEqual(len(results), 3)
+
+
+class TestFilerStatusChecker(unittest.TestCase):
+    """Test filer status checker."""
+
+    def setUp(self):
+        self.checker = FilerStatusChecker()
+
+    def test_filer_status(self):
+        info = self.checker.check_by_ntn("1234567-1")
+        self.assertEqual(info.status, FilerStatus.FILER)
+        self.assertTrue(info.is_active_filer)
+
+    def test_non_filer_status(self):
+        info = self.checker.check_by_ntn("1234567-5")
+        self.assertEqual(info.status, FilerStatus.NON_FILER)
+        self.assertFalse(info.is_active_filer)
+
+    def test_late_filer(self):
+        info = self.checker.check_by_ntn("1234567-3")
+        self.assertEqual(info.status, FilerStatus.LATE_FILER)
+
+    def test_atl_status(self):
+        info = self.checker.check_by_ntn("1234567-1")
+        self.assertTrue(info.is_atl)
+
+    def test_check_by_cnic(self):
+        info = self.checker.check_by_cnic("12345-1234567-1")
+        self.assertIn(info.status, [FilerStatus.FILER, FilerStatus.NON_FILER])
+
+    def test_invalid_cnic(self):
+        info = self.checker.check_by_cnic("12345")
+        self.assertEqual(info.status, FilerStatus.UNKNOWN)
+
+
+class TestBusinessVerifier(unittest.TestCase):
+    """Test business verifier."""
+
+    def setUp(self):
+        self.verifier = BusinessVerifier()
+
+    def test_verify_ntn(self):
+        reg = self.verifier.verify_ntn("1234567-8")
+        self.assertEqual(reg.registration_type, RegistrationType.NTN)
+        self.assertTrue(reg.is_active)
+
+    def test_verify_secp(self):
+        reg = self.verifier.verify_secp("0123456")
+        self.assertEqual(reg.registration_type, RegistrationType.SECP_COMPANY)
+        self.assertTrue(reg.verified)
+
+    def test_verify_vendor_active(self):
+        vendor = self.verifier.verify_vendor("1234567-1")
+        self.assertTrue(vendor.is_active)
+        self.assertTrue(vendor.is_filer)
+        self.assertEqual(vendor.risk_score, 0.0)
+
+    def test_verify_vendor_blacklisted(self):
+        # NTN ending in 9 = blacklisted
+        vendor = self.verifier.verify_vendor("1234567-9")
+        self.assertTrue(vendor.is_blacklisted)
+        self.assertGreater(vendor.risk_score, 50)
+
+    def test_verify_vendor_non_filer(self):
+        # NTN ending in 5 = non-filer
+        vendor = self.verifier.verify_vendor("1234567-5")
+        self.assertFalse(vendor.is_registered)
+
+
+class TestVerificationAPI(unittest.TestCase):
+    """Test verification API."""
+
+    def setUp(self):
+        self.api = get_verification_api()
+
+    def test_verify_ntn(self):
+        resp = self.api.verify_ntn("1234567-1")
+        self.assertTrue(resp.is_verified)
+        self.assertEqual(resp.request_type.value, "ntn")
+
+    def test_verify_filer_status(self):
+        resp = self.api.verify_filer_status("1234567-1")
+        self.assertIn("is_active_filer", resp.details)
+
+    def test_verify_vendor(self):
+        resp = self.api.verify_vendor("1234567-1")
+        self.assertIn("wht_rate_applicable", resp.details)
+        # Active filer = 15% WHT
+        self.assertEqual(resp.details["wht_rate_applicable"], "15%")
+
+    def test_verify_vendor_non_filer(self):
+        resp = self.api.verify_vendor("1234567-5")
+        # Non-filer = 30% WHT
+        self.assertEqual(resp.details["wht_rate_applicable"], "30%")
+
+    def test_verify_cnic(self):
+        resp = self.api.verify_cnic("12345-1234567-1")
+        self.assertIsNotNone(resp)
+
+    def test_verify_business(self):
+        resp = self.api.verify_business("1234567-1", reg_type="ntn")
+        self.assertTrue(resp.is_verified)
+
+    def test_batch_verify(self):
+        requests = [
+            VerificationRequest(
+                type="ntn",
+                value="1234567-1",
+            ),
+            VerificationRequest(
+                type="filer",
+                value="1234567-1",
+            ),
+            VerificationRequest(
+                type="vendor",
+                value="1234567-5",
+            ),
+        ]
+        responses = self.api.batch_verify(requests)
+        self.assertEqual(len(responses), 3)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

@@ -1,0 +1,51 @@
+# FBR AI Tax & Compliance Platform - pinned runtime dependencies
+#
+# Versions captured from the validated working environment used for
+# Phases 1-10. Pinned exactly so that extraction behaviour, embedding
+# output, FAISS retrieval and the FastAPI backend stay reproducible
+# across machines.
+#
+# Install with:
+#   python -m pip install -r requirements.txt
+
+# --- Source document extraction (Phase 2) ---
+pypdf==6.16.1
+pymupdf==1.28.2
+python-docx==1.2.0
+openpyxl==3.1.5
+xlrd==2.0.2
+
+# --- Embeddings (Phase 5) ---
+# Model: sentence-transformers/all-MiniLM-L6-v2
+# Pinned revision: 1110a243fdf4706b3f48f1d95db1a4f5529b4d41
+sentence-transformers==6.0.0
+transformers==5.15.1
+tokenizers==0.22.2
+safetensors==0.8.0
+huggingface-hub==1.26.0
+torch==2.13.0
+
+# --- Vector database and retrieval (Phase 6) ---
+faiss-cpu==1.15.0
+numpy==2.4.3
+scipy==1.17.1
+scikit-learn==1.9.0
+rank-bm25==0.2.2
+
+# --- LLM adapter (Phase 7, OpenAI-compatible clients) ---
+openai==2.24.0
+
+# --- Configuration and daily source updates ---
+python-dotenv==1.1.1
+requests==2.33.0
+tqdm==4.67.3
+
+# --- Backend API (Phase 10, FastAPI) ---
+fastapi==0.116.1
+pydantic==2.13.4
+uvicorn==0.35.0
+httpx==0.28.1
+
+# --- Supabase Auth (JWT validation) ---
+PyJWT==2.13.0
+supabase==2.9.0
