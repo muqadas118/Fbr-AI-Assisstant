@@ -1,46 +1,53 @@
 /* Gov FBR Pro — design tokens (light theme only, custom CSS, no deps)
    Direction: utilitarian, dense, scannable gov dashboard.
-   Palette: Pakistan green #01411C primary · gold #C9A227 accent ·
-   off-white #F7F8F4 bg · ink #14201A text · muted slate.
+   Palette: deep pine #0C3B2E primary · deep #082A21 crest/hero only ·
+   soft brass #C6A15B accent · ivory #FAF8F3 bg · ink #1C2420 text.
    Type: serif display (Georgia / Noto Nastaliq Urdu fallback) · Inter/system body.
 */
 
 :root {
-  /* Brand */
-  --c-primary:      #01411c;
-  --c-primary-2:    #012e14;
-  --c-primary-3:    #0a5a2c;
-  --c-primary-soft: #e3efe5;
-  --c-gold:         #c9a227;
-  --c-gold-2:       #a8861c;
-  --c-gold-soft:    #f7efD2;
+  /* Brand — refined pine + brass */
+  --fbr-green:      #0c3b2e;
+  --fbr-green-deep: #082a21;
+  --fbr-gold:       #c6a15b;
+  --fbr-ivory:      #faf8f3;
+  --fbr-sidebar-hover: #eff3ef;
+  --fbr-user-bubble:   #e7f0ea;
+
+  --c-primary:      #0c3b2e;
+  --c-primary-2:    #082a21;
+  --c-primary-3:    #14503f;
+  --c-primary-soft: #e7f0ea;
+  --c-gold:         #c6a15b;
+  --c-gold-2:       #a58146;
+  --c-gold-soft:    #f5edd9;
 
   /* Surfaces (legacy names remapped to gov palette) */
-  --c-paper:        #f7f8f4;
-  --c-paper-2:      #ecefe7;
+  --c-paper:        #faf8f3;
+  --c-paper-2:      #eff3ef;
   --c-surface:      #ffffff;
-  --c-ink:          #01411c;
-  --c-ink-2:        #012e14;
-  --c-ink-3:        #0a5a2c;
-  --c-line:         #dde3d8;
-  --c-line-strong:  #b9c4b2;
-  --c-line-ink:     rgba(255, 255, 255, 0.14);
+  --c-ink:          #0c3b2e;
+  --c-ink-2:        #082a21;
+  --c-ink-3:        #14503f;
+  --c-line:         #e0e5dc;
+  --c-line-strong:  #c2cbc0;
+  --c-line-ink:     rgba(12, 59, 46, 0.12);
 
   /* Text */
-  --c-text:         #14201a;
-  --c-text-muted:   #5a6b5e;
+  --c-text:         #1c2420;
+  --c-text-muted:   #5a6b60;
   --c-text-faint:   #8a978d;
-  --c-text-invert:  #f7f8f4;
+  --c-text-invert:  #ffffff;
   --c-text-invert-muted: #b9cabd;
 
-  /* Accent (legacy aliases → Pakistan green) */
-  --c-accent:       #01411c;
-  --c-accent-2:     #012e14;
-  --c-accent-soft:  #e3efe5;
+  /* Accent (legacy aliases → deep pine) */
+  --c-accent:       #0c3b2e;
+  --c-accent-2:     #082a21;
+  --c-accent-soft:  #e7f0ea;
 
   /* Status */
-  --c-ok:           #01411c;
-  --c-ok-soft:      #e3efe5;
+  --c-ok:           #0c3b2e;
+  --c-ok-soft:      #e7f0ea;
   --c-warn:         #8a6200;
   --c-warn-soft:    #f7efd2;
   --c-err:          #9a1f1f;
@@ -71,14 +78,14 @@
   --r-3: 10px;
 
   /* Shadows */
-  --sh-sm: 0 1px 2px rgba(20, 32, 26, 0.08);
-  --sh-md: 0 2px 8px rgba(20, 32, 26, 0.1);
-  --sh-lg: 0 8px 24px rgba(1, 65, 28, 0.14);
+  --sh-sm: 0 1px 2px rgba(28, 36, 32, 0.08);
+  --sh-md: 0 2px 8px rgba(28, 36, 32, 0.1);
+  --sh-lg: 0 8px 24px rgba(12, 59, 46, 0.14);
 
   /* Layout */
   --w-sidebar: 264px;
   --w-sidebar-collapsed: 64px;
-  --w-crest: 30px;
+  --w-crest: 3px;
   --w-header: 58px;
   --w-content-max: 1200px;
 

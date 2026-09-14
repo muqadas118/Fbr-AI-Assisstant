@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { findSectionByPath as findPersonalSection } from "@/state/personalNav";
 import { findBusinessSectionByPath as findBusinessSection } from "@/state/businessNav";
 import { WORKSPACES, useWorkspace } from "@/state/workspace";
@@ -48,6 +48,8 @@ export function Header({ onToggleSidebar, apiHealthy }: HeaderProps) {
 
       <div className="app-header__title-block">
         <nav className="app-header__crumbs" aria-label="Breadcrumb">
+          <Link to="/" data-testid="home-link">Home</Link>
+          <span aria-hidden>/</span>
           <span>FBR</span>
           <span aria-hidden>/</span>
           <span>{WORKSPACES[activeWs].label}</span>

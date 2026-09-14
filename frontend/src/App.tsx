@@ -1,11 +1,12 @@
 ﻿import { Suspense, lazy } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
 import { RequireAuth } from "@/components/shell/RequireAuth";
 import { Loading } from "@/components/shell/Loading";
 import { LoginPage } from "@/pages/auth/LoginPage";
 import { SignupPage } from "@/pages/auth/SignupPage";
 import { AuthCallbackPage } from "@/pages/auth/AuthCallbackPage";
+import { LandingPage } from "@/pages/LandingPage";
 
 const OverviewPage = lazy(() => import("@/pages/personal/OverviewPage").then((m) => ({ default: m.OverviewPage })));
 const AssistantPage = lazy(() => import("@/pages/personal/AssistantPage").then((m) => ({ default: m.AssistantPage })));
@@ -44,7 +45,7 @@ export function App() {
     <BrowserRouter>
       <Suspense fallback={<Loading label="Loading…" testId="route-loading" />}>
         <Routes>
-          <Route path="/" element={<Navigate to="/personal/overview" replace />} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
@@ -99,7 +100,7 @@ export function App() {
             <Route path="team" element={<BusinessTeamPage />} />
             <Route path="monitor" element={<BusinessMonitorPage />} />
           </Route>
-          <Route path="*" element={<Navigate to="/personal/overview" replace />} />
+          <Route path="*" element={<LandingPage />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

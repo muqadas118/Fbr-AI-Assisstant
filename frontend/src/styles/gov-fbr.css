@@ -1,6 +1,6 @@
 /* Gov FBR Pro theme layer — business + auth pages.
-   Uses existing palette vars only (var(--c-accent), var(--c-gold),
-   var(--c-ink), var(--c-paper), var(--c-line)). No palette redefines. */
+   Uses existing palette vars only (var(--c-accent), var(--fbr-gold),
+   var(--c-ink), var(--c-paper), var(--c-line)). Light theme only. */
 
 /* ── Pro page headers ─────────────────────────────────────────── */
 .page__header {
@@ -54,7 +54,7 @@
   padding: 8px 12px;
   border: 1px solid var(--c-line-strong);
   border-radius: var(--r-2);
-  background: #fffaf0;
+  background: var(--c-surface);
   font-size: 13.5px;
   color: var(--c-text);
 }
@@ -131,7 +131,7 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 13.5px;
-  background: #fffaf0;
+  background: var(--c-surface);
 }
 
 .table--fbr th,
@@ -142,9 +142,9 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--c-text-invert);
-  background: var(--c-ink);
-  border-bottom: 2px solid var(--c-gold);
+  color: var(--fbr-green);
+  background: var(--fbr-sidebar-hover);
+  border-bottom: 2px solid var(--fbr-gold);
 }
 
 .table--fbr td,
@@ -173,7 +173,7 @@
 /* ── Stat cards / snapshot strip ──────────────────────────────── */
 .stat-card {
   padding: var(--s-4);
-  background: #fffaf0;
+  background: var(--c-surface);
   border: 1px solid var(--c-line);
   border-radius: var(--r-2);
   border-top: 3px solid var(--c-accent);
@@ -229,11 +229,11 @@
   grid-template-columns: auto 1px 1fr;
   gap: var(--s-6);
   align-items: center;
-  background: var(--c-ink);
+  background: var(--fbr-green-deep);
   color: var(--c-text-invert);
   border-radius: var(--r-2);
   padding: var(--s-5) var(--s-6);
-  border-bottom: 3px solid var(--c-gold);
+  border-bottom: 3px solid var(--fbr-gold);
 }
 
 .overview__snapshot .eyebrow {
@@ -322,7 +322,7 @@
   padding: var(--s-4);
   border: 1px solid var(--c-line);
   border-radius: var(--r-2);
-  background: #fffaf0;
+  background: var(--c-surface);
 }
 
 .qaction__icon {
@@ -426,7 +426,7 @@
   padding: var(--s-3) var(--s-4);
   border: 1px solid var(--c-line);
   border-radius: var(--r-2);
-  background: #fffaf0;
+  background: var(--c-surface);
   font-size: 13px;
   color: var(--c-text);
 }
@@ -450,7 +450,7 @@
   padding: 10px 14px;
   border: 1px solid var(--c-line-strong);
   border-radius: var(--r-2);
-  background: #fffaf0;
+  background: var(--c-surface);
   font-size: 14px;
   font-family: var(--f-body);
   resize: vertical;
@@ -476,27 +476,30 @@
 
 .chat__msg {
   display: flex;
-  margin-bottom: var(--s-4);
+  max-width: 100%;
 }
 
 .chat__msg--user {
   justify-content: flex-end;
+  max-width: 100%;
 }
 
 .chat__bubble {
-  max-width: 80%;
+  max-width: min(70ch, 85%);
+  overflow-wrap: anywhere;
   padding: var(--s-4) var(--s-5);
   border-radius: var(--r-2);
   border: 1px solid var(--c-line);
-  background: #fffaf0;
+  background: var(--c-surface);
   font-size: 14px;
   line-height: 1.65;
+  color: var(--c-text);
 }
 
 .chat__msg--user .chat__bubble {
-  background: var(--c-ink);
-  color: var(--c-text-invert);
-  border-color: var(--c-ink);
+  background: var(--fbr-user-bubble);
+  color: var(--c-text);
+  border-color: #cbd8cf;
 }
 
 .chat__answer {
@@ -533,7 +536,7 @@
 }
 
 .auth-card {
-  background: #fffaf0;
+  background: var(--c-surface);
   border: 1px solid var(--c-line);
   border-top: 4px solid var(--c-accent);
   border-radius: var(--r-3);
@@ -552,13 +555,13 @@
   height: 56px;
   margin: 0 auto var(--s-4);
   border-radius: 50%;
-  background: var(--c-ink);
+  background: var(--fbr-green-deep);
   color: var(--c-text-invert);
   font-family: var(--f-display);
   font-size: 20px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  border: 2px solid var(--c-gold);
+  border: 2px solid var(--fbr-gold);
 }
 
 .auth-wrap .page-eyebrow {

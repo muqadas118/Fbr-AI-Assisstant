@@ -1,0 +1,169 @@
+import { Link } from "react-router-dom";
+import { ParticleField } from "@/components/landing/ParticleField";
+import "@/styles/landing.css";
+
+const FEATURES = [
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    ),
+    title: "Tax Assistant",
+    text: "Grounded answers on Income Tax, Sales Tax, Federal Excise and Customs — with section citations from 107 FBR source documents.",
+    href: "/personal/assistant",
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <rect x="4" y="2" width="16" height="20" rx="2" />
+        <line x1="8" x2="16" y1="6" y2="6" />
+        <line x1="8" x2="8" y1="11" y2="11" />
+        <line x1="12" x2="12" y1="11" y2="11" />
+        <line x1="16" x2="16" y1="11" y2="11" />
+        <line x1="8" x2="8" y1="15" y2="15" />
+        <line x1="12" x2="12" y1="15" y2="15" />
+        <line x1="16" x2="16" y1="15" y2="15" />
+        <line x1="8" x2="16" y1="19" y2="19" />
+      </svg>
+    ),
+    title: "Tax Calculator",
+    text: "11 calculation modules — salary, business, sales tax, withholding, capital gains, property, dividends and customs duty.",
+    href: "/personal/calculator",
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14,2 14,8 20,8" />
+        <line x1="16" x2="8" y1="13" y2="13" />
+        <line x1="16" x2="8" y1="17" y2="17" />
+      </svg>
+    ),
+    title: "Notice Analyzer",
+    text: "Understand 30+ FBR notice types with deadlines, action plans and appeal guidance — never miss a response window.",
+    href: "/personal/notices",
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
+        <line x1="16" x2="16" y1="2" y2="6" />
+        <line x1="8" x2="8" y1="2" y2="6" />
+        <line x1="3" x2="21" y1="10" y2="10" />
+      </svg>
+    ),
+    title: "Compliance Calendar",
+    text: "FY 2024–27 filing deadlines, reminders and a live compliance score for individuals and businesses.",
+    href: "/personal/calendar",
+  },
+];
+
+const STEPS = [
+  {
+    n: "1",
+    title: "Ask or upload",
+    text: "Type a tax question, run a calculation, or upload an FBR notice or invoice.",
+  },
+  {
+    n: "2",
+    title: "Get grounded answers",
+    text: "The 9-agent router pulls evidence from verified FBR law — every answer carries citations.",
+  },
+  {
+    n: "3",
+    title: "Stay compliant",
+    text: "Track deadlines, monitor notices and keep your health score green, all year.",
+  },
+];
+
+export function LandingPage() {
+  return (
+    <div className="landing" data-testid="landing-page">
+      <section className="landing-hero" data-testid="landing-hero">
+        <ParticleField />
+        <div className="landing-hero__inner">
+          <p className="landing-hero__crest">Government of Pakistan — Federal Board of Revenue</p>
+          <h1 className="landing-hero__title">FBR Tax &amp; Compliance Assistant</h1>
+          <p className="landing-hero__sub">
+            Grounded answers on Income Tax, Sales Tax, Federal Excise and Customs —
+            backed by official FBR law, with calculators, notice analysis and compliance tracking.
+          </p>
+          <div className="landing-hero__ctas">
+            <Link to="/personal/overview" className="landing-btn landing-btn--gold" data-testid="landing-cta-app">
+              Open App
+            </Link>
+            <Link to="/login" className="landing-btn landing-btn--outline" data-testid="landing-cta-login">
+              Login
+            </Link>
+            <Link to="/business/overview" className="landing-btn landing-btn--ghost">
+              For Business
+            </Link>
+          </div>
+          <div className="landing-trust" aria-label="Platform highlights">
+            <span><strong>9</strong> specialist agents</span>
+            <span aria-hidden>·</span>
+            <span><strong>59</strong> API endpoints</span>
+            <span aria-hidden>·</span>
+            <span><strong>11</strong> tax calculators</span>
+            <span aria-hidden>·</span>
+            <span><strong>Grounded</strong> answers only</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-section" data-testid="landing-features" aria-label="Features">
+        <div className="landing-wrap">
+          <p className="landing-eyebrow">What you can do</p>
+          <h2 className="landing-h2">One assistant for every tax task</h2>
+          <div className="landing-grid">
+            {FEATURES.map((f) => (
+              <Link key={f.title} to={f.href} className="landing-card">
+                <span className="landing-card__icon">{f.icon}</span>
+                <h3 className="landing-card__title">{f.title}</h3>
+                <p className="landing-card__text">{f.text}</p>
+                <span className="landing-card__link">Open →</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-section landing-section--alt" aria-label="How it works">
+        <div className="landing-wrap">
+          <p className="landing-eyebrow">How it works</p>
+          <h2 className="landing-h2">From question to compliance in three steps</h2>
+          <ol className="landing-steps">
+            {STEPS.map((s) => (
+              <li key={s.n} className="landing-step">
+                <span className="landing-step__n">{s.n}</span>
+                <h3 className="landing-step__title">{s.title}</h3>
+                <p className="landing-step__text">{s.text}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <footer className="landing-footer">
+        <div className="landing-wrap">
+          <p className="landing-disclaimer">
+            Disclaimer: This is an unofficial assistance tool for guidance only. It is not affiliated
+            with the Federal Board of Revenue. Always verify with official FBR notifications, SROs
+            and a qualified tax professional before acting.
+          </p>
+          <div className="landing-footer__row">
+            <span>FBR Tax &amp; Compliance Assistant</span>
+            <span>
+              <Link to="/personal/overview">Personal</Link>
+              {" · "}
+              <Link to="/business/overview">Business</Link>
+              {" · "}
+              <Link to="/login">Login</Link>
+            </span>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}

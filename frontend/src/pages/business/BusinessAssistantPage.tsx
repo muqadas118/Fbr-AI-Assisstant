@@ -1,11 +1,13 @@
 import { useState, useCallback } from "react";
-import { ApiError, NetworkError, api, type AnswerResponse } from "@/lib/api";
+import { Link } from "react-router-dom";
+import { ApiError, NetworkError, api, isUnauthorized, type AnswerResponse } from "@/lib/api";
 import { Loading } from "@/components/shell/Loading";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { VerificationPanel } from "@/components/ui/VerificationPanel";
 import { SourceList } from "@/components/ui/SourceCitation";
 import { Button } from "@/components/ui/Button";
+import { useAuth } from "@/state/auth";
 
 interface Message {
   id: string;
@@ -29,13 +31,23 @@ function MessageBubble({ message }: { message: Message }) {
   }
 
   if (message.error) {
+    const login = /login/i.test(message.text);
     return (
       <div className="chat__msg chat__msg--assistant" data-testid="biz-chat-error">
         <div className="chat__bubble">
           <StatusBanner
             kind="err"
-            title="Could not retrieve answer"
+            title={login ? "Login required" : "Could not retrieve answer"}
             description={message.text}
+            action={
+              login ? (
+                <Link to="/login">
+                  <Button variant="primary" size="sm" data-testid="biz-message-login">
+                    Go to Login
+                  </Button>
+                </Link>
+              ) : undefined
+            }
             testId="biz-message-error"
           />
         </div>
@@ -107,6 +119,7 @@ export function BusinessAssistantPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const session = useAuth((s) => s.session);
 
   const submit = useCallback(
     async (q?: string) => {
@@ -136,7 +149,9 @@ export function BusinessAssistantPage() {
       } catch (err) {
         const detail =
           err instanceof ApiError || err instanceof NetworkError
-            ? err.message
+            ? err instanceof ApiError && isUnauthorized(err)
+              ? "Login required — your session is missing or expired. Please login, then ask again."
+              : err.message
             : "An unexpected error occurred.";
         const errMsg: Message = {
           id: `e-${Date.now()}`,
@@ -191,6 +206,21 @@ export function BusinessAssistantPage() {
         </header>
 
         <div className="chat" data-testid="biz-assistant-chat">
+          {!session ? (
+            <StatusBanner
+              kind="warn"
+              title="You are not logged in"
+              description="Answers need authentication. Please login first, then ask."
+              action={
+                <Link to="/login">
+                  <Button variant="primary" size="sm" data-testid="biz-assistant-login">
+                    Go to Login
+                  </Button>
+                </Link>
+              }
+              testId="biz-assistant-login-banner"
+            />
+          ) : null}
           <div className="chat__messages" data-testid="biz-assistant-messages">
             {messages.length === 0 ? (
               <div className="chat__empty">

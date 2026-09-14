@@ -645,14 +645,22 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    const detail =
+    const rawDetail =
       payload && typeof payload === "object" && "detail" in payload
         ? String((payload as { detail: unknown }).detail)
         : `HTTP ${response.status}`;
+    const detail =
+      response.status === 401
+        ? "Authentication required — please login (session missing or expired)."
+        : rawDetail;
     throw new ApiError(`${method} ${path} failed: ${response.status}`, response.status, detail);
   }
 
   return payload as T;
+}
+
+export function isUnauthorized(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
 }
 
 // ============================================================================
