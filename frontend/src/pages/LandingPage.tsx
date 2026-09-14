@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ParticleField } from "@/components/landing/ParticleField";
+import { useAuth } from "@/state/auth";
 import "@/styles/landing.css";
 
 const FEATURES = [
@@ -78,8 +79,25 @@ const STEPS = [
 ];
 
 export function LandingPage() {
+  const session = useAuth((state) => state.session);
   return (
     <div className="landing" data-testid="landing-page">
+      <nav className="landing-nav" aria-label="Main navigation">
+        <Link to="/" className="landing-brand" aria-label="FBR Assistant home">
+          <span className="landing-brand__seal">FBR</span>
+          <span><strong>FBR</strong> Assistant <small>Tax &amp; Compliance</small></span>
+        </Link>
+        <div className="landing-nav__links">
+          <a href="#capabilities">Capabilities</a>
+          <a href="#method">How it works</a>
+          <a href="#contact">Contact</a>
+        </div>
+        {session ? (
+          <Link to="/personal/overview" className="landing-nav__account">Open workspace <span>↗</span></Link>
+        ) : (
+          <Link to="/login" className="landing-nav__account">Sign in <span>↗</span></Link>
+        )}
+      </nav>
       <section className="landing-hero" data-testid="landing-hero">
         <ParticleField />
         <div className="landing-hero__inner">
@@ -90,17 +108,17 @@ export function LandingPage() {
             backed by official FBR law, with calculators, notice analysis and compliance tracking.
           </p>
           <div className="landing-hero__ctas">
-            <Link to="/personal/overview" className="landing-btn landing-btn--gold" data-testid="landing-cta-app">
-              Open App
+             <Link to={session ? "/personal/overview" : "/login"} className="landing-btn landing-btn--gold" data-testid="landing-cta-app">
+               {session ? "Continue to workspace" : "Enter the assistant"}
             </Link>
-            <Link to="/login" className="landing-btn landing-btn--outline" data-testid="landing-cta-login">
-              Login
+             <Link to={session ? "/personal/settings" : "/login"} className="landing-btn landing-btn--outline" data-testid="landing-cta-login">
+               {session ? "Account settings" : "Login"}
             </Link>
             <Link to="/business/overview" className="landing-btn landing-btn--ghost">
               For Business
             </Link>
           </div>
-          <div className="landing-trust" aria-label="Platform highlights">
+           <div className="landing-trust" aria-label="Platform highlights">
             <span><strong>9</strong> specialist agents</span>
             <span aria-hidden>·</span>
             <span><strong>59</strong> API endpoints</span>
@@ -108,15 +126,24 @@ export function LandingPage() {
             <span><strong>11</strong> tax calculators</span>
             <span aria-hidden>·</span>
             <span><strong>Grounded</strong> answers only</span>
-          </div>
-        </div>
+           </div>
+           <img className="landing-hero__visual" src="/fbr-hero-illustration.svg" alt="" aria-hidden="true" />
+         </div>
       </section>
 
-      <section className="landing-section" data-testid="landing-features" aria-label="Features">
-        <div className="landing-wrap">
-          <p className="landing-eyebrow">What you can do</p>
-          <h2 className="landing-h2">One assistant for every tax task</h2>
-          <div className="landing-grid">
+       <section className="landing-proof" aria-label="Platform promise">
+         <div className="landing-wrap landing-proof__inner">
+           <div><span className="landing-proof__mark">01</span><strong>Official-source first</strong><span>Evidence before confidence.</span></div>
+           <div><span className="landing-proof__mark">02</span><strong>Built for Pakistan</strong><span>FBR workflows, not generic tax chat.</span></div>
+           <div><span className="landing-proof__mark">03</span><strong>Human-readable</strong><span>Clear actions, references and next steps.</span></div>
+         </div>
+       </section>
+
+       <section className="landing-section landing-section--capabilities" id="capabilities" data-testid="landing-features" aria-label="Features">
+         <div className="landing-wrap">
+           <p className="landing-eyebrow">The compliance desk, rethought</p>
+           <div className="landing-section__heading"><h2 className="landing-h2">One assistant for every tax task</h2><p>From a quick question to a complete compliance trail, keep the work in one calm, evidence-led place.</p></div>
+           <div className="landing-grid">
             {FEATURES.map((f) => (
               <Link key={f.title} to={f.href} className="landing-card">
                 <span className="landing-card__icon">{f.icon}</span>
@@ -127,7 +154,14 @@ export function LandingPage() {
             ))}
           </div>
         </div>
-      </section>
+       </section>
+
+       <section className="landing-showcase" aria-label="Workspace preview">
+         <div className="landing-wrap landing-showcase__layout">
+           <div className="landing-showcase__copy"><p className="landing-eyebrow">A clearer way to work</p><h2 className="landing-h2">Less searching.<br /><em>More certainty.</em></h2><p>Built around the rhythm of real tax work: understand the rule, calculate the impact, capture the evidence, and act before the deadline.</p><Link to={session ? "/personal/overview" : "/login"} className="landing-text-link">{session ? "Open your workspace" : "Create your workspace"} <span>→</span></Link></div>
+           <div className="landing-dashboard" aria-label="Illustration of the assistant workspace"><div className="landing-dashboard__top"><span className="landing-dashboard__dot"></span><span>FBR / COMPLIANCE DESK</span><span className="landing-dashboard__date">TY 2025</span></div><div className="landing-dashboard__body"><div className="landing-dashboard__rail"><i></i><i></i><i></i><i></i></div><div className="landing-dashboard__main"><div className="landing-dashboard__line landing-dashboard__line--short"></div><div className="landing-dashboard__line"></div><div className="landing-dashboard__metrics"><div><small>COMPLIANCE SCORE</small><strong>86<span>/100</span></strong></div><div><small>NEXT DEADLINE</small><strong>12 <span>days</span></strong></div></div><div className="landing-dashboard__chart"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div></div><div className="landing-dashboard__stamp">VERIFIED<br /><small>FBR SOURCE INDEX</small></div></div>
+         </div>
+       </section>
 
       <section className="landing-section landing-section--alt" aria-label="How it works">
         <div className="landing-wrap">
@@ -143,7 +177,11 @@ export function LandingPage() {
             ))}
           </ol>
         </div>
-      </section>
+       </section>
+
+       <section className="landing-contact" id="contact" aria-label="Contact">
+         <div className="landing-wrap landing-contact__inner"><div><p className="landing-eyebrow">Stay in the loop</p><h2 className="landing-h2">Questions before you begin?</h2><p>We are building a more dependable way to navigate Pakistan&apos;s tax obligations. Tell us what would make your workflow easier.</p></div><a className="landing-contact__email" href="mailto:hello@fbrassistant.pk">hello@fbrassistant.pk <span>↗</span></a></div>
+       </section>
 
       <footer className="landing-footer">
         <div className="landing-wrap">
@@ -153,8 +191,12 @@ export function LandingPage() {
             and a qualified tax professional before acting.
           </p>
           <div className="landing-footer__row">
-            <span>FBR Tax &amp; Compliance Assistant</span>
-            <span>
+             <span><strong>FBR</strong> Tax &amp; Compliance Assistant</span>
+             <span>
+               <a href="#capabilities">Capabilities</a>
+               {" · "}
+               <a href="#contact">Contact</a>
+               {" · "}
               <Link to="/personal/overview">Personal</Link>
               {" · "}
               <Link to="/business/overview">Business</Link>

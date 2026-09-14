@@ -584,9 +584,15 @@ export function getApiConfig(): ApiClientConfig {
 export type AuthTokenGetter = () => Promise<string | null>;
 
 let authTokenGetter: AuthTokenGetter | null = null;
+let unauthorizedHandler: (() => void) | null = null;
 
 export function setAuthTokenGetter(fn: AuthTokenGetter | null): void {
   authTokenGetter = fn;
+}
+
+/** Register the app-level response to an expired or rejected session. */
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  unauthorizedHandler = fn;
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -653,6 +659,7 @@ async function request<T>(
       response.status === 401
         ? "Authentication required — please login (session missing or expired)."
         : rawDetail;
+    if (response.status === 401) unauthorizedHandler?.();
     throw new ApiError(`${method} ${path} failed: ${response.status}`, response.status, detail);
   }
 

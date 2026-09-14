@@ -14,6 +14,8 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const session = useAuth((s) => s.session);
+  const authLoading = useAuth((s) => s.loading);
+  const initialized = useAuth((s) => s.initialized);
   const signIn = useAuth((s) => s.signIn);
 
   const [email, setEmail] = useState("");
@@ -22,12 +24,21 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
 
+  if (!initialized || authLoading) {
+    return <div className="auth-wrap auth-wrap--loading" role="status">Restoring your secure session…</div>;
+  }
+
   if (session) {
     return <Navigate to="/personal/overview" replace />;
   }
 
+  const stateFrom = (location.state as { from?: string } | null)?.from;
+  const queryFrom = new URLSearchParams(location.search).get("returnTo");
+  const requestedFrom = stateFrom ?? queryFrom;
   const from =
-    (location.state as { from?: string } | null)?.from ?? "/personal/overview";
+    requestedFrom && requestedFrom.startsWith("/") && !requestedFrom.startsWith("//")
+      ? requestedFrom
+      : "/personal/overview";
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
