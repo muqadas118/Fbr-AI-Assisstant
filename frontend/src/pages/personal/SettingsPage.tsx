@@ -3,9 +3,13 @@ import { Card } from "@/components/ui/Card";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
+import { useProfile } from "@/state/profile";
 
 interface SettingsForm {
   displayName: string;
+  ntn: string;
+  cnic: string;
+  email: string;
   language: string;
   timezone: string;
   emailNotifications: boolean;
@@ -14,16 +18,31 @@ interface SettingsForm {
   theme: "light" | "dark" | "system";
 }
 
+function initialForm(): SettingsForm {
+  const profile = useProfile.getState();
+  let saved: Partial<SettingsForm> = {};
+  try {
+    const raw = localStorage.getItem("fbr-settings");
+    if (raw) saved = JSON.parse(raw) as Partial<SettingsForm>;
+  } catch {
+    saved = {};
+  }
+  return {
+    displayName: profile.displayName || saved.displayName || "",
+    ntn: profile.ntn || localStorage.getItem("fbr_ntn") || "",
+    cnic: profile.cnic || "",
+    email: profile.email || "",
+    language: saved.language || "en",
+    timezone: saved.timezone || "Asia/Karachi",
+    emailNotifications: saved.emailNotifications ?? true,
+    pushNotifications: saved.pushNotifications ?? true,
+    smsNotifications: saved.smsNotifications ?? false,
+    theme: saved.theme || "system",
+  };
+}
+
 export function SettingsPage() {
-  const [form, setForm] = useState<SettingsForm>({
-    displayName: "",
-    language: "en",
-    timezone: "Asia/Karachi",
-    emailNotifications: true,
-    pushNotifications: true,
-    smsNotifications: false,
-    theme: "system",
-  });
+  const [form, setForm] = useState<SettingsForm>(initialForm);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,10 +60,16 @@ export function SettingsPage() {
     setSaved(false);
     setError(null);
 
-    // For Part 1: no dedicated settings endpoint exists yet.
-    // Save to localStorage as a local UI state only.
+    // Save identity to the shared profile store (+ legacy fbr_ntn key);
+    // UI preferences stay in localStorage as local UI state only.
     setTimeout(() => {
       try {
+        useProfile.getState().setProfile({
+          displayName: form.displayName,
+          ntn: form.ntn.trim(),
+          cnic: form.cnic.trim(),
+          email: form.email.trim(),
+        });
         localStorage.setItem("fbr-settings", JSON.stringify(form));
         setSaved(true);
         setSaving(false);
@@ -80,6 +105,40 @@ export function SettingsPage() {
             testId="settings-saved"
           />
         ) : null}
+
+        <Card title="Tax Identity" testId="settings-identity">
+          <div className="settings-form">
+            <Field label="NTN" helperText="National Tax Number — shared with Overview, Readiness & Vault">
+              <input
+                type="text"
+                value={form.ntn}
+                onChange={handleChange("ntn")}
+                placeholder="e.g. 123456789"
+                data-testid="settings-ntn"
+              />
+            </Field>
+
+            <Field label="CNIC" helperText="Computerized National Identity Card number">
+              <input
+                type="text"
+                value={form.cnic}
+                onChange={handleChange("cnic")}
+                placeholder="e.g. 1234567890123"
+                data-testid="settings-cnic"
+              />
+            </Field>
+
+            <Field label="Email" helperText="Contact email for notifications">
+              <input
+                type="email"
+                value={form.email}
+                onChange={handleChange("email")}
+                placeholder="you@example.com"
+                data-testid="settings-email"
+              />
+            </Field>
+          </div>
+        </Card>
 
         <Card title="Display Preferences" testId="settings-display">
           <div className="settings-form">

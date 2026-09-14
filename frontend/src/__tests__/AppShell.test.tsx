@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { AppShell } from "../components/shell/AppShell";
 import { Header } from "../components/shell/Header";
+import { PERSONAL_SECTIONS } from "../state/personalNav";
 
 vi.mock("../lib/api", async () => {
   const actual = await vi.importActual<typeof import("../lib/api")>("../lib/api");
@@ -89,7 +90,7 @@ describe("AppShell", () => {
     expect(screen.getByText("API Offline")).toBeInTheDocument();
   });
 
-  it("renders all 14 personal navigation sections", async () => {
+  it("renders all 17 personal navigation sections", async () => {
     render(
       <MemoryRouter initialEntries={["/personal/overview"]}>
         <AppShell />
@@ -97,10 +98,14 @@ describe("AppShell", () => {
     );
     const nav = screen.getByTestId("personal-nav");
     const items = nav.querySelectorAll(".sidebar__item");
-    expect(items.length).toBe(14);
+    expect(items.length).toBe(17);
+    expect(items.length).toBe(PERSONAL_SECTIONS.length);
+    for (const section of PERSONAL_SECTIONS) {
+      expect(nav.querySelector(`[data-section="${section.id}"]`)).toBeTruthy();
+    }
   });
 
-  it("renders section status badges (Stub/Preview)", async () => {
+  it("renders section status badges (Stub only, 2 by design)", async () => {
     render(
       <MemoryRouter initialEntries={["/personal/overview"]}>
         <AppShell />
@@ -108,7 +113,13 @@ describe("AppShell", () => {
     );
     const nav = screen.getByTestId("personal-nav");
     expect(nav.textContent).toContain("Stub");
-    expect(nav.textContent).toContain("Preview");
+    const expectedStub = PERSONAL_SECTIONS.filter((s) => s.status === "stub").length;
+    const expectedPreview = PERSONAL_SECTIONS.filter((s) => s.status === "partial").length;
+    expect(expectedStub).toBe(2);
+    expect(expectedPreview).toBe(0);
+    expect(nav.querySelectorAll(".sidebar__status--stub").length).toBe(expectedStub);
+    expect(nav.querySelectorAll(".sidebar__status--partial").length).toBe(expectedPreview);
+    expect(nav.querySelectorAll(".sidebar__status").length).toBe(expectedStub + expectedPreview);
   });
 });
 

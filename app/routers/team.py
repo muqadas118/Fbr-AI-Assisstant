@@ -9,7 +9,8 @@ Exposes MultiUserAPI team functions as HTTP endpoints.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
 from app.multi_user import MultiUserAPI, get_multi_user_api
@@ -74,6 +75,7 @@ class ChangePasswordRequest(BaseModel):
 # Endpoints
 # =============================================================================
 
+# PUBLIC - intentionally no auth: user has no token yet
 @router.post("/register")
 async def register_user(request: RegisterUserRequest) -> dict:
     """
@@ -122,6 +124,7 @@ async def register_user(request: RegisterUserRequest) -> dict:
         )
 
 
+# PUBLIC - intentionally no auth: user has no token yet
 @router.post("/login")
 async def login(request: LoginRequest) -> dict:
     """
@@ -150,7 +153,7 @@ async def login(request: LoginRequest) -> dict:
         )
 
 
-@router.post("/logout")
+@router.post("/logout", dependencies=[Depends(require_user)])
 async def logout(token: str) -> dict:
     """
     Logout and invalidate session.
@@ -167,7 +170,7 @@ async def logout(token: str) -> dict:
         )
 
 
-@router.post("/password/change")
+@router.post("/password/change", dependencies=[Depends(require_user)])
 async def change_password(request: ChangePasswordRequest) -> dict:
     """
     Change user password.
@@ -195,7 +198,7 @@ async def change_password(request: ChangePasswordRequest) -> dict:
         )
 
 
-@router.post("/create")
+@router.post("/create", dependencies=[Depends(require_user)])
 async def create_team(request: CreateTeamRequest) -> dict:
     """
     Create a new team/organization.
@@ -225,7 +228,7 @@ async def create_team(request: CreateTeamRequest) -> dict:
         )
 
 
-@router.post("/invite")
+@router.post("/invite", dependencies=[Depends(require_user)])
 async def invite_user(request: InviteUserRequest) -> dict:
     """
     Invite a user to join a team.
@@ -268,7 +271,7 @@ async def invite_user(request: InviteUserRequest) -> dict:
         )
 
 
-@router.post("/invitation/accept")
+@router.post("/invitation/accept", dependencies=[Depends(require_user)])
 async def accept_invitation(request: AcceptInvitationRequest) -> dict:
     """
     Accept a team invitation.
@@ -295,7 +298,7 @@ async def accept_invitation(request: AcceptInvitationRequest) -> dict:
         )
 
 
-@router.get("/dashboard/{team_id}")
+@router.get("/dashboard/{team_id}", dependencies=[Depends(require_user)])
 async def get_team_dashboard(team_id: str) -> dict:
     """
     Get team dashboard with members and invitations.
@@ -311,7 +314,7 @@ async def get_team_dashboard(team_id: str) -> dict:
         )
 
 
-@router.get("/user-dashboard/{user_id}")
+@router.get("/user-dashboard/{user_id}", dependencies=[Depends(require_user)])
 async def get_user_dashboard(user_id: str) -> dict:
     """
     Get user dashboard across all teams.
@@ -327,6 +330,7 @@ async def get_user_dashboard(user_id: str) -> dict:
         )
 
 
+# PUBLIC - intentionally no auth: needed for signup UI
 @router.get("/roles")
 async def get_roles() -> dict:
     """

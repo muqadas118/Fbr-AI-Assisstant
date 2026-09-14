@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Tag } from "@/components/ui/Tag";
 import { Field } from "@/components/ui/Field";
+import { useAuth } from "@/state/auth";
 import type { MonitorEvent, MonitorDashboard } from "@/lib/api";
 
 type TabId = "all" | "unread" | "critical" | "acknowledged";
@@ -237,8 +238,16 @@ function InboxItem({ event, onAcknowledge, onResolve, onMarkRead, acknowledging,
 }
 
 export function InboxPage() {
+  const sessionId = useAuth((s) => s.user?.id ?? "");
   const [userId, setUserId] = useState("");
   const [userIdInput, setUserIdInput] = useState("");
+  useEffect(() => {
+    if (sessionId && !userId) {
+      setUserId(sessionId);
+      setUserIdInput(sessionId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
   const [dashboard, setDashboard] = useState<MonitorDashboard | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("all");
   const [loadingStats, setLoadingStats] = useState(false);

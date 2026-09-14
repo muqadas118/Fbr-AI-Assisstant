@@ -10,7 +10,8 @@ import logging
 from enum import Enum
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
 from app.verification_center import VerificationAPI, get_verification_api
@@ -96,7 +97,7 @@ class VerificationResponse(BaseModel):
 # Endpoints
 # =============================================================================
 
-@router.post("/ntn", response_model=VerificationResponse)
+@router.post("/ntn", response_model=VerificationResponse, dependencies=[Depends(require_user)])
 async def verify_ntn(request: VerifyNTNRequest) -> VerificationResponse:
     """
     Verify a National Tax Number (NTN).
@@ -123,7 +124,7 @@ async def verify_ntn(request: VerifyNTNRequest) -> VerificationResponse:
         )
 
 
-@router.post("/filer", response_model=VerificationResponse)
+@router.post("/filer", response_model=VerificationResponse, dependencies=[Depends(require_user)])
 async def verify_filer_status(request: VerifyFilerRequest) -> VerificationResponse:
     """
     Check filer status of a taxpayer.
@@ -150,7 +151,7 @@ async def verify_filer_status(request: VerifyFilerRequest) -> VerificationRespon
         )
 
 
-@router.post("/vendor", response_model=VerificationResponse)
+@router.post("/vendor", response_model=VerificationResponse, dependencies=[Depends(require_user)])
 async def verify_vendor(request: VerifyVendorRequest) -> VerificationResponse:
     """
     Verify a vendor before onboarding or payment.
@@ -177,7 +178,7 @@ async def verify_vendor(request: VerifyVendorRequest) -> VerificationResponse:
         )
 
 
-@router.post("/cnic", response_model=VerificationResponse)
+@router.post("/cnic", response_model=VerificationResponse, dependencies=[Depends(require_user)])
 async def verify_cnic(request: VerifyCNICRequest) -> VerificationResponse:
     """
     Verify a CNIC for tax purposes.
@@ -203,7 +204,7 @@ async def verify_cnic(request: VerifyCNICRequest) -> VerificationResponse:
         )
 
 
-@router.post("/business", response_model=VerificationResponse)
+@router.post("/business", response_model=VerificationResponse, dependencies=[Depends(require_user)])
 async def verify_business(request: VerifyBusinessRequest) -> VerificationResponse:
     """
     Verify business registration.
@@ -232,7 +233,7 @@ async def verify_business(request: VerifyBusinessRequest) -> VerificationRespons
         )
 
 
-@router.post("/batch", response_model=list[VerificationResponse])
+@router.post("/batch", response_model=list[VerificationResponse], dependencies=[Depends(require_user)])
 async def batch_verify(request: BatchVerifyRequest) -> list[VerificationResponse]:
     """
     Batch verification of multiple entities.
@@ -273,7 +274,7 @@ async def batch_verify(request: BatchVerifyRequest) -> list[VerificationResponse
         )
 
 
-@router.get("/atl/{ntn}")
+@router.get("/atl/{ntn}", dependencies=[Depends(require_user)])
 async def check_atl(ntn: str) -> dict:
     """
     Check if NTN is on Active Taxpayers List (ATL).

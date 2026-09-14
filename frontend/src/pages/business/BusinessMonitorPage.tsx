@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Tag } from "@/components/ui/Tag";
 import { Field } from "@/components/ui/Field";
 import { useNotification } from "@/state/notifications";
+import { useAuth } from "@/state/auth";
 import type { MonitorEvent, MonitorDashboard } from "@/lib/api";
 
 type TabId = "all" | "unread" | "critical" | "acknowledged";
@@ -238,9 +239,18 @@ function InboxItem({ event, onAcknowledge, onResolve, onMarkRead, acknowledging,
 }
 
 export function BusinessMonitorPage() {
+  // session-derived id with manual override
+  const sessionId = useAuth((s) => s.user?.id ?? "");
   const { show: notify } = useNotification();
   const [userId, setUserId] = useState("");
   const [userIdInput, setUserIdInput] = useState("");
+  useEffect(() => {
+    if (sessionId && !userId) {
+      setUserId(sessionId);
+      setUserIdInput(sessionId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
   const [dashboard, setDashboard] = useState<MonitorDashboard | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("all");
   const [loadingStats, setLoadingStats] = useState(false);

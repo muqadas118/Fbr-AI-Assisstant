@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { findSectionByPath as findPersonalSection } from "@/state/personalNav";
 import { findBusinessSectionByPath as findBusinessSection } from "@/state/businessNav";
 import { WORKSPACES, useWorkspace } from "@/state/workspace";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
-import { useNotification } from "@/state/notifications";
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -13,11 +12,11 @@ interface HeaderProps {
 
 export function Header({ onToggleSidebar, apiHealthy }: HeaderProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const activeWs = useWorkspace((s) => s.active);
   const current = location.pathname.startsWith("/business")
     ? findBusinessSection(location.pathname)
     : findPersonalSection(location.pathname);
-  const notify = useNotification((s) => s.show);
 
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -69,7 +68,7 @@ export function Header({ onToggleSidebar, apiHealthy }: HeaderProps) {
           <button
             type="button"
             className="btn btn--ghost btn--sm"
-            onClick={() => notify("info", "Notification preferences will be configurable in a later phase.")}
+            onClick={() => navigate("/personal/inbox")}
           >
             Notifications
           </button>

@@ -9,7 +9,8 @@ Exposes NoticeAnalyzer as HTTP endpoints.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from app.supabase_auth import require_user
 from pydantic import BaseModel, Field, field_validator
 
 from app.notice_analyzer import NoticeAnalyzer, get_notice_analyzer
@@ -136,7 +137,7 @@ class NoticeAnalysisResponse(BaseModel):
 # Endpoints
 # =============================================================================
 
-@router.post("/analyze", response_model=NoticeAnalysisResponse)
+@router.post("/analyze", response_model=NoticeAnalysisResponse, dependencies=[Depends(require_user)])
 async def analyze_notice(request: NoticeAnalysisRequest) -> NoticeAnalysisResponse:
     """
     Analyze a FBR notice/show cause/order.
@@ -230,7 +231,7 @@ async def analyze_notice(request: NoticeAnalysisRequest) -> NoticeAnalysisRespon
         )
 
 
-@router.post("/analyze/text", response_model=NoticeAnalysisResponse)
+@router.post("/analyze/text", response_model=NoticeAnalysisResponse, dependencies=[Depends(require_user)])
 async def analyze_notice_text(request: NoticeTextRequest) -> NoticeAnalysisResponse:
     """
     Analyze notice from plain text.
@@ -240,6 +241,7 @@ async def analyze_notice_text(request: NoticeTextRequest) -> NoticeAnalysisRespo
     return await analyze_notice(NoticeAnalysisRequest(text=request.text))
 
 
+# PUBLIC - intentionally no auth: static metadata for UI
 @router.get("/types")
 async def get_notice_types() -> dict:
     """

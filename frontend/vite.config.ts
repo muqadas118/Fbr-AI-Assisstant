@@ -14,6 +14,17 @@ export default defineConfig({
     port: 5173,
     strictPort: false,
   },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom", "react-router-dom"],
+          vendor: ["zustand", "clsx", "@supabase/supabase-js"],
+        },
+      },
+    },
+  },
   test: {
     globals: true,
     environment: "jsdom",

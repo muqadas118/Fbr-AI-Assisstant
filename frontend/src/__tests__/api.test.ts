@@ -1,13 +1,15 @@
 ﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { api, getApiConfig, ApiError, NetworkError } from "../lib/api";
+import { api, getApiConfig, ApiError, NetworkError, setAuthTokenGetter } from "../lib/api";
 
 describe("API Client", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    setAuthTokenGetter(null);
     globalThis.fetch = vi.fn() as unknown as typeof fetch;
   });
 
   afterEach(() => {
+    setAuthTokenGetter(null);
     vi.unstubAllEnvs();
   });
 
@@ -189,6 +191,65 @@ describe("API Client", () => {
     it("throws NetworkError on network failure", async () => {
       globalThis.fetch = vi.fn().mockRejectedValue(new Error("Network error"));
       await expect(api.answer("query")).rejects.toThrow(NetworkError);
+    });
+  });
+
+  describe("auth token injection", () => {
+    it("sends no Authorization header when getter is null", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(JSON.stringify({ status: "ok", version: "1.0.0" })),
+      });
+      await api.health();
+      const [, init] = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls[0] as [
+        string,
+        { headers: Record<string, string> },
+      ];
+      expect(init.headers).not.toHaveProperty("Authorization");
+    });
+
+    it("sends no Authorization header when getter resolves null", async () => {
+      setAuthTokenGetter(async () => null);
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(JSON.stringify({ status: "ok", version: "1.0.0" })),
+      });
+      await api.health();
+      const [, init] = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls[0] as [
+        string,
+        { headers: Record<string, string> },
+      ];
+      expect(init.headers).not.toHaveProperty("Authorization");
+    });
+
+    it("sends Bearer header when getter resolves a token", async () => {
+      setAuthTokenGetter(async () => "test-jwt-token");
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(JSON.stringify({ status: "ok", version: "1.0.0" })),
+      });
+      await api.health();
+      const [, init] = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls[0] as [
+        string,
+        { headers: Record<string, string> },
+      ];
+      expect(init.headers.Authorization).toBe("Bearer test-jwt-token");
+    });
+
+    it("sends no Authorization header when getter throws", async () => {
+      setAuthTokenGetter(async () => {
+        throw new Error("token store unavailable");
+      });
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(JSON.stringify({ status: "ok", version: "1.0.0" })),
+      });
+      await api.health();
+      const [, init] = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls[0] as [
+        string,
+        { headers: Record<string, string> },
+      ];
+      expect(init.headers).not.toHaveProperty("Authorization");
     });
   });
 

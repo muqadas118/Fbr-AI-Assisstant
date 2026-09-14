@@ -50,6 +50,8 @@ class DocumentAnalysis:
     # Formatted output
     formatted_text: str = ""
     summary: str = ""
+    ocr_simulated: bool = False
+    ocr_warning: Optional[str] = None
 
 
 class DocumentAnalyzer:
@@ -116,6 +118,13 @@ class DocumentAnalyzer:
 
         duration_ms = (time.time() - start_time) * 1000
 
+        # Flag simulated-OCR input so POST /documents/analyze can surface it.
+        ocr_simulated = "OCR simulated" in text
+        ocr_warning = (
+            "Scanned PDF - OCR simulated, install tesseract for real text"
+            if ocr_simulated else None
+        )
+
         # Log to audit
         self.audit_log.append({
             "analysis_id": analysis_id,
@@ -140,27 +149,35 @@ class DocumentAnalyzer:
             needs_ocr=is_image and len(text.strip()) < 50,
             formatted_text=formatted,
             summary=summary,
+            ocr_simulated=ocr_simulated,
+            ocr_warning=ocr_warning,
         )
 
     def analyze_from_pdf(self, pdf_data: bytes, filename: str = "document.pdf") -> DocumentAnalysis:
         """Analyze PDF document."""
         # In production: extract text from PDF first
-        # For now: simulate with empty text
+        # For now: simulated OCR (flags ocr_simulated downstream)
         ocr_result = self.ocr_engine.extract_from_pdf(pdf_data)
-        return self.analyze(
+        analysis = self.analyze(
             ocr_result.full_text,
             filename=filename,
             is_image=False,
         )
+        analysis.ocr_simulated = True
+        analysis.ocr_warning = ocr_result.warning
+        return analysis
 
     def analyze_from_image(self, image_data: bytes, filename: str = "image.jpg") -> DocumentAnalysis:
         """Analyze image document (requires OCR)."""
         ocr_result = self.ocr_engine.extract_text(image_data)
-        return self.analyze(
+        analysis = self.analyze(
             ocr_result.full_text,
             filename=filename,
             is_image=True,
         )
+        analysis.ocr_simulated = True
+        analysis.ocr_warning = ocr_result.warning
+        return analysis
 
     def _calculate_quality(
         self,

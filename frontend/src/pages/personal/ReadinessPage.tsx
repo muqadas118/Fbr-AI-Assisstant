@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import clsx from "clsx";
 import { api, ApiError, NetworkError, type TaxHealthResponse } from "@/lib/api";
+import { useProfile } from "@/state/profile";
 import { Loading } from "@/components/shell/Loading";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
 import { Card } from "@/components/ui/Card";
@@ -33,7 +34,7 @@ interface ReadinessFormValues {
 
 function emptyForm(): ReadinessFormValues {
   return {
-    ntn: localStorage.getItem("fbr_ntn") ?? "",
+    ntn: useProfile.getState().ntn || localStorage.getItem("fbr_ntn") || "",
     taxYear: CURRENT_TAX_YEAR,
     itrFiled: false,
     taxPaid: false,
@@ -239,6 +240,7 @@ export function ReadinessPage() {
     }
 
     localStorage.setItem("fbr_ntn", form.ntn);
+    useProfile.getState().setNtn(form.ntn);
 
     setLoading(true);
     try {

@@ -9,7 +9,8 @@ Exposes DocumentAnalyzer as HTTP endpoints.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
 from app.document_intelligence import DocumentAnalyzer, get_document_analyzer
@@ -110,6 +111,10 @@ class DocumentAnalysisResponse(BaseModel):
     formatted_text: str
     summary: str
 
+    # OCR provenance (simulated vs real tesseract)
+    ocr_simulated: bool = False
+    ocr_warning: Optional[str] = None
+
 
 class DocumentVerifyRequest(BaseModel):
     """Request to verify NTN/CNIC from document."""
@@ -129,7 +134,7 @@ class DocumentVerifyResponse(BaseModel):
 # Endpoints
 # =============================================================================
 
-@router.post("/analyze", response_model=DocumentAnalysisResponse)
+@router.post("/analyze", response_model=DocumentAnalysisResponse, dependencies=[Depends(require_user)])
 async def analyze_document(request: DocumentAnalysisRequest) -> DocumentAnalysisResponse:
     """
     Analyze a document (PDF, image, or text).
@@ -198,6 +203,8 @@ async def analyze_document(request: DocumentAnalysisRequest) -> DocumentAnalysis
             needs_ocr=result.needs_ocr,
             formatted_text=result.formatted_text,
             summary=result.summary,
+            ocr_simulated=getattr(result, "ocr_simulated", False) or "OCR simulated" in request.text,
+            ocr_warning=getattr(result, "ocr_warning", None),
         )
     except Exception as e:
         logger.exception("Error analyzing document")
@@ -207,7 +214,7 @@ async def analyze_document(request: DocumentAnalysisRequest) -> DocumentAnalysis
         )
 
 
-@router.post("/verify", response_model=DocumentVerifyResponse)
+@router.post("/verify", response_model=DocumentVerifyResponse, dependencies=[Depends(require_user)])
 async def verify_document_identity(request: DocumentVerifyRequest) -> DocumentVerifyResponse:
     """
     Verify NTN/CNIC from a document.
@@ -234,6 +241,7 @@ async def verify_document_identity(request: DocumentVerifyRequest) -> DocumentVe
         )
 
 
+# PUBLIC - intentionally no auth: static metadata for UI
 @router.get("/types")
 async def get_document_types() -> dict:
     """

@@ -8,7 +8,8 @@ FastAPI router for workspace management.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
 from app.multi_user import MultiUserAPI, get_multi_user_api
@@ -51,7 +52,20 @@ class WorkspaceSwitchRequest(BaseModel):
 # Endpoints
 # =============================================================================
 
-@router.get("/{user_id}")
+# PUBLIC - intentionally no auth: healthcheck like /health
+@router.get("/health")
+async def get_workspaces_health() -> dict:
+    """
+    Health check for workspaces API.
+    """
+    return {
+        "status": "ok",
+        "service": "workspaces",
+        "version": "1.0.0",
+    }
+
+
+@router.get("/{user_id}", dependencies=[Depends(require_user)])
 async def get_workspaces(user_id: str) -> dict:
     """
     Get all workspaces for a user.
@@ -74,7 +88,7 @@ async def get_workspaces(user_id: str) -> dict:
         )
 
 
-@router.post("/create")
+@router.post("/create", dependencies=[Depends(require_user)])
 async def create_workspace(request: WorkspaceCreateRequest) -> dict:
     """
     Create a new workspace.
@@ -119,15 +133,3 @@ async def create_workspace(request: WorkspaceCreateRequest) -> dict:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create workspace"
         )
-
-
-@router.get("/health")
-async def get_workspaces_health() -> dict:
-    """
-    Health check for workspaces API.
-    """
-    return {
-        "status": "ok",
-        "service": "workspaces",
-        "version": "1.0.0",
-    }

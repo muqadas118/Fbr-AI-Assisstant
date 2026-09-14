@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import clsx from "clsx";
+import { useProfile } from "@/state/profile";
 import { api, ApiError, type CalendarDashboard, type UpcomingTask, type TaxHealthResponse, type VerificationResponse } from "@/lib/api";
 import { Loading } from "@/components/shell/Loading";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
@@ -163,7 +164,8 @@ function UpcomingTaskRow({ task }: { task: UpcomingTask }) {
 
 export function OverviewPage() {
   const [taxpayerType, setTaxpayerType] = useState<TaxpayerType>("individual");
-  const [ntn] = useState(() => localStorage.getItem("fbr_ntn") ?? "");
+  const storeNtn = useProfile((s) => s.ntn);
+  const ntn = storeNtn || localStorage.getItem("fbr_ntn") || "";
   const [loading, setLoading] = useState(true);
   const [fetchErrors, setFetchErrors] = useState<string[]>([]);
   const [state, setState] = useState<DashboardState>({

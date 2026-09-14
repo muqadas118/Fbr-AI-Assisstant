@@ -574,6 +574,31 @@ export function getApiConfig(): ApiClientConfig {
   };
 }
 
+// ============================================================================
+// Auth token injection (Supabase JWT -> Bearer header).
+// Does NOT change any of the 44 leaf method signatures: the central
+// request() helper awaits the getter and merges the header.
+// Wire once at startup: setAuthTokenGetter(getAccessToken).
+// ============================================================================
+
+export type AuthTokenGetter = () => Promise<string | null>;
+
+let authTokenGetter: AuthTokenGetter | null = null;
+
+export function setAuthTokenGetter(fn: AuthTokenGetter | null): void {
+  authTokenGetter = fn;
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  if (!authTokenGetter) return {};
+  try {
+    const token = await authTokenGetter();
+    return token ? { Authorization: "Bearer " + token } : {};
+  } catch {
+    return {};
+  }
+}
+
 async function request<T>(
   method: "GET" | "POST" | "DELETE",
   path: string,
@@ -584,6 +609,8 @@ async function request<T>(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs);
 
+  const auth = await authHeaders();
+
   let response: Response;
   try {
     response = await fetch(url, {
@@ -591,6 +618,7 @@ async function request<T>(
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        ...auth,
       },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       signal: controller.signal,

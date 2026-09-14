@@ -9,7 +9,8 @@ Exposes InvoiceAPI as HTTP endpoints.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
 from app.invoice_intelligence import InvoiceAPI, get_invoice_api
@@ -127,7 +128,7 @@ class InvoiceDashboardResponse(BaseModel):
 # Endpoints
 # =============================================================================
 
-@router.post("/process", response_model=InvoiceProcessResponse)
+@router.post("/process", response_model=InvoiceProcessResponse, dependencies=[Depends(require_user)])
 async def process_invoice(request: InvoiceProcessRequest) -> InvoiceProcessResponse:
     """
     Process and validate a tax invoice.
@@ -167,7 +168,7 @@ async def process_invoice(request: InvoiceProcessRequest) -> InvoiceProcessRespo
         )
 
 
-@router.post("/reconcile", response_model=ReconciliationReportResponse)
+@router.post("/reconcile", response_model=ReconciliationReportResponse, dependencies=[Depends(require_user)])
 async def reconcile_period(
     request: InvoiceReconcileRequest,
 ) -> ReconciliationReportResponse:
@@ -206,7 +207,7 @@ async def reconcile_period(
         )
 
 
-@router.get("/dashboard", response_model=InvoiceDashboardResponse)
+@router.get("/dashboard", response_model=InvoiceDashboardResponse, dependencies=[Depends(require_user)])
 async def get_invoice_dashboard() -> InvoiceDashboardResponse:
     """
     Get invoice dashboard summary.
@@ -225,7 +226,7 @@ async def get_invoice_dashboard() -> InvoiceDashboardResponse:
         )
 
 
-@router.get("/export")
+@router.get("/export", dependencies=[Depends(require_user)])
 async def export_invoices(
     format: str = "json",
 ) -> dict | str:

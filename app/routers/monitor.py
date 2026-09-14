@@ -9,7 +9,8 @@ Exposes FBRMonitorAPI as HTTP endpoints.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
 from app.fbr_monitor import FBRMonitorAPI, get_fbr_monitor_api
@@ -95,7 +96,7 @@ class MonitorDashboardResponse(BaseModel):
 # Endpoints
 # =============================================================================
 
-@router.post("/subscribe")
+@router.post("/subscribe", dependencies=[Depends(require_user)])
 async def subscribe_to_monitoring(request: MonitorSubscribeRequest) -> dict:
     """
     Subscribe to FBR portal monitoring.
@@ -128,7 +129,7 @@ async def subscribe_to_monitoring(request: MonitorSubscribeRequest) -> dict:
         )
 
 
-@router.delete("/unsubscribe/{user_id}")
+@router.delete("/unsubscribe/{user_id}", dependencies=[Depends(require_user)])
 async def unsubscribe_from_monitoring(user_id: str) -> dict:
     """
     Unsubscribe from FBR monitoring.
@@ -145,7 +146,7 @@ async def unsubscribe_from_monitoring(user_id: str) -> dict:
         )
 
 
-@router.get("/dashboard/{user_id}", response_model=MonitorDashboardResponse)
+@router.get("/dashboard/{user_id}", response_model=MonitorDashboardResponse, dependencies=[Depends(require_user)])
 async def get_monitoring_dashboard(user_id: str) -> MonitorDashboardResponse:
     """
     Get FBR monitoring dashboard for a user.
@@ -174,7 +175,7 @@ async def get_monitoring_dashboard(user_id: str) -> MonitorDashboardResponse:
         )
 
 
-@router.get("/event/{event_id}")
+@router.get("/event/{event_id}", dependencies=[Depends(require_user)])
 async def get_event_details(event_id: str) -> dict:
     """
     Get details of a specific monitoring event.
@@ -198,7 +199,7 @@ async def get_event_details(event_id: str) -> dict:
         )
 
 
-@router.post("/event/{event_id}/acknowledge")
+@router.post("/event/{event_id}/acknowledge", dependencies=[Depends(require_user)])
 async def acknowledge_event(event_id: str) -> dict:
     """
     Acknowledge a monitoring event.
@@ -222,7 +223,7 @@ async def acknowledge_event(event_id: str) -> dict:
         )
 
 
-@router.post("/event/{event_id}/resolve")
+@router.post("/event/{event_id}/resolve", dependencies=[Depends(require_user)])
 async def resolve_event(event_id: str) -> dict:
     """
     Mark a monitoring event as resolved.
@@ -246,6 +247,7 @@ async def resolve_event(event_id: str) -> dict:
         )
 
 
+# PUBLIC - intentionally no auth: external caller without token; needs HMAC in future
 @router.post("/webhook")
 async def register_webhook(request: WebhookRegisterRequest) -> dict:
     """
@@ -270,7 +272,7 @@ async def register_webhook(request: WebhookRegisterRequest) -> dict:
         )
 
 
-@router.get("/webhook/stats")
+@router.get("/webhook/stats", dependencies=[Depends(require_user)])
 async def get_webhook_stats() -> dict:
     """
     Get webhook delivery statistics.
@@ -286,7 +288,7 @@ async def get_webhook_stats() -> dict:
         )
 
 
-@router.post("/simulate/notice")
+@router.post("/simulate/notice", dependencies=[Depends(require_user)])
 async def simulate_notice(request: SimulateNoticeRequest) -> dict:
     """
     Simulate a new FBR notice event (for testing purposes).
@@ -318,6 +320,7 @@ async def simulate_notice(request: SimulateNoticeRequest) -> dict:
         )
 
 
+# PUBLIC - intentionally no auth: static metadata for UI
 @router.get("/event-types")
 async def get_event_types() -> dict:
     """

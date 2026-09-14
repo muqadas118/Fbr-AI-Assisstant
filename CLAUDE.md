@@ -24,7 +24,7 @@ AI-powered assistant for FBR (Federal Board of Revenue) Pakistan tax and complia
 - **Language:** Python 3.x
 - **Framework:** FastAPI
 - **LLM:** Groq (primary), OpenRouter (fallback)
-- **Vector DB:** FAISS (IndexFlatIP, 58,822 vectors, 384 dimensions)
+- **Vector DB:** FAISS (IndexFlatIP, 58,953 vectors, 384 dimensions)
 - **Embeddings:** sentence-transformers/all-MiniLM-L6-v2
 - **Retrieval:** Hybrid (Semantic + BM25, 60/40 weighted)
 - **Architecture:** 9-agent system with deterministic router
@@ -77,7 +77,7 @@ app/routers/team.py           → /team/* (Team Management)
 app/routers/workspaces.py     → /workspaces/* (Workspace Management)
 ```
 
-## API Endpoints (63 total)
+## API Endpoints (59 total)
 
 ### Original Endpoints
 | Method | Path | Auth | Purpose |
@@ -132,7 +132,7 @@ app/routers/workspaces.py     → /workspaces/* (Workspace Management)
 | GET | /invoices/dashboard | Invoice dashboard |
 | GET | /invoices/export | Export invoices |
 
-### Verification Center (8 endpoints)
+### Verification Center (7 endpoints)
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | /verify/ntn | Verify NTN |
@@ -185,8 +185,8 @@ income_tax, salary_tax, business_tax, sales_tax, withholding_tax, federal_excise
 rag_search, hybrid_search, metadata_filter, rule_engine, calculation_engine, document_parser, duplicate_detection, similarity_engine, anomaly_detection, web_research, notification, report_generator, tax_optimization (with 12-pattern evasion guard)
 
 ## Data
-- **Source Documents:** 94 FBR documents (PDFs)
-- **Chunks:** 58,822 (section/page-aware, paragraph-preserving)
+- **Source Documents:** 107 FBR documents (PDFs; 94 canonical Phase 3/4 set + 13 customs additions)
+- **Chunks:** 58,953 (section/page-aware, paragraph-preserving; 58,822 base + 131 customs)
 - **Sources:** Income Tax, Sales Tax, Federal Excise, Finance Act, Property Valuation, SOPs
 - **Property Valuation:** 54 cities covered (Lahore, Karachi, Islamabad, etc.)
 
@@ -234,11 +234,11 @@ npm run dev
 - `FBR_AUTH_REQUIRED` - Require auth (default: true)
 
 ## Status
-- Backend: ✅ Complete (9 routers, 63 total endpoints)
-- Frontend Personal: ⚠️ Partial (5 ready, 2 partial, 7 stub)
-- Frontend Business: ❌ Not built
-- Frontend Shared Platform: ❌ Not built
-- Auth: ⏸️ Deferred (to be added LAST per user instruction)
+- Backend: ✅ Complete (9 routers, 51 endpoints + 8 core = 59 total; 11 calculation types via POST /calculate)
+- Frontend Personal: ⚠️ Partial — 15 live / 2 stub (17 total; 1 stub by design: VerificationPage not-connected; SettingsPage local-only)
+- Frontend Business: ✅ Built — 14 live pages
+- Frontend Shared Platform: ✅ Foundation exists (AppShell/shell, UI kit, Zustand stores, router)
+- Auth: ✅ complete-code-pending-keys (backend 41 authed / 10 public across 9 routers via Depends(require_user); POST /answer + POST /calculate enforced; frontend Supabase token wiring + Login/Signup + RequireAuth guards done; live Supabase connection pending user keys — see PROGRESS.md Full-Auth Phase 2026-09-13)
 
 ## User Priority
 Auth integration to be added LAST, after ALL UI/workspace work is complete.

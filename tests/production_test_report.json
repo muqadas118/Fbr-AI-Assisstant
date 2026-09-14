@@ -1,0 +1,171 @@
+{
+  "timestamp": "2026-09-05T23:05:12.905102",
+  "total_tests": 27,
+  "passed": 24,
+  "failed": 0,
+  "warnings": 3,
+  "results": [
+    {
+      "status": "WARN",
+      "name": "Source documents (94 PDFs expected)",
+      "duration_seconds": 0.024,
+      "message": "Only 75 PDFs found (expected ~94)"
+    },
+    {
+      "status": "WARN",
+      "name": "Source manifest integrity",
+      "duration_seconds": 0.001,
+      "message": "Source manifest not found"
+    },
+    {
+      "status": "PASS",
+      "name": "Extraction output (94+ files)",
+      "duration_seconds": 0.014,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "Cleaned documents (94+ records)",
+      "duration_seconds": 3.292,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "Chunks integrity (58,822+ chunks, unique, non-empty)",
+      "duration_seconds": 5.064,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "Embeddings matrix (58,822 x 384, no NaN/Inf)",
+      "duration_seconds": 1.025,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "FAISS index (58,822 vectors, 384 dim, searchable)",
+      "duration_seconds": 1.048,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "RAG engine module imports",
+      "duration_seconds": 60.016,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "Query understanding module imports",
+      "duration_seconds": 0.023,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "Hybrid retriever module imports",
+      "duration_seconds": 0.0,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "Verification layer imports",
+      "duration_seconds": 0.004,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "Reranker module imports",
+      "duration_seconds": 0.004,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "Router module imports",
+      "duration_seconds": 0.061,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "Orchestrator imports",
+      "duration_seconds": 0.0,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "Router accuracy (9 test cases)",
+      "duration_seconds": 0.002,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "API module imports",
+      "duration_seconds": 1.692,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "API endpoints exist",
+      "duration_seconds": 0.0,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "Frontend structure",
+      "duration_seconds": 0.004,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "SECURITY: .env is gitignored",
+      "duration_seconds": 0.003,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "SECURITY: Input validation (max 1000 chars)",
+      "duration_seconds": 0.002,
+      "message": null
+    },
+    {
+      "status": "WARN",
+      "name": "SECURITY: No hardcoded API keys in code",
+      "duration_seconds": 9.002,
+      "message": "Hardcoded secrets found: PROGRESS.md:247 (hardcoded secret assignment); scripts/test_llm_integration.py:159 (hardcoded secret assignment); tests/test_deployment.py:46 (hardcoded secret assignment)"
+    },
+    {
+      "status": "PASS",
+      "name": "SECURITY: API error handling",
+      "duration_seconds": 0.0,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "SECURITY: POST /answer + /calculate require auth",
+      "duration_seconds": 0.0,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "SECURITY: Auth fails closed by default",
+      "duration_seconds": 0.0,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "SECURITY: JWT audience = 'authenticated'",
+      "duration_seconds": 0.0,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "Router -> Orchestrator -> RAG flow",
+      "duration_seconds": 0.001,
+      "message": null
+    },
+    {
+      "status": "PASS",
+      "name": "AnswerResponse has all required fields",
+      "duration_seconds": 0.0,
+      "message": null
+    }
+  ]
+}

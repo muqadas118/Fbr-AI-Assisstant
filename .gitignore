@@ -29,6 +29,8 @@ __pycache__/
 *.faiss.index
 
 # Root-generated HTML and operational artifacts
+/_archive/
+/_archive_bundle.bin
 /fbr_app*.html
 /fbr_auth*.html
 /reports/

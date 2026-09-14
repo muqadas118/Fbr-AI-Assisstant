@@ -15,6 +15,7 @@ import { Tag } from "@/components/ui/Tag";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { Kv } from "@/components/ui/Kv";
 import { useNotification } from "@/state/notifications";
+import { useProfile } from "@/state/profile";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -266,7 +267,7 @@ function VaultTab() {
 // ---------------------------------------------------------------------------
 
 function NtnTab() {
-  const [ntn, setNtn] = useState("");
+  const [ntn, setNtn] = useState(() => useProfile.getState().ntn || localStorage.getItem("fbr_ntn") || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<VerificationResponse | null>(null);
@@ -291,6 +292,7 @@ function NtnTab() {
     try {
       const resp = await api.verify.ntn(ntn.trim());
       setResult(resp);
+      useProfile.getState().setNtn(ntn.trim());
       if (resp.is_verified) {
         notify("ok", `NTN ${ntn} verified successfully.`);
       } else {
@@ -368,7 +370,7 @@ function NtnTab() {
 // ---------------------------------------------------------------------------
 
 function CnicTab() {
-  const [cnic, setCnic] = useState("");
+  const [cnic, setCnic] = useState(() => useProfile.getState().cnic || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<VerificationResponse | null>(null);
@@ -394,6 +396,7 @@ function CnicTab() {
     try {
       const resp = await api.verify.cnic(cnic.trim());
       setResult(resp);
+      useProfile.getState().setCnic(cnic.trim());
       if (resp.is_verified) {
         notify("ok", `CNIC ${cnic} verified.`);
       } else {

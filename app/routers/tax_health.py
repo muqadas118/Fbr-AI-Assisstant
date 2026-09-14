@@ -9,7 +9,8 @@ Exposes TaxHealthAPI as HTTP endpoints.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
 from app.tax_health import TaxHealthAPI, get_tax_health_api
@@ -163,7 +164,7 @@ class PenaltyBreakdownResponse(BaseModel):
 # Endpoints
 # =============================================================================
 
-@router.post("/check", response_model=TaxHealthResponse)
+@router.post("/check", response_model=TaxHealthResponse, dependencies=[Depends(require_user)])
 async def run_health_check(request: HealthCheckRequest) -> TaxHealthResponse:
     """
     Run comprehensive tax health check.
@@ -241,7 +242,7 @@ async def run_health_check(request: HealthCheckRequest) -> TaxHealthResponse:
         )
 
 
-@router.post("/risks", response_model=RiskAnalysisResponse)
+@router.post("/risks", response_model=RiskAnalysisResponse, dependencies=[Depends(require_user)])
 async def analyze_risks(request: RiskAnalysisRequest) -> RiskAnalysisResponse:
     """
     Analyze tax risk factors.
@@ -276,7 +277,7 @@ async def analyze_risks(request: RiskAnalysisRequest) -> RiskAnalysisResponse:
         )
 
 
-@router.post("/penalties", response_model=dict)
+@router.post("/penalties", response_model=dict, dependencies=[Depends(require_user)])
 async def estimate_penalties(request: PenaltyEstimateRequest) -> dict:
     """
     Estimate penalties for non-compliance.
@@ -306,6 +307,7 @@ async def estimate_penalties(request: PenaltyEstimateRequest) -> dict:
         )
 
 
+# PUBLIC - intentionally no auth: static metadata for UI
 @router.get("/score-guide")
 async def get_score_guide() -> dict:
     """

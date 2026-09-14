@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import clsx from "clsx";
 import { api, ApiError, NetworkError } from "@/lib/api";
 import { Loading } from "@/components/shell/Loading";
@@ -10,6 +10,7 @@ import { Tag } from "@/components/ui/Tag";
 import { Field } from "@/components/ui/Field";
 import { Kv } from "@/components/ui/Kv";
 import { useNotification } from "@/state/notifications";
+import { useAuth } from "@/state/auth";
 import type { Team, CalendarDashboard, UpcomingTask } from "@/lib/api";
 
 interface Workspace {
@@ -152,9 +153,18 @@ function QuickLinkCard({
 }
 
 export function WorkspacesPage() {
+  // session-derived id with manual override
+  const sessionId = useAuth((s) => s.user?.id ?? "");
   const { show: notify } = useNotification();
   const [userId, setUserId] = useState("");
   const [userIdInput, setUserIdInput] = useState("");
+  useEffect(() => {
+    if (sessionId && !userId) {
+      setUserId(sessionId);
+      setUserIdInput(sessionId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [calendarDashboard, setCalendarDashboard] = useState<CalendarDashboard | null>(null);

@@ -11,7 +11,8 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
 from app.compliance_calendar import (
@@ -220,7 +221,7 @@ def _build_query(request: CalendarQueryRequest) -> dict:
 # Endpoints
 # =============================================================================
 
-@router.get("", response_model=CalendarResponse)
+@router.get("", response_model=CalendarResponse, dependencies=[Depends(require_user)])
 async def get_calendar(
     taxpayer_type: TaxpayerType = Query(default=TaxpayerType.INDIVIDUAL),
     fiscal_year: Optional[int] = Query(default=None, ge=2020, le=2030),
@@ -291,7 +292,7 @@ async def get_calendar(
         )
 
 
-@router.get("/upcoming", response_model=list[UpcomingTaskResponse])
+@router.get("/upcoming", response_model=list[UpcomingTaskResponse], dependencies=[Depends(require_user)])
 async def get_upcoming_tasks(
     taxpayer_type: TaxpayerType = Query(default=TaxpayerType.INDIVIDUAL),
     days: int = Query(default=30, ge=1, le=365, description="Number of days to look ahead"),
@@ -314,7 +315,7 @@ async def get_upcoming_tasks(
         )
 
 
-@router.post("/events/{event_id}/complete", response_model=dict)
+@router.post("/events/{event_id}/complete", response_model=dict, dependencies=[Depends(require_user)])
 async def mark_event_complete(event_id: str) -> dict:
     """
     Mark a compliance event as completed.
@@ -333,7 +334,7 @@ async def mark_event_complete(event_id: str) -> dict:
         )
 
 
-@router.post("/reminders", response_model=ReminderResponse)
+@router.post("/reminders", response_model=ReminderResponse, dependencies=[Depends(require_user)])
 async def schedule_reminder(request: ReminderRequest) -> ReminderResponse:
     """
     Schedule reminder notifications for a compliance event.
@@ -372,7 +373,7 @@ async def schedule_reminder(request: ReminderRequest) -> ReminderResponse:
         )
 
 
-@router.get("/export")
+@router.get("/export", dependencies=[Depends(require_user)])
 async def export_calendar(
     taxpayer_type: TaxpayerType = Query(default=TaxpayerType.INDIVIDUAL),
     fiscal_year: Optional[int] = Query(default=None),
@@ -401,7 +402,7 @@ async def export_calendar(
         )
 
 
-@router.get("/dashboard", response_model=DashboardSummaryResponse)
+@router.get("/dashboard", response_model=DashboardSummaryResponse, dependencies=[Depends(require_user)])
 async def get_dashboard(
     taxpayer_type: TaxpayerType = Query(default=TaxpayerType.INDIVIDUAL),
 ) -> DashboardSummaryResponse:
@@ -423,6 +424,7 @@ async def get_dashboard(
         )
 
 
+# PUBLIC - intentionally no auth: static metadata for UI
 @router.get("/types")
 async def get_event_types() -> dict:
     """List all event types and categories."""

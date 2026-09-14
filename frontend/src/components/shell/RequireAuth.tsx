@@ -1,0 +1,37 @@
+﻿import { Navigate, Outlet, useLocation } from "react-router-dom";
+import type { ReactNode } from "react";
+import { useAuth } from "@/state/auth";
+import { Spinner } from "@/components/ui/Spinner";
+
+interface RequireAuthProps {
+  children?: ReactNode;
+}
+
+export function RequireAuth({ children }: RequireAuthProps) {
+  const session = useAuth((s) => s.session);
+  const loading = useAuth((s) => s.loading);
+  const initialized = useAuth((s) => s.initialized);
+  const location = useLocation();
+
+  if (!initialized || loading) {
+    return (
+      <div
+        className="state state--loading"
+        role="status"
+        aria-live="polite"
+        data-testid="auth-loading"
+        style={{ minHeight: "40vh", display: "flex", alignItems: "center", justifyContent: "center" }}
+      >
+        <Spinner size="lg" />
+        <span style={{ marginLeft: 12 }}>Checking session…</span>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (children) return <>{children}</>;
+  return <Outlet />;
+}

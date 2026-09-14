@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -66,6 +67,28 @@ def _check_rate_limit(client_key: str) -> tuple[bool, int]:
     _rate_store[client_key].append(now)
     remaining = RATE_LIMIT - len(_rate_store[client_key])
     return True, remaining
+
+
+# Rate-limit POST /verify/batch with the shared in-memory limiter.
+# verify.py is out of scope for this pass, so attach here in api.py.
+# Kept IP-keyed as defense-in-depth; FULL-AUTH (2026-09-13) added
+# Depends(require_user) on the route itself, so user identity is now
+# available for a future user-keyed upgrade like POST /answer.
+async def _verify_batch_rate_limit(request: Request) -> None:
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, _remaining = _check_rate_limit("ip:" + client_ip)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded: max {RATE_LIMIT} requests per {RATE_WINDOW}s",
+        )
+
+
+for _r in verify_router.routes:
+    _p = getattr(_r, "path", "")
+    _m = getattr(_r, "methods", set()) or set()
+    if _p == "/verify/batch" and "POST" in _m:
+        _r.dependencies.append(Depends(_verify_batch_rate_limit))
 
 
 async def log_requests(request: Request, call_next):
@@ -203,17 +226,35 @@ app.include_router(monitor_router)
 app.include_router(team_router)
 app.include_router(workspaces_router)
 
+# SECURITY NOTE - deferred auth hardening (owner decision):
+# The feature routers mounted above expose 51 endpoints with no Depends auth
+# yet (calendar, documents, invoices, monitor, notices, tax_health, team,
+# verify, workspaces). POST /answer and POST /calculate enforce JWT via
+# require_user, but router endpoints stay public until the final auth phase.
+# Do not add per-router auth here.
+# FULL-AUTH 2026-09-13: per-route Depends(require_user) added in all 9
+# routers (41 endpoints authed, 10 intentionally public: */types,
+# /tax/health/score-guide, /monitor/event-types, POST /monitor/webhook,
+# POST /team/register, POST /team/login, GET /team/roles,
+# GET /workspaces/health). Health + auth config/status stay public.
+# FBR_AUTH_REQUIRED=false bypass still honored by require_user.
+
 # CORS Middleware - Configure for production frontend origin
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+# CORS_ORIGINS env (comma-separated) overrides the localhost defaults.
+_cors_env = os.environ.get("CORS_ORIGINS", "")
+_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+if not _origins:
+    _origins = [
         "http://localhost:5173",  # Local dev
         "http://localhost:3000",  # Alternative local dev
         # Add your production frontend URL here
         # "https://your-frontend-domain.com",
-    ],
+    ]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE", "PUT", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -241,6 +282,15 @@ async def calculate(
     Supports all 11 tax calculator modules.
     Expects JSON body: {"calc_type": "...", "inputs": {...}}
     """
+    # Rate limiting - same in-memory limiter as POST /answer (10 req/60s).
+    rate_key = "user:" + str(user.get("id")) if user and user.get("id") else ("ip:" + str(request.client.host) if request.client else "ip:unknown")
+    allowed, remaining = _check_rate_limit(rate_key)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded: max {RATE_LIMIT} requests per {RATE_WINDOW}s",
+        )
+
     try:
         body = await request.json()
         calc_type = body.get("calc_type", "income_tax")

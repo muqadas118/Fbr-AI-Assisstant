@@ -10,6 +10,7 @@ import { Tag } from "@/components/ui/Tag";
 import { Field } from "@/components/ui/Field";
 import { Kv } from "@/components/ui/Kv";
 import { useNotification } from "@/state/notifications";
+import { useAuth } from "@/state/auth";
 import type {
   TeamDashboard,
   TeamMember,
@@ -75,9 +76,18 @@ function VerificationBadge({ label, result }: { label: string; result?: Verifica
 }
 
 export function BusinessTeamPage() {
+  // session-derived id with manual override
+  const sessionId = useAuth((s) => s.user?.id ?? "");
   const { show: notify } = useNotification();
   const [teamId, setTeamId] = useState("");
   const [teamIdInput, setTeamIdInput] = useState("");
+  useEffect(() => {
+    if (sessionId && !teamId) {
+      setTeamId(sessionId);
+      setTeamIdInput(sessionId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
   const [teamDashboard, setTeamDashboard] = useState<TeamDashboard | null>(null);
   const [roles, setRoles] = useState<Record<string, unknown> | null>(null);
   const [loadingRoles, setLoadingRoles] = useState(false);
@@ -191,9 +201,10 @@ export function BusinessTeamPage() {
     setInviting(true);
     try {
       // Team invitation endpoint — uses register with invitation flow
+      const tempPassword = `${crypto.randomUUID().slice(0, 12)}Tmp!1`;
       await api.team.register({
         email: inviteForm.email.trim(),
-        password: "temp-placeholder",
+        password: tempPassword,
         name: inviteForm.email.split("@")[0],
         role: inviteForm.role || "member",
       });

@@ -49,3 +49,16 @@ httpx==0.28.1
 # --- Supabase Auth (JWT validation) ---
 PyJWT==2.13.0
 supabase==2.9.0
+
+# --- Deployment / health probes (app/deployment/health.py imports psutil) ---
+psutil>=5.9
+
+# --- Compose-backed services (docker-compose.yml: postgres, redis, prometheus) ---
+# No direct code import yet (config uses REDIS_URL string; metrics.py is
+# hand-rolled Prometheus text format), but needed when wiring real backends.
+psycopg[binary]>=3.1
+redis>=5.0
+prometheus_client>=0.19
+
+# --- Dev / test ---
+pytest>=8.0

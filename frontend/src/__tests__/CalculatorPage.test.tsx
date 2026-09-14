@@ -11,6 +11,7 @@ vi.mock("../lib/api", async () => {
     api: {
       health: vi.fn(),
       answer: vi.fn(),
+      calculate: vi.fn(),
     },
   };
 });
@@ -67,6 +68,13 @@ describe("CalculatorPage", () => {
     vi.clearAllMocks();
     const { api } = await import("../lib/api");
     vi.mocked(api.answer).mockResolvedValue(mockAnswerResponse);
+    vi.mocked(api.calculate).mockResolvedValue({
+      success: true,
+      calculation_type: "income_tax",
+      data: { total_tax: 150000 },
+      formatted_text: "Estimated tax: Rs 150,000",
+      audit_id: "test-audit",
+    });
   });
 
   it("renders the calculator interface", () => {
@@ -112,7 +120,7 @@ describe("CalculatorPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("calc-result-amount")).toBeInTheDocument();
     });
-    expect(screen.getByText("Estimated tax: Rs 150,000")).toBeInTheDocument();
+    expect(screen.getByTestId("calc-result-amount").textContent).toContain("Estimated tax: Rs 150,000");
   });
 
   it("sends constructed query to the API", async () => {
@@ -145,6 +153,7 @@ describe("CalculatorPage", () => {
 
   it("shows error state when API fails", async () => {
     const { api } = await import("../lib/api");
+    vi.mocked(api.calculate).mockRejectedValue(new Error("API Error"));
     vi.mocked(api.answer).mockRejectedValue(new Error("API Error"));
 
     const user = userEvent.setup();

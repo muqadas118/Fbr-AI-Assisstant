@@ -35,7 +35,7 @@ export const PERSONAL_SECTIONS: PersonalSection[] = [
     label: "Overview",
     blurb: "Status, upcoming deadlines, recent activity.",
     path: "/personal/overview",
-    status: "stub",
+    status: "ready",
     icon: icon("M3 12l9-9 9 9M5 10v10h14V10"),
   },
   {
@@ -67,7 +67,7 @@ export const PERSONAL_SECTIONS: PersonalSection[] = [
     label: "My Invoices",
     blurb: "Personal invoice workspace (preparation UI).",
     path: "/personal/invoices",
-    status: "stub",
+    status: "ready",
     icon: icon("M4 4h12l4 4v12H4zM4 9h16M9 14h6M9 18h6"),
   },
   {
@@ -75,7 +75,7 @@ export const PERSONAL_SECTIONS: PersonalSection[] = [
     label: "Documents",
     blurb: "Personal tax document library.",
     path: "/personal/documents",
-    status: "stub",
+    status: "ready",
     icon: icon("M6 3h9l5 5v13H6zM15 3v5h5M9 13h6M9 17h6"),
   },
   {
@@ -83,7 +83,7 @@ export const PERSONAL_SECTIONS: PersonalSection[] = [
     label: "FBR Notices",
     blurb: "Upload and analyze an FBR notice.",
     path: "/personal/notices",
-    status: "partial",
+    status: "ready",
     icon: icon("M3 7l9 6 9-6M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7M3 7l9-4 9 4"),
   },
   {
@@ -91,7 +91,7 @@ export const PERSONAL_SECTIONS: PersonalSection[] = [
     label: "Compliance Calendar",
     blurb: "Upcoming personal tax deadlines.",
     path: "/personal/calendar",
-    status: "stub",
+    status: "ready",
     icon: icon("M3 4h18v4H3zM5 8v12h14V8M9 12v4M15 12v4"),
   },
   {
@@ -99,7 +99,7 @@ export const PERSONAL_SECTIONS: PersonalSection[] = [
     label: "Return Readiness",
     blurb: "Whether your personal return can be filed today.",
     path: "/personal/readiness",
-    status: "stub",
+    status: "ready",
     icon: icon("M4 12l5 5L20 6M4 19h16"),
   },
   {
@@ -107,7 +107,7 @@ export const PERSONAL_SECTIONS: PersonalSection[] = [
     label: "Tax Health",
     blurb: "Compliance signals and integrity checks.",
     path: "/personal/health",
-    status: "stub",
+    status: "ready",
     icon: icon("M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0zM12 7v5l3 3"),
   },
   {
@@ -115,7 +115,7 @@ export const PERSONAL_SECTIONS: PersonalSection[] = [
     label: "Verification",
     blurb: "How a backend answer was verified.",
     path: "/personal/verification",
-    status: "ready",
+    status: "stub",
     icon: icon("M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6zM9 12l2 2 4-4"),
   },
   {
@@ -123,7 +123,7 @@ export const PERSONAL_SECTIONS: PersonalSection[] = [
     label: "Tax Vault",
     blurb: "Your personal tax document store.",
     path: "/personal/vault",
-    status: "stub",
+    status: "ready",
     icon: icon("M6 3h12v4H6zM6 7v14h12V7M10 11v6M14 11v6"),
   },
   {
@@ -131,7 +131,7 @@ export const PERSONAL_SECTIONS: PersonalSection[] = [
     label: "Research & Updates",
     blurb: "FBR updates, circulars, and current information.",
     path: "/personal/research",
-    status: "partial",
+    status: "ready",
     icon: icon("M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4zM8 8h8M8 12h8M8 16h5"),
   },
   {
@@ -139,7 +139,7 @@ export const PERSONAL_SECTIONS: PersonalSection[] = [
     label: "Profile / Settings",
     blurb: "Display and notification preferences.",
     path: "/personal/settings",
-    status: "ready",
+    status: "stub",
     icon: icon("M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8zM19 12a7 7 0 0 0-.1-1.2l2.1-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.6 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4L5.1 10.8A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2L3 14.8l2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.6-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2.1-1.6A7 7 0 0 0 19 12z"),
   },
   {

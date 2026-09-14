@@ -55,6 +55,8 @@ class OCRResult:
     processing_time_ms: float = 0.0
     engine_used: str = "simulated"
     error: Optional[str] = None
+    warning: Optional[str] = None
+    ocr_simulated: bool = False
 
 
 class OCREngine:
@@ -96,16 +98,20 @@ class OCREngine:
     def _simulate_ocr(self, data: bytes, language: str) -> OCRResult:
         """
         Simulated OCR for development.
-        Returns a placeholder result.
+        Returns a placeholder result with an explicit warning so callers
+        can surface ocr_simulated downstream.
         """
         logger.info(f"OCR processing {len(data)} bytes (engine: {self.engine_type.value})")
+        warning = "Scanned PDF - OCR simulated, install tesseract for real text"
         return OCRResult(
-            full_text="[OCR simulated - no text extracted]",
+            full_text=f"[OCR simulated - no text extracted] {warning}",
             confidence=0.0,
             blocks=[],
             page_count=1,
             language_detected=language,
             engine_used=self.engine_type.value,
+            warning=warning,
+            ocr_simulated=True,
         )
 
     def preprocess_image(self, image_data: bytes) -> bytes:
