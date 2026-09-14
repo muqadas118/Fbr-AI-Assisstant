@@ -188,8 +188,8 @@ function VaultTab() {
           testId="vault-empty"
         />
       ) : (
-        <div className="vault-table-wrap">
-          <table className="vault-table" data-testid="vault-table">
+        <div className="vault-table-wrap card">
+          <table className="vault-table table--fbr" data-testid="vault-table">
             <thead>
               <tr>
                 <th>Filename</th>
@@ -614,6 +614,7 @@ export function VaultPage() {
       <section className="page page--vault">
         <header className="page__header">
           <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Vault</div>
             <h2 className="page__title">Tax Vault</h2>
             <p className="page__subtitle">
               Secure document storage and FBR verification tools — NTN, CNIC, and vendor checks.

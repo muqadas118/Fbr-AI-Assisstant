@@ -254,7 +254,8 @@ export function BusinessOverviewPage() {
     return (
       <div className="page page--overview">
         <header className="page__header">
-          <h2 className="page__title">Business Overview</h2>
+          <p className="page-eyebrow">Business · Overview</p>
+            <h2 className="page__title">Business Overview</h2>
         </header>
         <Loading label="Loading your business dashboard…" testId="biz-loading" />
       </div>
@@ -266,6 +267,7 @@ export function BusinessOverviewPage() {
       <div className="page page--overview">
         <header className="page__header">
           <div>
+            <p className="page-eyebrow">Business · Overview</p>
             <h2 className="page__title">Business Overview</h2>
             <p className="page__subtitle">Your business tax snapshot: sales tax, withholding, and upcoming filing deadlines.</p>
           </div>

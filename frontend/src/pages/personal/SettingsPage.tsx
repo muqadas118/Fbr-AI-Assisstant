@@ -83,8 +83,11 @@ export function SettingsPage() {
   return (
     <div className="page page--settings">
       <header className="page__header">
-        <h2 className="page__title">Profile / Settings</h2>
-        <p className="page__subtitle">Display and notification preferences.</p>
+        <div>
+          <div className="page__eyebrow page-eyebrow eyebrow">FBR · Settings</div>
+          <h2 className="page__title">Profile / Settings</h2>
+          <p className="page__subtitle">Display and notification preferences.</p>
+        </div>
       </header>
 
       <div className="page__content">
@@ -107,7 +110,7 @@ export function SettingsPage() {
         ) : null}
 
         <Card title="Tax Identity" testId="settings-identity">
-          <div className="settings-form">
+          <div className="settings-form grid grid--2">
             <Field label="NTN" helperText="National Tax Number — shared with Overview, Readiness & Vault">
               <input
                 type="text"
@@ -141,7 +144,7 @@ export function SettingsPage() {
         </Card>
 
         <Card title="Display Preferences" testId="settings-display">
-          <div className="settings-form">
+          <div className="settings-form grid grid--2">
             <Field label="Display Name" helperText="How your name appears in the interface">
               <input
                 type="text"

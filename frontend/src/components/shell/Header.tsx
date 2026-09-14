@@ -14,7 +14,8 @@ export function Header({ onToggleSidebar, apiHealthy }: HeaderProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const activeWs = useWorkspace((s) => s.active);
-  const current = location.pathname.startsWith("/business")
+  const isBusiness = location.pathname.startsWith("/business");
+  const current = isBusiness
     ? findBusinessSection(location.pathname)
     : findPersonalSection(location.pathname);
 
@@ -46,8 +47,21 @@ export function Header({ onToggleSidebar, apiHealthy }: HeaderProps) {
       </button>
 
       <div className="app-header__title-block">
-        <span className="app-header__workspace-pill">{WORKSPACES[activeWs].label}</span>
-        <h1 className="app-header__title">{current?.label ?? "FBR Tax &amp; Compliance"}</h1>
+        <nav className="app-header__crumbs" aria-label="Breadcrumb">
+          <span>FBR</span>
+          <span aria-hidden>/</span>
+          <span>{WORKSPACES[activeWs].label}</span>
+          {current ? (
+            <>
+              <span aria-hidden>/</span>
+              <span aria-current="page">{current.label}</span>
+            </>
+          ) : null}
+        </nav>
+        <div className="app-header__title-row">
+          <span className="app-header__workspace-pill">{WORKSPACES[activeWs].label}</span>
+          <h1 className="app-header__title">{current?.label ?? "FBR Tax & Compliance"}</h1>
+        </div>
         {current ? <p className="app-header__subtitle">{current.blurb}</p> : null}
       </div>
 
@@ -68,7 +82,7 @@ export function Header({ onToggleSidebar, apiHealthy }: HeaderProps) {
           <button
             type="button"
             className="btn btn--ghost btn--sm"
-            onClick={() => navigate("/personal/inbox")}
+            onClick={() => navigate(isBusiness ? "/business/inbox" : "/personal/inbox")}
           >
             Notifications
           </button>

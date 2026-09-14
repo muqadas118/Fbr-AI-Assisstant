@@ -733,6 +733,7 @@ export function HealthPage() {
       <section className="page page--health">
         <header className="page__header">
           <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Health</div>
             <h2 className="page__title">Tax Health</h2>
             <p className="page__subtitle">
               Comprehensive tax health assessment with compliance scoring, risk analysis, and penalty estimation.

@@ -249,7 +249,10 @@ export function OverviewPage() {
     return (
       <div className="page page--overview">
         <header className="page__header">
-          <h2 className="page__title">Overview</h2>
+          <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Overview</div>
+            <h2 className="page__title">Overview</h2>
+          </div>
         </header>
         <Loading label="Loading your dashboard…" testId="overview-loading" />
       </div>
@@ -261,6 +264,7 @@ export function OverviewPage() {
       <div className="page page--overview">
         <header className="page__header">
           <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Overview</div>
             <h2 className="page__title">Overview</h2>
             <p className="page__subtitle">Your tax status snapshot and upcoming compliance deadlines.</p>
           </div>
@@ -294,7 +298,7 @@ export function OverviewPage() {
         )}
 
         {/* ── Tax Status Snapshot ── */}
-        <section className="overview__snapshot" aria-label="Tax status snapshot" data-testid="overview-snapshot">
+        <section className="overview__snapshot card" aria-label="Tax status snapshot" data-testid="overview-snapshot">
           <div className="snapshot__score-block">
             <div className="snapshot__eyebrow eyebrow">Compliance Score</div>
             <div className="snapshot__score-row">

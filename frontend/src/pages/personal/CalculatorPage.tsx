@@ -152,13 +152,17 @@ export function CalculatorPage() {
     <ErrorBoundary>
       <section className="page page--calculator">
         <header className="page__header">
-          <h2 className="page__title">Tax Calculator</h2>
+          <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Calculator</div>
+            <h2 className="page__title">Tax Calculator</h2>
           <p className="page__subtitle">
             Calculate tax using the verified backend pipeline. Enter your information and get a calculation with sources and verification.
           </p>
+          </div>
         </header>
 
         <div className="page__content">
+          <section className="card" data-testid="calculator-form-card">
           <form
             className="calculator-form"
             onSubmit={(e) => {
@@ -308,6 +312,7 @@ export function CalculatorPage() {
               </Button>
             </div>
           </form>
+          </section>
 
           {error ? (
             <StatusBanner
@@ -320,7 +325,7 @@ export function CalculatorPage() {
           ) : null}
 
           {result && !loading ? (
-            <div className="calculator-result">
+            <div className="calculator-result card" data-testid="calculator-result-card">
               <div className="calc-result">
                 <h3 className="calc-result__label">Calculated Tax</h3>
                 <p className="calc-result__amount" data-testid="calc-result-amount">

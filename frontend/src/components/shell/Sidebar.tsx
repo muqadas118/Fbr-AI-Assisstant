@@ -39,7 +39,8 @@ export function Sidebar({ collapsed, onClose, sections, sectionLabel, footerText
       </div>
 
       <div className="sidebar__section-label" aria-hidden={collapsed}>
-        {sectionLabel}
+        <span className="eyebrow-dark">{sectionLabel}</span>
+        <span className="sidebar__count">{sections.length}</span>
       </div>
 
       <nav className="sidebar__nav" data-testid={testId}>

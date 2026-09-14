@@ -170,6 +170,7 @@ export function BusinessAssistantPage() {
       <section className="page page--assistant">
         <header className="page__header">
           <div>
+            <p className="page-eyebrow">Business · Tax Assistant</p>
             <h2 className="page__title">Business Tax Assistant</h2>
             <p className="page__subtitle">
               Ask natural-language questions about corporate income tax, sales tax returns,

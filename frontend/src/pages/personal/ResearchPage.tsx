@@ -215,6 +215,7 @@ export function ResearchPage() {
       <div className="page page--research">
         <header className="page__header">
           <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Research</div>
             <h2 className="page__title">FBR Research &amp; Updates</h2>
             <p className="page__subtitle">
               Ask about FBR circulars, SROs, tax rates, filing procedures, and compliance requirements. Answers are grounded in authoritative FBR sources.

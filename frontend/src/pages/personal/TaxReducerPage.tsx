@@ -279,10 +279,13 @@ export function TaxReducerPage() {
     <ErrorBoundary>
       <section className="page page--tax-reducer">
         <header className="page__header">
-          <h2 className="page__title">Tax Reducer</h2>
-          <p className="page__subtitle">
+          <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Tax Reducer</div>
+            <h2 className="page__title">Tax Reducer</h2>
+            <p className="page__subtitle">
             Find lawful ways to reduce your tax liability.
           </p>
+          </div>
         </header>
 
         <div className="page__content">

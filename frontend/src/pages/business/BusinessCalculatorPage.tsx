@@ -170,6 +170,7 @@ export function BusinessCalculatorPage() {
     <ErrorBoundary>
       <section className="page page--calculator">
         <header className="page__header">
+          <p className="page-eyebrow">Business · Calculator</p>
           <h2 className="page__title">Business Tax Calculator</h2>
           <p className="page__subtitle">
             Calculate corporate and AOP income tax, sales tax, and withholding tax for your business. Enter your turnover and expenses, and get a verified calculation with sources.

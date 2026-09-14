@@ -692,6 +692,7 @@ export function BusinessInvoicesPage() {
       <section className="page page--invoices">
         <header className="page__header">
           <div>
+            <p className="page-eyebrow">Business · Invoicing</p>
             <h2 className="page__title">Business Invoice Intelligence</h2>
             <p className="page__subtitle">
               Process, validate, and reconcile your business sales and supplier invoices — powered by the live backend pipeline with sales tax input/output tracking, ITC eligibility checking, and duplicate detection.

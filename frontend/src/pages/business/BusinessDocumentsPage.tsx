@@ -536,6 +536,7 @@ export function BusinessDocumentsPage() {
       <section className="page page--documents">
         <header className="page__header">
           <div>
+            <p className="page-eyebrow">Business · Documents</p>
             <h2 className="page__title">Business Documents</h2>
             <p className="page__subtitle">
               Analyze business documents to extract structured data — sales tax invoices, withholding statements, vendor Form 16A, and company NTN records

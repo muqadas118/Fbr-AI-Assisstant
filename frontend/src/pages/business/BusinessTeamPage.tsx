@@ -274,6 +274,7 @@ export function BusinessTeamPage() {
       <section className="page page--subordinates">
         <header className="page__header">
           <div>
+            <p className="page-eyebrow">Business · Team</p>
             <h2 className="page__title">Business Team</h2>
             <p className="page__subtitle">
               Manage your business team members, assign roles, and verify member credentials.

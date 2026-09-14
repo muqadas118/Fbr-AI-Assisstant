@@ -6,6 +6,7 @@ import { getAccessToken } from "@/lib/supabase";
 import { useAuth } from "@/state/auth";
 import "@/styles/tokens.css";
 import "@/styles/app.css";
+import "@/styles/gov-fbr.css";
 
 // Wire Supabase JWT -> API Bearer header once at startup.
 // getAccessToken() resolves to null when signed out / unconfigured,

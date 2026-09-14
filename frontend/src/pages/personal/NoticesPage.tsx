@@ -519,6 +519,7 @@ export function NoticesPage() {
       <section className="page page--notices">
         <header className="page__header">
           <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Notices</div>
             <h2 className="page__title">FBR Notices Analyzer</h2>
             <p className="page__subtitle">
               Paste an FBR notice to get a structured analysis: extracted details, action plan, appeal guide, and deadlines — powered by the live backend pipeline.

@@ -334,6 +334,7 @@ export function InboxPage() {
       <section className="page page--inbox">
         <header className="page__header">
           <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Inbox</div>
             <h2 className="page__title">Inbox</h2>
             <p className="page__subtitle">
               Real-time compliance notifications and monitoring events.
@@ -382,6 +383,7 @@ export function InboxPage() {
           {dashboard && !loadingStats && (
             <>
               {/* Quick stats */}
+              <Card title="Inbox Summary" testId="inbox-summary-card">
               <div className="inbox__stats" data-testid="inbox-stats">
                 <div className="inbox__stat">
                   <span className="inbox__stat-value">{dashboard.unread_count}</span>
@@ -400,9 +402,10 @@ export function InboxPage() {
                   <span className="inbox__stat-label">Total Events</span>
                 </div>
               </div>
+              </Card>
 
               {/* Tabs */}
-              <div className="inbox__tabs" role="tablist" aria-label="Inbox filters" data-testid="inbox-tabs">
+              <div className="inbox__tabs page__tabs" role="tablist" aria-label="Inbox filters" data-testid="inbox-tabs">
                 {TABS.map((tab) => (
                   <button
                     key={tab.id}

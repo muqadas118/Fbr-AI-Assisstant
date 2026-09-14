@@ -368,6 +368,7 @@ export function BusinessCalendarPage() {
       <section className="page page--calendar">
         <header className="page__header">
           <div>
+            <p className="page-eyebrow">Business · Compliance</p>
             <h2 className="page__title">Business Compliance Calendar</h2>
             <p className="page__subtitle">
               Your corporate and sales tax filing deadlines, business return dates, withholding due dates, and overdue items — all powered by the live backend pipeline.

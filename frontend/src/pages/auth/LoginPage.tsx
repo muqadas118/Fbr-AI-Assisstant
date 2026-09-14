@@ -50,11 +50,9 @@ export function LoginPage() {
   };
 
   return (
-    <div
-      className="app-main__inner"
-      style={{ maxWidth: 480, margin: "0 auto", padding: "48px 20px" }}
-      data-testid="login-page"
-    >
+    <div className="auth-wrap" data-testid="login-page">
+      <div className="auth-card">
+      <div className="auth-crest" aria-hidden="true">FBR</div>
       <p className="page-eyebrow">FBR AI Tax &amp; Compliance</p>
       <h1 className="page-title">Sign in</h1>
       <p className="page-lede">Sign in to access your personal and business workspaces.</p>
@@ -105,6 +103,7 @@ export function LoginPage() {
           </div>
         </form>
       </Card>
+      </div>
     </div>
   );
 }

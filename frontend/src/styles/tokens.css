@@ -1,51 +1,59 @@
-/* FBR Design Tokens — refined editorial / professional
-   -----------------------------------------------------------
-   Two surfaces:
-     - "paper"  : warm off-white page background
-     - "ink"    : deep slate for header / side panels
-
-   One accent:  emerald (Pakistan flag green, restrained)
-   One type pairing:
-     - serif display  : Source Serif 4 (fallback: Georgia, Times)
-     - sans body      : Inter (fallback: system-ui)
+/* Gov FBR Pro — design tokens (light theme only, custom CSS, no deps)
+   Direction: utilitarian, dense, scannable gov dashboard.
+   Palette: Pakistan green #01411C primary · gold #C9A227 accent ·
+   off-white #F7F8F4 bg · ink #14201A text · muted slate.
+   Type: serif display (Georgia / Noto Nastaliq Urdu fallback) · Inter/system body.
 */
 
 :root {
-  /* Surfaces */
-  --c-paper:        #f6f3ec;   /* warm off-white */
-  --c-paper-2:      #efeae0;
-  --c-ink:          #0f1f2c;   /* deep slate */
-  --c-ink-2:        #1a2c3c;
-  --c-ink-3:        #23384a;
-  --c-line:         #d8d1c2;
-  --c-line-strong:  #b9b09c;
-  --c-line-ink:     rgba(255, 255, 255, 0.08);
+  /* Brand */
+  --c-primary:      #01411c;
+  --c-primary-2:    #012e14;
+  --c-primary-3:    #0a5a2c;
+  --c-primary-soft: #e3efe5;
+  --c-gold:         #c9a227;
+  --c-gold-2:       #a8861c;
+  --c-gold-soft:    #f7efD2;
+
+  /* Surfaces (legacy names remapped to gov palette) */
+  --c-paper:        #f7f8f4;
+  --c-paper-2:      #ecefe7;
+  --c-surface:      #ffffff;
+  --c-ink:          #01411c;
+  --c-ink-2:        #012e14;
+  --c-ink-3:        #0a5a2c;
+  --c-line:         #dde3d8;
+  --c-line-strong:  #b9c4b2;
+  --c-line-ink:     rgba(255, 255, 255, 0.14);
 
   /* Text */
-  --c-text:         #1a1a1a;
-  --c-text-muted:   #5b5b5b;
-  --c-text-faint:   #8a8576;
-  --c-text-invert:  #f6f3ec;
-  --c-text-invert-muted: #9fb0bd;
+  --c-text:         #14201a;
+  --c-text-muted:   #5a6b5e;
+  --c-text-faint:   #8a978d;
+  --c-text-invert:  #f7f8f4;
+  --c-text-invert-muted: #b9cabd;
 
-  /* Accent */
-  --c-accent:       #0d6b4f;   /* deep emerald */
-  --c-accent-2:     #0a553e;
-  --c-accent-soft:  #e3f1eb;
-  --c-gold:         #b89048;   /* used only for the wordmark underline */
+  /* Accent (legacy aliases → Pakistan green) */
+  --c-accent:       #01411c;
+  --c-accent-2:     #012e14;
+  --c-accent-soft:  #e3efe5;
 
   /* Status */
-  --c-ok:           #0d6b4f;
-  --c-warn:         #9a6a00;
+  --c-ok:           #01411c;
+  --c-ok-soft:      #e3efe5;
+  --c-warn:         #8a6200;
+  --c-warn-soft:    #f7efd2;
   --c-err:          #9a1f1f;
+  --c-err-soft:     #f8e2de;
   --c-info:         #1c4f7a;
+  --c-info-soft:    #e2edf6;
 
   /* Type */
-  --f-display: "Source Serif 4", Georgia, "Times New Roman", Times, serif;
+  --f-display: Georgia, "Noto Nastaliq Urdu", "Source Serif 4", "Times New Roman", Times, serif;
   --f-body:    "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --f-mono:    "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
-  /* Spacing — 4px base */
+  /* Spacing — 4px base, dense scale */
   --s-1: 4px;
   --s-2: 8px;
   --s-3: 12px;
@@ -58,14 +66,21 @@
   --s-10: 72px;
 
   /* Radii */
-  --r-1: 2px;
-  --r-2: 4px;
-  --r-3: 8px;
+  --r-1: 3px;
+  --r-2: 6px;
+  --r-3: 10px;
+
+  /* Shadows */
+  --sh-sm: 0 1px 2px rgba(20, 32, 26, 0.08);
+  --sh-md: 0 2px 8px rgba(20, 32, 26, 0.1);
+  --sh-lg: 0 8px 24px rgba(1, 65, 28, 0.14);
 
   /* Layout */
-  --w-sidebar: 248px;
-  --w-header: 60px;
-  --w-content-max: 1180px;
+  --w-sidebar: 264px;
+  --w-sidebar-collapsed: 64px;
+  --w-crest: 30px;
+  --w-header: 58px;
+  --w-content-max: 1200px;
 
   /* Motion */
   --t-fast: 120ms;
@@ -80,7 +95,7 @@ html, body, #root { height: 100%; }
 body {
   margin: 0;
   font-family: var(--f-body);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.5;
   color: var(--c-text);
   background: var(--c-paper);
@@ -91,48 +106,37 @@ body {
 
 h1, h2, h3, h4 {
   font-family: var(--f-display);
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.01em;
   margin: 0;
   color: var(--c-text);
 }
-h1 { font-size: 30px; line-height: 1.15; }
-h2 { font-size: 22px; line-height: 1.2; }
-h3 { font-size: 17px; line-height: 1.3; }
-h4 { font-size: 15px; line-height: 1.35; font-weight: 600; }
+h1 { font-size: 26px; line-height: 1.2; }
+h2 { font-size: 20px; line-height: 1.25; }
+h3 { font-size: 16px; line-height: 1.3; }
+h4 { font-size: 14px; line-height: 1.35; }
 
 p { margin: 0 0 var(--s-3); }
 
 a {
-  color: var(--c-accent);
+  color: var(--c-primary);
   text-decoration: none;
   border-bottom: 1px solid currentColor;
 }
-a:hover { color: var(--c-accent-2); }
-a:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+a:hover { color: var(--c-primary-2); }
+a:focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }
 
-button {
-  font: inherit;
-  cursor: pointer;
-}
+button { font: inherit; cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: 0.55; }
-
-input, textarea, select {
-  font: inherit;
-  color: inherit;
-}
-
-:focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: 2px;
-}
+input, textarea, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }
 
 /* Utility --------------------------------------------------------- */
 
 .muted { color: var(--c-text-muted); }
 .faint { color: var(--c-text-faint); }
-.small { font-size: 12.5px; }
-.mono  { font-family: var(--f-mono); font-size: 13px; }
+.small { font-size: 12px; }
+.mono  { font-family: var(--f-mono); font-size: 12.5px; }
 
 .divider {
   height: 1px;
@@ -148,13 +152,11 @@ input, textarea, select {
 }
 
 .eyebrow {
-  font-size: 11px;
+  font-family: var(--f-body);
+  font-size: 10.5px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--c-text-muted);
-  font-weight: 600;
+  color: var(--c-primary);
+  font-weight: 700;
 }
-
-.eyebrow-dark {
-  color: var(--c-text-invert-muted);
-}
+.eyebrow-dark { color: var(--c-text-invert-muted); }

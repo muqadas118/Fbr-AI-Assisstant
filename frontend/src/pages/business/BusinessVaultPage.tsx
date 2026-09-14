@@ -191,7 +191,7 @@ function VaultTab() {
         />
       ) : (
         <div className="vault-table-wrap">
-          <table className="vault-table" data-testid="biz-vault-table">
+          <table className="vault-table table--fbr" data-testid="biz-vault-table">
             <thead>
               <tr>
                 <th>Filename</th>
@@ -627,6 +627,7 @@ export function BusinessVaultPage() {
       <section className="page page--vault">
         <header className="page__header">
           <div>
+            <p className="page-eyebrow">Business · Vault</p>
             <h2 className="page__title">Business Tax Vault</h2>
             <p className="page__subtitle">
               Secure storage for business tax documents and FBR verification tools — company NTN, business registration, and supplier/vendor checks.

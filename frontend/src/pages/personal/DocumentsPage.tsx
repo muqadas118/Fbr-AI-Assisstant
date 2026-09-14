@@ -536,6 +536,7 @@ export function DocumentsPage() {
       <section className="page page--documents">
         <header className="page__header">
           <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Documents</div>
             <h2 className="page__title">Documents</h2>
             <p className="page__subtitle">
               Analyze tax documents to extract structured data, verify identities, and review supported types.

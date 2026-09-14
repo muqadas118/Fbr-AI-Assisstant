@@ -519,6 +519,7 @@ export function BusinessNoticesPage() {
       <section className="page page--notices">
         <header className="page__header">
           <div>
+            <p className="page-eyebrow">Business · Notices</p>
             <h2 className="page__title">Business FBR Notices Analyzer</h2>
             <p className="page__subtitle">
               Paste an FBR notice for your business entity to get a structured analysis: extracted company details, action plan, appeal guide, and deadlines — powered by the live backend pipeline.

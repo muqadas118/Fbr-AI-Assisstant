@@ -294,6 +294,7 @@ export function WorkspacesPage() {
       <section className="page page--workspaces">
         <header className="page__header">
           <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Workspaces</div>
             <h2 className="page__title">My Workspaces</h2>
             <p className="page__subtitle">
               Manage your personal and business workspaces, compliance status, and team.
@@ -342,7 +343,7 @@ export function WorkspacesPage() {
           {workspaces.length > 0 && !loading && (
             <>
               {/* Hero / active workspace section */}
-              <div className="ws__hero" data-testid="ws-hero">
+              <section className="ws__hero card" data-testid="ws-hero">
                 <div className="ws__hero-left">
                   <div className="ws__hero-avatar" aria-hidden>
                     <WorkspaceIcon type={activeWorkspace?.type ?? "personal"} />
@@ -371,10 +372,10 @@ export function WorkspacesPage() {
                     <Tag variant="accent">Coming Soon</Tag>
                   </div>
                 </div>
-              </div>
+              </section>
 
               {/* Quick stats */}
-              <div className="ws__stats" data-testid="ws-stats">
+              <section className="ws__stats card" data-testid="ws-stats">
                 <div className="ws__stat">
                   <span className="ws__stat-value">{workspaces.length}</span>
                   <span className="ws__stat-label">Total Workspaces</span>
@@ -399,7 +400,7 @@ export function WorkspacesPage() {
                     </div>
                   </>
                 )}
-              </div>
+              </section>
 
               {/* Workspaces grid */}
               <div className="ws__workspaces-header">
@@ -417,7 +418,7 @@ export function WorkspacesPage() {
               {showCreateForm && (
                 <Card title="Create New Workspace" testId="ws-create-card" className="ws__create-card">
                   <form onSubmit={handleCreate} className="ws__create-form" data-testid="ws-create-form" noValidate>
-                    <div className="ws__create-grid">
+                    <div className="ws__create-grid grid grid--2">
                       <Field label="Workspace Name *" error={formErrors.name}>
                         <input
                           type="text"

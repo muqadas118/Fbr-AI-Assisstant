@@ -39,15 +39,21 @@ export function AuthCallbackPage() {
 
   if (error) {
     return (
-      <div className="app-main__inner" style={{ maxWidth: 480, margin: "0 auto", padding: "48px 20px" }} data-testid="auth-callback-error">
+      <div className="auth-wrap" data-testid="auth-callback-error">
+        <div className="auth-card">
+        <div className="auth-crest" aria-hidden="true">FBR</div>
         <StatusBanner kind="err" title="Sign-in failed" description={error} testId="auth-callback-error-banner" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="app-main__inner" style={{ maxWidth: 480, margin: "0 auto", padding: "48px 20px" }} data-testid="auth-callback">
+    <div className="auth-wrap" data-testid="auth-callback">
+      <div className="auth-card">
+      <div className="auth-crest" aria-hidden="true">FBR</div>
       <Loading label="Completing sign-in…" testId="auth-callback-loading" />
+      </div>
     </div>
   );
 }

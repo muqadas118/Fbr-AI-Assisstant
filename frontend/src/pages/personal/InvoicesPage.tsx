@@ -692,6 +692,7 @@ export function InvoicesPage() {
       <section className="page page--invoices">
         <header className="page__header">
           <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Invoices</div>
             <h2 className="page__title">Invoice Intelligence</h2>
             <p className="page__subtitle">
               Process, validate, and reconcile your sales and purchase invoices — powered by the live backend pipeline with ITC eligibility checking and duplicate detection.
@@ -727,7 +728,7 @@ export function InvoicesPage() {
           ) : null}
 
           {/* Tab navigation */}
-          <div className="inv-tabs" role="tablist" data-testid="inv-tabs">
+          <div className="inv-tabs page__tabs" role="tablist" data-testid="inv-tabs">
             <button
               role="tab"
               aria-selected={activeTab === "process"}

@@ -61,15 +61,19 @@ export function VerificationPage() {
     <ErrorBoundary>
       <div className="page page--verification">
         <header className="page__header">
-          <h2 className="page__title">Verification</h2>
+          <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Verification</div>
+            <h2 className="page__title">Verification</h2>
           <p className="page__subtitle">Verify NTN, filer status, CNIC and vendors via backend verification center.</p>
+          </div>
         </header>
         <div className="page__content">
-          <div className="tabs" data-testid="verify-tabs">
+          <div className="tabs page__tabs" data-testid="verify-tabs">
             {(Object.keys(labels) as Tab[]).map((k) => (
-              <button key={k} className={`tab${tab === k ? " tab--active" : ""}`} onClick={() => setTab(k)} data-testid={`verify-tab-${k}`}>{labels[k]}</button>
+              <button key={k} className={`tab-btn${tab === k ? " tab-btn--active" : ""}`} onClick={() => setTab(k)} data-testid={`verify-tab-${k}`}>{labels[k]}</button>
             ))}
           </div>
+          <section className="card" data-testid="verify-form-card">
           <form onSubmit={(e) => { e.preventDefault(); void t.run(); }} data-testid="verify-form">
             <Field label={labels[tab]} data-testid="verify-field">
               <input value={t.value} onChange={(e) => t.setValue(e.target.value)} placeholder={tab === "cnic" ? "35201-1234567-1" : "1234567-8"} data-testid="verify-input" />
@@ -78,6 +82,7 @@ export function VerificationPage() {
               <Button type="submit" variant="primary" loading={t.loading} disabled={t.loading} data-testid="verify-button">Verify</Button>
             </div>
           </form>
+          </section>
           {t.error ? <StatusBanner kind="err" title="Verification failed" description={t.error} testId="verify-error" /> : null}
           {t.result ? <ResultCard result={t.result} /> : null}
           <StatusBanner kind="info" title="Offline check" description="Backend verification is format + checksum based (no live FBR portal yet)." testId="verify-offline-note" />

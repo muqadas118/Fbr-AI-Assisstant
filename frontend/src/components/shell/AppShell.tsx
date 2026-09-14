@@ -48,6 +48,12 @@ export function AppShell({ variant = "personal" }: { variant?: "personal" | "bus
 
   return (
     <div className={`app-shell ${collapsed ? "app-shell--collapsed" : ""}`} data-testid="app-shell">
+      <div className="crest-band" role="banner" aria-label="Federal Board of Revenue crest band">
+        <span className="crest-band__mark">FBR • ایف بی آر</span>
+        <span className="crest-band__rule" aria-hidden />
+        <span className="crest-band__dept">Government of Pakistan — Federal Board of Revenue</span>
+        <span className="crest-band__service">Tax &amp; Compliance Assistant</span>
+      </div>
       <Sidebar collapsed={collapsed} {...config} />
       <div className="app-shell__column">
         <Header

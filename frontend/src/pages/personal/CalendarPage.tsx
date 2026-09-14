@@ -368,6 +368,7 @@ export function CalendarPage() {
       <section className="page page--calendar">
         <header className="page__header">
           <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Calendar</div>
             <h2 className="page__title">Compliance Calendar</h2>
             <p className="page__subtitle">
               Your tax compliance deadlines, upcoming tasks, and overdue items — all powered by the live backend pipeline.
@@ -461,7 +462,7 @@ export function CalendarPage() {
           ) : null}
 
           {/* ── Filters ── */}
-          <div className="cal-filters" data-testid="cal-filters">
+          <div className="cal-filters card" data-testid="cal-filters">
             <div className="cal-filters__row">
               <span className="cal-filters__label">Filter:</span>
               <Field label="Priority" data-testid="cal-filter-priority">

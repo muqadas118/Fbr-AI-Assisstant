@@ -290,6 +290,7 @@ export function ReadinessPage() {
       <div className="page page--readiness">
         <header className="page__header">
           <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Readiness</div>
             <h2 className="page__title">Return Readiness</h2>
             <p className="page__subtitle">
               Check whether your personal income tax return can be filed today. Provide your NTN and tax year to get started.

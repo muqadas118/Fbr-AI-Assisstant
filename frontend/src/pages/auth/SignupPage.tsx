@@ -61,11 +61,9 @@ export function SignupPage() {
   };
 
   return (
-    <div
-      className="app-main__inner"
-      style={{ maxWidth: 480, margin: "0 auto", padding: "48px 20px" }}
-      data-testid="signup-page"
-    >
+    <div className="auth-wrap" data-testid="signup-page">
+      <div className="auth-card">
+      <div className="auth-crest" aria-hidden="true">FBR</div>
       <p className="page-eyebrow">FBR AI Tax &amp; Compliance</p>
       <h1 className="page-title">Create account</h1>
       <p className="page-lede">Create an account to access your personal and business workspaces.</p>
@@ -131,6 +129,7 @@ export function SignupPage() {
           </div>
         </form>
       </Card>
+      </div>
     </div>
   );
 }

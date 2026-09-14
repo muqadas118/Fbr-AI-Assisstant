@@ -274,6 +274,7 @@ export function SubordinatesPage() {
       <section className="page page--subordinates">
         <header className="page__header">
           <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Team</div>
             <h2 className="page__title">Subordinates</h2>
             <p className="page__subtitle">
               Manage your team members, delegate access, and verify subordinate credentials.
@@ -325,7 +326,7 @@ export function SubordinatesPage() {
               className="sub__add-card"
             >
               <form onSubmit={handleAddSubordinate} className="sub__form" data-testid="sub-add-form" noValidate>
-                <div className="sub__form-grid">
+                <div className="sub__form-grid grid grid--2">
                   <Field label="Full Name *" error={formErrors.name}>
                     <input
                       type="text"

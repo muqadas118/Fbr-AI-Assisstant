@@ -288,6 +288,7 @@ export function BusinessReadinessPage() {
       <div className="page page--readiness">
         <header className="page__header">
           <div>
+            <p className="page-eyebrow">Business · Filing</p>
             <h2 className="page__title">Business Return Readiness</h2>
             <p className="page__subtitle">
               Check whether your business returns can be filed today. Provide your business NTN and tax year to get started.

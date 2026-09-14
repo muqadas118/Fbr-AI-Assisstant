@@ -290,6 +290,7 @@ export function BusinessTaxReducerPage() {
     <ErrorBoundary>
       <section className="page page--tax-reducer">
         <header className="page__header">
+          <p className="page-eyebrow">Business · Tax Planning</p>
           <h2 className="page__title">Business Tax Reducer</h2>
           <p className="page__subtitle">
             Find lawful ways to reduce your company's and business's tax liability.

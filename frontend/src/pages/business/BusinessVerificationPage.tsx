@@ -664,6 +664,7 @@ export function BusinessVerificationPage() {
       <section className="page page--vault">
         <header className="page__header">
           <div>
+            <p className="page-eyebrow">Business · Verification</p>
             <h2 className="page__title">Business Verification</h2>
             <p className="page__subtitle">
               Verify business entities with FBR — company NTN, sales tax registration, vendor
