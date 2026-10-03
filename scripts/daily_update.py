@@ -8,7 +8,8 @@ Flow:
 
 1. Discover official FBR source pages
 2. Discover downloadable official documents
-3. Download only new official documents
+3. Download official documents (hash-synced: always download to a
+   temporary file, compare SHA-256, replace only when changed)
 4. Detect local source changes
 5. Run extraction
 6. Validate extraction
@@ -33,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -158,7 +160,12 @@ PIPELINE = [
     ("Cleaning", "clean_extracted_documents.py"),
     ("Cleaning validation", "validate_cleaned_documents.py"),
     ("Chunking", "chunk_cleaned_documents.py"),
-    ("Vector index", "build_vector_index.py"),
+    # FIX (upload-flow test): splice_vector_index.py content-hash reuse
+    # (naye chunks hi embed hote hain, ~1-2 min) — build_vector_index.py
+    # HAR run pe 86k chunks ka full rebuild karta tha (~3h40m on 7.5GB box).
+    # Same chunks.json -> index+metadata contract, model-revision verify,
+    # atomic writes, orphans bhi drop hote hain.
+    ("Vector index", "splice_vector_index.py"),
 ]
 
 
@@ -171,6 +178,29 @@ FINAL_TESTS = [
     "test_retrieval_quality.py",
     "test_verification_layer.py",
 ]
+
+
+# ============================================================
+# STAGE OUTPUT CAPTURE + CONSOLE-KILL HARDENING
+# ============================================================
+
+# Per-stage output files (stdout+stderr) so a failing stage can be
+# diagnosed from disk even when the scheduled run has no visible
+# console. Files are overwritten each run, so the directory stays
+# bounded.
+STAGE_LOG_DIR = STATE_DIR / "stage_logs"
+
+# Windows exit codes that indicate the child was terminated by a
+# console control event / hard crash rather than a genuine test
+# failure. Under heavy memory pressure (7-8 GB RAM hosts building
+# BM25 over 86k chunks) these can occur spuriously, so the stage is
+# retried once automatically.
+CONSOLE_KILL_EXIT_CODES = {
+    3221225786,  # 0xC000013A STATUS_CONTROL_C_EXIT
+    3221225477,  # 0xC0000005 STATUS_ACCESS_VIOLATION
+}
+
+MAX_CONSOLE_KILL_RETRIES = 1
 
 
 # ============================================================
@@ -362,6 +392,23 @@ def download_file(
 
             return False
 
+        # FIX 3: PDF validation before writing anything to disk.
+        # A truncated / HTML-error-page / zero-byte response must
+        # never replace a good local PDF.
+
+        if (
+            destination.suffix.lower() == ".pdf"
+            and not data.startswith(b"%PDF")
+        ):
+
+            log(
+                f"WARNING: Downloaded file is not a valid PDF "
+                f"(missing %PDF header): "
+                f"{normalized_url}"
+            )
+
+            return False
+
         destination.parent.mkdir(
             parents=True,
             exist_ok=True
@@ -433,6 +480,115 @@ def calculate_file_hash(
             sha256.update(chunk)
 
     return sha256.hexdigest()
+
+
+# ============================================================
+# OFFICIAL DOCUMENT HASH SYNC (FIX 1)
+# ============================================================
+
+def sync_official_document(
+    url: str,
+    destination: Path
+) -> bool:
+    """
+    Hash-synced official document download (FIX 1).
+
+    The old logic skipped the download when the destination file
+    already existed, so a remotely updated PDF with the SAME name
+    was never picked up. The new logic:
+
+    1. Always download to a temporary path
+       (destination.with_suffix(".tmp.pdf")).
+    2. Compare SHA-256 of the temp file against the destination
+       (when the destination exists).
+    3. Same hash   -> delete temp, log "Already up-to-date".
+    4. Different hash, or no local file yet -> temp.replace(destination),
+       log "Updated: ...".
+
+    This keeps the daily auto-check meaningful: a new FBR revision
+    published under the same filename is detected and stored.
+    """
+
+    temporary_file = destination.with_suffix(
+        ".tmp.pdf"
+    )
+
+    try:
+
+        if not download_file(
+            url,
+            temporary_file
+        ):
+
+            # download_file() already logged the failure reason.
+            # Clean up any partial temp file it may have left.
+            try:
+
+                if temporary_file.exists():
+
+                    temporary_file.unlink()
+
+            except OSError:
+
+                pass
+
+            return False
+
+        remote_hash = calculate_file_hash(
+            temporary_file
+        )
+
+        local_hash = None
+
+        if destination.exists():
+
+            local_hash = calculate_file_hash(
+                destination
+            )
+
+        if local_hash is not None and local_hash == remote_hash:
+
+            temporary_file.unlink()
+
+            log(
+                f"Already up-to-date: "
+                f"{destination.relative_to(PROJECT_ROOT)}"
+            )
+
+            return True
+
+        temporary_file.replace(
+            destination
+        )
+
+        log(
+            f"Updated: "
+            f"{destination.relative_to(PROJECT_ROOT)}"
+        )
+
+        return True
+
+    except (
+        OSError,
+        ValueError
+    ) as error:
+
+        log(
+            f"WARNING: Hash sync failed for "
+            f"{destination.name}: {error}"
+        )
+
+        try:
+
+            if temporary_file.exists():
+
+                temporary_file.unlink()
+
+        except OSError:
+
+            pass
+
+        return False
 
 
 # ============================================================
@@ -753,8 +909,12 @@ def document_is_relevant(
     if category == "finance_acts":
 
         return (
-            "finance" in filename
-            and "act" in filename
+            (
+                "finance" in filename
+                and "act" in filename
+            )
+            or ("budget" in filename)
+            or ("salient" in value)
         )
 
     return False
@@ -844,31 +1004,15 @@ def discover_official_documents() -> dict:
 
     for url, destination, category in discovered.values():
 
-        if destination.exists():
+        # FIX 1: hash-synced download. Never skip just because the
+        # destination exists - FBR can publish a revised document
+        # under the same filename. Temp download + SHA-256 compare
+        # decides between "Already up-to-date" and "Updated".
 
-            log(
-                f"Official document already exists: "
-                f"{destination.name}"
-            )
-
-            discovery_stats[
-                "already_present"
-            ] += 1
-
-            successful_files.append(
-                destination
-            )
-
-            continue
-
-        if download_file(
+        if sync_official_document(
             url,
             destination
         ):
-
-            discovery_stats[
-                "downloaded"
-            ] += 1
 
             successful_files.append(
                 destination
@@ -1091,6 +1235,55 @@ def detect_changes(
 # RUN SCRIPT
 # ============================================================
 
+def _log_stage_log_tail(
+    stage_log_path: Path,
+    stage_name: str,
+    tail_lines: int = 15,
+):
+    """Copy the tail of a failed stage's output into the main log."""
+
+    try:
+
+        with open(
+            stage_log_path,
+            "r",
+            encoding="utf-8",
+            errors="replace",
+        ) as file:
+
+            lines = file.read().splitlines()
+
+    except OSError:
+
+        return
+
+    if not lines:
+
+        return
+
+    shown = lines[-tail_lines:]
+
+    log(
+        f"--- {stage_name}: last "
+        f"{len(shown)} output line(s) ---"
+    )
+
+    for line in shown:
+
+        log(f"    {line}")
+
+    try:
+
+        log(
+            "Full stage output: "
+            f"{stage_log_path}"
+        )
+
+    except OSError:
+
+        pass
+
+
 def run_script(
     script_name: str,
     stage_name: str
@@ -1127,42 +1320,121 @@ def run_script(
         str(script_path)
     ]
 
-    try:
+    # --------------------------------------------------------
+    # Stage output capture setup
+    # --------------------------------------------------------
 
-        result = subprocess.run(
-            command,
-            cwd=PROJECT_ROOT,
-            check=False
-        )
+    STAGE_LOG_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-        if result.returncode != 0:
+    safe_stage = re.sub(
+        r"[^A-Za-z0-9_-]+",
+        "_",
+        stage_name,
+    )
 
-            log(
-                f"ERROR: {stage_name} failed "
-                f"with exit code "
-                f"{result.returncode}."
+    stage_log_path = STAGE_LOG_DIR / f"{safe_stage}.log"
+
+    environment = dict(os.environ)
+
+    # Scheduled runs have no console; force UTF-8 so print() of any
+    # non-ASCII chunk text cannot raise UnicodeEncodeError in a child.
+    environment.setdefault("PYTHONIOENCODING", "utf-8")
+    environment.setdefault("PYTHONUTF8", "1")
+
+    # --------------------------------------------------------
+    # Run with one retry on spurious console-kill exits
+    # --------------------------------------------------------
+
+    max_attempts = 1 + MAX_CONSOLE_KILL_RETRIES
+
+    result = None
+
+    for attempt in range(1, max_attempts + 1):
+
+        open_mode = "w" if attempt == 1 else "a"
+
+        with open(
+            stage_log_path,
+            open_mode,
+            encoding="utf-8",
+        ) as stage_log_file:
+
+            stage_log_file.write(
+                f"\n===== {stage_name} "
+                f"(attempt {attempt}, "
+                f"{datetime.now(tz=timezone.utc).isoformat()}) =====\n"
             )
 
-            return False
+            stage_log_file.flush()
+
+            try:
+
+                result = subprocess.run(
+                    command,
+                    cwd=PROJECT_ROOT,
+                    stdin=subprocess.DEVNULL,
+                    stdout=stage_log_file,
+                    stderr=subprocess.STDOUT,
+                    env=environment,
+                    creationflags=(
+                        subprocess.CREATE_NEW_PROCESS_GROUP
+                        if os.name == "nt"
+                        else 0
+                    ),
+                    check=False,
+                )
+
+            except (
+                OSError,
+                ValueError,
+                subprocess.SubprocessError
+            ) as error:
+
+                log(
+                    f"ERROR while running "
+                    f"{stage_name}: {error}"
+                )
+
+                return False
+
+        if result.returncode == 0:
+
+            log(
+                f"{stage_name} completed successfully."
+            )
+
+            return True
 
         log(
-            f"{stage_name} completed successfully."
+            f"ERROR: {stage_name} failed "
+            f"with exit code "
+            f"{result.returncode} "
+            f"(attempt {attempt})."
         )
 
-        return True
+        if (
+            result.returncode
+            not in CONSOLE_KILL_EXIT_CODES
+            or attempt >= max_attempts
+        ):
 
-    except (
-        OSError,
-        ValueError,
-        subprocess.SubprocessError
-    ) as error:
+            break
 
         log(
-            f"ERROR while running "
-            f"{stage_name}: {error}"
+            f"Exit code indicates a console-kill "
+            f"(not a test failure). Retrying "
+            f"{stage_name} once."
         )
 
-        return False
+    _log_stage_log_tail(
+        stage_log_path,
+        stage_name,
+    )
+
+    return False
 
 
 # ============================================================

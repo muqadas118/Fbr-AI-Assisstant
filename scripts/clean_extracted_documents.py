@@ -143,7 +143,7 @@ def normalize_record(path):
         raise ValueError(f"Source hash mismatch: {source}")
     sections, fmt = build_sections(data)
     text = clean_text("\n\n".join(section["text"] for section in sections if section["text"]))
-    status = data.get("status") or ("manual_review_required" if fmt == "doc" and not text else "extracted")
+    status = data.get("status") or ("manual_review_required" if not text else "extracted")
     return {
         "document_id": make_id(source_path),
         "document_type": fmt or None,

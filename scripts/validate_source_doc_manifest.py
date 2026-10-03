@@ -28,6 +28,8 @@ SUPPORTED_EXTENSIONS = {
     ".docx",
     ".xls",
     ".xlsx",
+    ".md",
+    ".jsonl",
 }
 
 

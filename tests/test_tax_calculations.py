@@ -152,6 +152,77 @@ class TestIncomeTaxCalculator(unittest.TestCase):
         # And credit should be applied
         self.assertGreater(r2.tax_credits_applied, 0)
 
+    def test_donation_credit_average_rate(self):
+        """Section 61: credit = (A/B) x C (average-rate method).
+
+        Taxable 5,000,000 business individual (TY 2026):
+        tax before credits = 1,610,000 + 45% of (5M - 5.6M is negative,
+        so fully in the 5.6M bracket? No: 5M < 5.6M, so use 3.2M-5.6M
+        bracket: 650,000 + 40% x (5,000,000 - 3,200,000) = 1,370,000.
+        Donation 100,000, within the 30% cap (1.5M).
+        Expected credit = (100,000 / 5,000,000) x 1,370,000 = 27,400.
+        """
+        inp = IncomeTaxInput(
+            gross_income=5_000_000,
+            filing_status=FilingStatus.BUSINESS,
+            tax_year=TaxYear.TY_2026,
+            donations=100_000,
+        )
+        result = IncomeTaxCalculator.calculate(inp)
+        self.assertAlmostEqual(result.tax_credits_applied, 27_400, places=2)
+        self.assertAlmostEqual(result.tax_after_credits, 1_370_000 - 27_400, places=2)
+        self.assertTrue(
+            any("Section 61" in n for n in result.notes),
+            "Notes should reference Section 61",
+        )
+
+    def test_donation_credit_capped_at_30pct(self):
+        """Donations above 30% of taxable income are capped.
+
+        Taxable 1,000,000: 30% cap = 300,000. Donating 500,000 should
+        use only 300,000. TY 2025 business slabs: only the amount above
+        600k is taxed -> 400,000 x 10% = 40,000. Credit =
+        (300,000 / 1,000,000) x 40,000 = 12,000.
+        """
+        inp = IncomeTaxInput(
+            gross_income=1_000_000,
+            filing_status=FilingStatus.BUSINESS,
+            tax_year=TaxYear.TY_2025,
+            donations=500_000,
+        )
+        result = IncomeTaxCalculator.calculate(inp)
+        self.assertAlmostEqual(result.tax_credits_applied, 12_000, places=2)
+        self.assertTrue(
+            any("limited to 30%" in n for n in result.notes),
+            "Notes should mention the 30% cap",
+        )
+
+    def test_donation_credit_zero_taxable_income(self):
+        """No taxable income -> no Section 61 credit, no crash."""
+        inp = IncomeTaxInput(
+            gross_income=0,
+            filing_status=FilingStatus.BUSINESS,
+            donations=100_000,
+        )
+        result = IncomeTaxCalculator.calculate(inp)
+        self.assertEqual(result.tax_credits_applied, 0)
+        self.assertEqual(result.tax_after_credits, 0)
+
+    def test_donation_credit_company(self):
+        """Company path: Section 61 credit with 20% cap.
+
+        Taxable 5,000,000 @ 29% = 1,450,000. Donation 500,000 is within
+        the 20% cap (1,000,000). Credit = (500,000 / 5,000,000) x
+        1,450,000 = 145,000.
+        """
+        inp = IncomeTaxInput(
+            gross_income=5_000_000,
+            filing_status=FilingStatus.COMPANY_PRIVATE,
+            donations=500_000,
+        )
+        result = IncomeTaxCalculator.calculate(inp)
+        self.assertAlmostEqual(result.tax_credits_applied, 145_000, places=2)
+
     def test_negative_income_rejected(self):
         """Negative income should be rejected."""
         inp = IncomeTaxInput(
@@ -160,6 +231,69 @@ class TestIncomeTaxCalculator(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             IncomeTaxCalculator.calculate(inp)
+
+    def test_income_cap_boundary_exactly_1t(self):
+        """Income exactly at the 1 trillion cap is accepted."""
+        inp = IncomeTaxInput(
+            gross_income=1_000_000_000_000,
+            filing_status=FilingStatus.SALARIED,
+            tax_year=TaxYear.TY_2026,
+        )
+        result = IncomeTaxCalculator.calculate(inp)
+        # TY 2026 salaried: cumulative at 7M = 1,424,000, then 35% above 7M.
+        expected = 1_424_000 + 0.35 * (1_000_000_000_000 - 7_000_000)
+        self.assertAlmostEqual(result.tax_after_credits, expected, places=2)
+
+    def test_income_cap_boundary_just_above_1t(self):
+        """Income 1 rupee above the 1T cap is rejected with a clear message."""
+        inp = IncomeTaxInput(
+            gross_income=1_000_000_000_001,
+            filing_status=FilingStatus.SALARIED,
+            tax_year=TaxYear.TY_2026,
+        )
+        with self.assertRaises(ValueError) as ctx:
+            IncomeTaxCalculator.calculate(inp)
+        self.assertIn("1,000,000,000,000", str(ctx.exception))
+
+    def test_decimal_amounts(self):
+        """Decimal (paisa-level) amounts compute without rounding drift.
+
+        Salaried TY 2026 income 1,234,567.89:
+        600k @1% = 6,000; (1,234,567.89 - 1,200,000) @ 11% = 3,802.47.
+        Tax = 9,802.47. Donation 999.99 -> credit = (999.99 / 1,234,567.89)
+        x 9,802.47 = 7.94 (rounded). Final = 9,794.53.
+        """
+        inp = IncomeTaxInput(
+            gross_income=1_234_567.89,
+            filing_status=FilingStatus.SALARIED,
+            tax_year=TaxYear.TY_2026,
+            donations=999.99,
+        )
+        result = IncomeTaxCalculator.calculate(inp)
+        self.assertAlmostEqual(result.tax_before_credits, 9_802.47, places=2)
+        self.assertAlmostEqual(result.tax_credits_applied, 7.94, places=2)
+        self.assertAlmostEqual(result.tax_after_credits, 9_794.53, places=2)
+
+    def test_donation_cap_huge_donation(self):
+        """A donation far above taxable income is capped at 30%, no crash.
+
+        Salaried TY 2026 income 1,000,000: tax = 4,000 (400k @ 1%).
+        Donation 999,999,999 caps to 300,000 -> credit =
+        (300,000 / 1,000,000) x 4,000 = 1,200. Final = 2,800.
+        """
+        inp = IncomeTaxInput(
+            gross_income=1_000_000,
+            filing_status=FilingStatus.SALARIED,
+            tax_year=TaxYear.TY_2026,
+            donations=999_999_999,
+        )
+        result = IncomeTaxCalculator.calculate(inp)
+        self.assertAlmostEqual(result.tax_credits_applied, 1_200, places=2)
+        self.assertAlmostEqual(result.tax_after_credits, 2_800, places=2)
+        self.assertTrue(
+            any("limited to 30%" in n for n in result.notes),
+            "Notes should mention the 30% cap",
+        )
 
     def test_very_high_income_35pct_bracket(self):
         """Income > 12M should hit 35% bracket."""

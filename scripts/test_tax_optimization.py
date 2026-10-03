@@ -1500,6 +1500,16 @@ def test_api_end_to_end_reaches_tool() -> None:
         "app.api._get_orchestrator", lambda: orchestrator
     ):
         client = TestClient(api_app)
+        # FIX: /answer cache cross-test pollution - section 10a posts the same
+        # CANONICAL_QUERY first, so app.api._answer_cache (TTL 300s) served the
+        # cached stub response here: the real orchestrator never ran (calls=[])
+        # and the calculation-domain entry was missing. Clear the cache before
+        # posting so this end-to-end test exercises the real pipeline.
+        import app.api as _api_mod
+
+        with _api_mod._cache_lock:
+            _api_mod._answer_cache.clear()
+
         resp = client.post(
             "/answer", json={"query": CANONICAL_QUERY}
         )

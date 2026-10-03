@@ -35,6 +35,8 @@ SUPPORTED_EXTENSIONS = {
     ".docx",
     ".xls",
     ".xlsx",
+    ".md",
+    ".jsonl",
 }
 
 MANUAL_REVIEW_EXTENSIONS = {
@@ -199,11 +201,13 @@ def main() -> None:
     valid_manual_review_files = 0
 
     for relative_json in sorted(json_files):
+        # relative_json is already extension-stripped (e.g. "...upto30.06.2015").
+        # Do NOT use Path(...).with_suffix(".json") here: stems may contain dots
+        # (date-stamped FBR filenames), and with_suffix would strip the last
+        # dot-segment, producing a wrong path like "...upto30.06.json".
         output_path = (
             EXTRACTED_DIR
-            / Path(
-                relative_json
-            ).with_suffix(".json")
+            / f"{relative_json}.json"
         )
 
         try:

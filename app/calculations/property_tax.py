@@ -104,9 +104,18 @@ class PropertyTaxCalculator:
         else:
             notes.append(f"Using deemed deduction (actual repairs PKR {inp.repair_expenses:,.2f} < deemed)")
 
-        # Total deductions: max of deemed or actual repairs + other
-        total_deductions = max(deemed_deduction, actual_deductions) + \
-                          (inp.property_tax_paid + inp.insurance_premium + inp.mortgage_interest)
+        # FIX: property repairs double-count - the old formula
+        # `max(deemed, actual_deductions) + (property_tax + insurance + mortgage)`
+        # double-counted the other deductions whenever actual repairs exceeded
+        # the deemed 1/3, because actual_deductions already includes them.
+        if inp.repair_expenses > deemed_deduction:
+            # Actual repairs claimed: actual_deductions = repairs + other deductions
+            total_deductions = actual_deductions
+        else:
+            # Deemed repairs apply: deemed 1/3 of rent + other deductions
+            total_deductions = deemed_deduction + (
+                inp.property_tax_paid + inp.insurance_premium + inp.mortgage_interest
+            )
 
         taxable_property = max(0, inp.annual_rent_received - total_deductions)
         combined_gross = taxable_property + inp.other_income

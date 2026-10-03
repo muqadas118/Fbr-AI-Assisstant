@@ -191,6 +191,15 @@ class MultiUserAPI:
             "invitations": [self._invitation_to_dict(i) for i in invitations],
         }
 
+    def get_user_workspaces(self, user_id: str) -> list[dict]:
+        """Workspaces (teams) for a user, tolerant of unregistered identities.
+
+        Unlike get_user_dashboard (which gates on a user row), this works for
+        any identity that owns/holds teams — e.g. demo ids created through
+        POST /workspaces/create without a prior /team/register.
+        """
+        return [self._team_to_dict(t) for t in self.teams.get_user_teams(user_id)]
+
     def get_user_dashboard(self, user_id: str) -> dict:
         """Get user dashboard across teams."""
         user = self.users.get_user(user_id)

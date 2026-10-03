@@ -118,6 +118,35 @@ _GROUNDED_STUB = {
 }
 
 
+def _live_vector_count() -> int:
+    """Current vectorstore row count from metadata.json.
+
+    Historical expectation (58,953) went stale when the corpus grew to
+    86,425; asserting the live count keeps these integrity checks valid
+    across future corpus growth.
+    """
+    import json
+
+    meta_path = (
+        PROJECT_ROOT
+        / "data"
+        / "profile"
+        / "vectorstore"
+        / "metadata.json"
+    )
+    try:
+        with open(meta_path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (OSError, ValueError):
+        return -1
+    if isinstance(data, list):
+        return len(data)
+    for value in data.values():
+        if isinstance(value, list):
+            return len(value)
+    return -1
+
+
 # ============================================================
 # 1. REGISTRY / DISCOVERY
 # ============================================================
@@ -559,8 +588,9 @@ def test_metadata_filter() -> None:
 
     _assert(
         "metadata_filter_total_records_reported",
-        by_type.ok and by_type.data["total_records"] == 58953,
-        f"total={by_type.data.get('total_records') if by_type.ok else 'n/a'}",
+        by_type.ok and by_type.data["total_records"] == _live_vector_count(),
+        f"total={by_type.data.get('total_records') if by_type.ok else 'n/a'}"
+        f" expected={_live_vector_count()}",
     )
 
 
@@ -720,7 +750,7 @@ def test_anomaly_detection() -> None:
     _assert(
         "anomaly_detection_real_metadata_clean",
         clean.ok
-        and clean.data["records_checked"] == 58953
+        and clean.data["records_checked"] == _live_vector_count()
         and clean.data["anomaly_count"] == 0,
         f"result={clean.data if clean.ok else clean.error}",
     )

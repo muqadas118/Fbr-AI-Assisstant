@@ -10,7 +10,7 @@ OUTPUT_DIR = ROOT / "data" / "profile" / "source_docs" / "chunks"
 MASTER_NAME = "cleaned_documents.json"
 TARGET_SIZE = 1600
 MAX_SIZE = 2200
-OVERLAP = 120
+OVERLAP = 200  # agent.py: retrieval_miss fix (pehle 120)
 
 
 def normalize_text(value):

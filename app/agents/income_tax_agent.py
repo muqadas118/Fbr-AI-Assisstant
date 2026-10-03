@@ -15,7 +15,12 @@ Scope:
 Deterministic query expansion: when the query references a bare
 section number without naming any law, append the Income Tax
 Ordinance 2001 qualifier so exact-section retrieval resolves to
-the Income Tax Ordinance instead of remaining ambiguous.
+the Income Tax Ordinance instead of remaining ambiguous. When the
+query asks about salaried income-tax rates/slabs in natural
+language (without a section number or another-domain/withholding
+intent), append First Schedule Part I corpus vocabulary so hybrid
+retrieval surfaces the authoritative slab table instead of WHT
+rate cards or budget teasers.
 
 Tax Reducer integration (same pattern as CalculationAgent):
 when the deterministic tool plan selects tax_optimization for a
@@ -33,6 +38,32 @@ import re
 from app.agents.base import SpecializedAgent
 
 _SECTION_RE = re.compile(r"\bsection\s+\d+\b", re.IGNORECASE)
+
+# Salary-slab signals: natural-language questions about salaried
+# income-tax rates (e.g. "income tax rate for salaried individuals")
+# otherwise retrieve WHT rate cards / budget teasers instead of the
+# authoritative First Schedule Part I slab table, because bare table
+# chunks carry almost none of the query vocabulary.
+_SALARY_RE = re.compile(r"\bsalaried\b|\bsalary\b", re.IGNORECASE)
+_SLAB_RATE_RE = re.compile(r"\brates?\b|\bslabs?\b", re.IGNORECASE)
+
+# Queries carrying these intents must NOT receive slab expansion:
+# another tax domain, an already-qualified First Schedule reference,
+# or a withholding (section 149 deduction-at-source) question whose
+# answer lives in the WHT cards, not the slab table.
+_NON_SLAB_TERMS: tuple[str, ...] = (
+    "sales tax",
+    "salestax",
+    "sales-tax",
+    "federal excise",
+    "customs",
+    "property valuation",
+    "immovable property",
+    "withholding",
+    "wht",
+    "withheld",
+    "first schedule",
+)
 
 _OTHER_LAW_TERMS: tuple[str, ...] = (
     "income tax",
@@ -68,6 +99,17 @@ class IncomeTaxAgent(SpecializedAgent):
             term in q_lower for term in _OTHER_LAW_TERMS
         ):
             return f"{q} under the Income Tax Ordinance 2001"
+        if (
+            _SALARY_RE.search(q)
+            and _SLAB_RATE_RE.search(q)
+            and not any(term in q_lower for term in _NON_SLAB_TERMS)
+        ):
+            return (
+                f"{q} under the Income Tax Ordinance 2001 "
+                "First Schedule Part I salary rates table where "
+                "income chargeable under the head salary exceeds "
+                "seventy-five per cent"
+            )
         return q
 
     def handle(

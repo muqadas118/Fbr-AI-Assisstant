@@ -132,40 +132,57 @@ class TestBusinessVerifier(unittest.TestCase):
 
 
 class TestVerificationAPI(unittest.TestCase):
-    """Test verification API."""
+    """Test verification API truth contract.
+
+    With no official verification source configured
+    (FBR_VERIFICATION_MODE=off, the default), the API must return an
+    explicit Unavailable result and NEVER a generated taxpayer name,
+    status, or filing history.
+    """
 
     def setUp(self):
         self.api = get_verification_api()
 
-    def test_verify_ntn(self):
+    def _assert_unavailable(self, resp, expected_type: str):
+        self.assertEqual(resp.request_type.value, expected_type)
+        self.assertFalse(resp.is_verified)
+        self.assertEqual(resp.confidence, 0.0)
+        self.assertEqual(resp.details.get("status"), "unavailable")
+        self.assertEqual(resp.details.get("verification_source"), "unavailable")
+        self.assertIsNone(resp.details.get("taxpayer_name"))
+
+    def test_verify_ntn_unavailable(self):
         resp = self.api.verify_ntn("1234567-1")
-        self.assertTrue(resp.is_verified)
-        self.assertEqual(resp.request_type.value, "ntn")
+        self._assert_unavailable(resp, "ntn")
+        # Fabricated fields must not appear.
+        self.assertNotIn("name", resp.details)
+        self.assertNotIn("business_type", resp.details)
+        self.assertNotIn("filer_status", resp.details)
+        self.assertNotIn("last_return", resp.details)
 
-    def test_verify_filer_status(self):
+    def test_verify_filer_status_unavailable(self):
         resp = self.api.verify_filer_status("1234567-1")
-        self.assertIn("is_active_filer", resp.details)
+        self._assert_unavailable(resp, "filer")
+        self.assertNotIn("is_active_filer", resp.details)
+        self.assertNotIn("is_atl", resp.details)
 
-    def test_verify_vendor(self):
+    def test_verify_vendor_unavailable(self):
         resp = self.api.verify_vendor("1234567-1")
-        self.assertIn("wht_rate_applicable", resp.details)
-        # Active filer = 15% WHT
-        self.assertEqual(resp.details["wht_rate_applicable"], "15%")
+        self._assert_unavailable(resp, "vendor")
+        self.assertNotIn("wht_rate_applicable", resp.details)
+        self.assertNotIn("is_blacklisted", resp.details)
 
-    def test_verify_vendor_non_filer(self):
-        resp = self.api.verify_vendor("1234567-5")
-        # Non-filer = 30% WHT
-        self.assertEqual(resp.details["wht_rate_applicable"], "30%")
-
-    def test_verify_cnic(self):
+    def test_verify_cnic_unavailable(self):
         resp = self.api.verify_cnic("12345-1234567-1")
-        self.assertIsNotNone(resp)
+        self._assert_unavailable(resp, "cnic")
 
-    def test_verify_business(self):
+    def test_verify_business_unavailable(self):
         resp = self.api.verify_business("1234567-1", reg_type="ntn")
-        self.assertTrue(resp.is_verified)
+        self._assert_unavailable(resp, "business")
+        self.assertNotIn("business_name", resp.details)
+        self.assertNotIn("registration_date", resp.details)
 
-    def test_batch_verify(self):
+    def test_batch_verify_all_unavailable(self):
         requests = [
             VerificationRequest(
                 type="ntn",
@@ -182,6 +199,9 @@ class TestVerificationAPI(unittest.TestCase):
         ]
         responses = self.api.batch_verify(requests)
         self.assertEqual(len(responses), 3)
+        for resp in responses:
+            self.assertFalse(resp.is_verified)
+            self.assertEqual(resp.details.get("status"), "unavailable")
 
 
 if __name__ == "__main__":

@@ -74,11 +74,11 @@ async def get_workspaces(user_id: str) -> dict:
     """
     try:
         api = get_multi_user_api()
-        user_dashboard = api.get_user_dashboard(user_id)
-
+        # Tolerant lookup: works for identities that own teams even when no
+        # user row exists (e.g. demo ids provisioned via POST /workspaces/create).
         return {
             "user_id": user_id,
-            "workspaces": user_dashboard.get("teams", []),
+            "workspaces": api.get_user_workspaces(user_id),
         }
     except Exception as e:
         logger.exception("Error getting workspaces")

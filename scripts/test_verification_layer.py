@@ -20,13 +20,24 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+from app.answer_generator import (
+    check_numeric_claims as _ag_check_numeric_claims,
+)
+from app.answer_generator import (
+    extract_number_words as _ag_extract_number_words,
+)
 from app.rag_engine import FBRRAGEngine
 from app.rag_engine import _NO_EVIDENCE_ANSWER as _NO_EVIDENCE_ANSWER
+from app.verification_answer import (
+    check_numeric_grounding as _va_check_numeric_grounding,
+)
+from app.verification_answer import (
+    extract_number_words as _va_extract_number_words,
+)
 from app.verification_layer import (
     PLACEHOLDER_ANSWER,
     verify_rag_response,
 )
-
 
 CATEGORIES: list[tuple[str, str, str, tuple[str, ...]]] = [
     (
@@ -703,6 +714,200 @@ def test_determinism() -> Callable[[list[dict[str, Any]]], None]:
     return runner
 
 
+def test_number_word_grounding(results: list[dict[str, Any]]) -> None:
+    """Written-out numbers in evidence must ground digit answers.
+
+    Regression for the salaried-slab refusal: the Income Tax
+    Ordinance writes "seventy-five per cent" while answers quote
+    "75%". Both numeric paths (answer_generator, used by the live
+    RAG pipeline, and verification_answer) must treat the word
+    form as supporting the digit form — without letting truly
+    fabricated digits through.
+    """
+    context = (
+        "Where the income of an individual chargeable under the "
+        "head salary exceeds seventy-five per cent of his taxable "
+        "income, the rates of tax to be applied shall be as set out "
+        "in the following table."
+    )
+    question = "What is the income tax rate for salaried individuals?"
+    grounded_answer = (
+        "Salaried individuals whose salary income exceeds 75% of "
+        "taxable income are taxed per the First Schedule table."
+    )
+    fabricated_answer = (
+        "Salaried individuals whose salary income exceeds 99% of "
+        "taxable income are taxed per the First Schedule table."
+    )
+    _assert(
+        results,
+        "number_words[verification_answer]_seventy_five_composed",
+        "75" in _va_extract_number_words(context),
+        sorted(_va_extract_number_words(context)),
+    )
+    _assert(
+        results,
+        "number_words[answer_generator]_seventy_five_composed",
+        "75" in _ag_extract_number_words(context),
+        sorted(_ag_extract_number_words(context)),
+    )
+    _assert(
+        results,
+        "number_words[answer_generator]_digit_answer_grounded_by_words",
+        _ag_check_numeric_claims(
+            answer=grounded_answer,
+            context=context,
+            question=question,
+        )["passed"],
+        "75% must be supported by seventy-five per cent",
+    )
+    fabricated = _ag_check_numeric_claims(
+        answer=fabricated_answer,
+        context=context,
+        question=question,
+    )
+    _assert(
+        results,
+        "number_words[answer_generator]_fabricated_digit_still_refused",
+        (not fabricated["passed"])
+        and ("99" in fabricated.get("unsupported_numeric_claims", [])),
+        fabricated.get("reason", ""),
+    )
+    _assert(
+        results,
+        "number_words[verification_answer]_digit_answer_grounded_by_words",
+        _va_check_numeric_grounding(
+            sentence=grounded_answer,
+            context=context,
+            question=question,
+        )["passed"],
+        "75% must be supported by seventy-five per cent",
+    )
+
+
+def test_amount_boundary_grounding(results: list[dict[str, Any]]) -> None:
+    """Whole-rupee range-boundary reformulations must verify.
+
+    Regression for the salaried-slab variance refusal: the table
+    writes "exceeds Rs. 600,000" while faithful answers quote the
+    bound as "600,001". Both numeric paths must accept integers
+    differing by exactly 1 for amounts of 1,000+ — while still
+    refusing invented figures, wrong rates/years, and off-by-two.
+    """
+    from app.answer_generator import (
+        amount_boundary_match as _ag_boundary,
+    )
+    from app.answer_generator import (
+        check_numeric_claims as _ag_check,
+    )
+    from app.verification_answer import (
+        amount_boundary_match as _va_boundary,
+    )
+
+    bound_ctx = (
+        "Exceeds Rs. 600,000 but does not exceed Rs. 1,200,000."
+    )
+    _assert(
+        results,
+        "boundary[answer_generator]_off_by_one_supported",
+        _ag_boundary("600,001", {"600,000", "1,200,000"}),
+        "600,001 vs 600,000",
+    )
+    _assert(
+        results,
+        "boundary[verification_answer]_off_by_one_supported",
+        _va_boundary("600,001", {"600,000", "1,200,000"}),
+        "600,001 vs 600,000",
+    )
+    _assert(
+        results,
+        "boundary[answer_generator]_recomputed_bounds_grounded",
+        _ag_check(
+            answer="The range 600,001 to 1,200,000 applies.",
+            context=bound_ctx,
+            question="What is the range?",
+        )["passed"],
+        "recomputed whole-rupee bounds",
+    )
+    for label, ans, ctx in [
+        ("invented_figure", "Rs 2,500,000 is payable.",
+         "The rate is 12.5% of the amount exceeding Rs. 600,000."),
+        ("wrong_rate", "The rate is 13.5%.",
+         "The rate is 12.5% of the amount exceeding Rs. 600,000."),
+        ("wrong_year", "This applies for 2025.",
+         "This applies for 2024."),
+        ("off_by_two", "Pay Rs. 600,002.",
+         "Exceeds Rs. 600,000."),
+    ]:
+        _assert(
+            results,
+            f"boundary[answer_generator]_still_refused_{label}",
+            not _ag_check(
+                answer=ans, context=ctx, question="What is the rate?"
+            )["passed"],
+            ans,
+        )
+
+
+def test_ordinal_grounding(results: list[dict[str, Any]]) -> None:
+    """Ordinals denote the same number as cardinals ("29th" = 29).
+
+    Regression for the valuation-2025 refusal: evidence writes "29th
+    October, 2024" while faithful answers quote "29 October". Both
+    numeric paths must normalize ordinal suffixes — while still
+    refusing fabricated or mismatched ordinals.
+    """
+    from app.answer_generator import (
+        check_numeric_claims as _ag_check,
+    )
+    from app.answer_generator import (
+        extract_numeric_claims as _ag_extract,
+    )
+    from app.verification_answer import (
+        extract_numbers as _va_extract,
+    )
+
+    _assert(
+        results,
+        "ordinal[answer_generator]_29th_yields_29",
+        "29" in _ag_extract("Islamabad, the 29th October, 2024."),
+        _ag_extract("Islamabad, the 29th October, 2024."),
+    )
+    _assert(
+        results,
+        "ordinal[verification_answer]_29th_yields_29",
+        "29" in _va_extract("Islamabad, the 29th October, 2024."),
+        sorted(_va_extract("Islamabad, the 29th October, 2024.")),
+    )
+    _assert(
+        results,
+        "ordinal[answer_generator]_cardinal_answer_grounded",
+        _ag_check(
+            answer="Notification S.R.O. 1712(I)/2024 dated 29 October 2024.",
+            context=(
+                "Notification Islamabad, the 29th October, 2024. "
+                "S.R.O. 1712 (I)/2024."
+            ),
+            question="Which SRO?",
+        )["passed"],
+        "29 October vs 29th October",
+    )
+    for label, ans, ctx in [
+        ("fabricated_ordinal", "Meeting on 31st December.",
+         "Meeting in December."),
+        ("wrong_ordinal", "Rate 22nd slab.",
+         "Rate 21st slab."),
+    ]:
+        _assert(
+            results,
+            f"ordinal[answer_generator]_still_refused_{label}",
+            not _ag_check(
+                answer=ans, context=ctx, question="When?"
+            )["passed"],
+            ans,
+        )
+
+
 def test_structured_table() -> Callable[[list[dict[str, Any]]], None]:
     def runner(results: list[dict[str, Any]]) -> None:
         rag_engine = FBRRAGEngine()
@@ -771,6 +976,12 @@ def main() -> int:
     test_determinism()(results)
     print("--- Structured table ---")
     test_structured_table()(results)
+    print("--- Number-word grounding ---")
+    test_number_word_grounding(results)
+    print("--- Amount-boundary grounding ---")
+    test_amount_boundary_grounding(results)
+    print("--- Ordinal grounding ---")
+    test_ordinal_grounding(results)
 
     total = len(results)
     passed = sum(1 for r in results if r["passed"])

@@ -229,6 +229,11 @@ class SalesTaxCalculator:
         # ============================================================
         # Output Tax (on sales)
         # ============================================================
+        # Defaults so every branch leaves both flags bound
+        # (is_export previously crashed with UnboundLocalError on exempt).
+        zero_rated = 0.0
+        exempt = 0.0
+
         if inp.is_export:
             output_tax = 0.0
             zero_rated = sales_value
@@ -238,6 +243,9 @@ class SalesTaxCalculator:
             zero_rated = 0.0
             exempt = sales_value
             notes.append("Exempt - no output tax, input tax not refundable")
+            # FIX: exempt sales full ITC - Section 8(1)(b) STA 1990 disallows input
+            # tax on exempt supplies, so exempt input tax is zero; the input-tax
+            # block below now credits only taxable-supply ITC (value - exempt share).
         else:
             zero_rated = 0.0
             exempt = 0.0
@@ -256,7 +264,21 @@ class SalesTaxCalculator:
                 )
             )
             input_tax = inp.purchases_value * input_rate
-            notes.append(f"Input tax @ {input_rate * 100:.1f}% on purchases: PKR {input_tax:,.2f}")
+            if inp.is_exempt:
+                # FIX: exempt sales full ITC - Section 8(1)(b) STA 1990 disallows
+                # input tax on exempt supplies. Credit only the taxable-supply
+                # share (attribution); with single-flag exempt semantics this is
+                # the whole ITC restricted to zero when all supplies are exempt.
+                taxable_share = (sales_value - exempt) / sales_value if sales_value > 0 else 0.0
+                full_input_tax = input_tax
+                input_tax = input_tax * taxable_share
+                notes.append(
+                    f"Input tax restricted to taxable supplies: PKR {input_tax:,.2f} "
+                    f"of PKR {full_input_tax:,.2f} (taxable share {taxable_share * 100:.1f}%); "
+                    "ITC on exempt supplies not allowed - Section 8(1)(b), STA 1990"
+                )
+            else:
+                notes.append(f"Input tax @ {input_rate * 100:.1f}% on purchases: PKR {input_tax:,.2f}")
         else:
             input_tax = 0.0
 

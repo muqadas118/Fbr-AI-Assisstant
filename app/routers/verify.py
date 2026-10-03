@@ -245,14 +245,29 @@ async def batch_verify(request: BatchVerifyRequest) -> list[VerificationResponse
         api = get_verification_api()
 
         from app.verification_center.api import VerificationRequest, VerificationType
-        reqs = [
-            VerificationRequest(
-                type=VerificationType(r["type"]),
-                value=r["value"],
-                purpose=r.get("purpose", "general"),
+        reqs: list[VerificationRequest] = []
+        for r in request.requests:
+            try:
+                req_type = VerificationType(r["type"])
+            except (KeyError, ValueError) as exc:
+                # Unknown request type is a client error, not a server fault.
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unsupported verification type: {r.get('type')!r}. "
+                           f"Expected one of: {[t.value for t in VerificationType]}",
+                ) from exc
+            if not isinstance(r.get("value"), str) or not r["value"].strip():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Each batch request needs a non-empty 'value' string.",
+                )
+            reqs.append(
+                VerificationRequest(
+                    type=req_type,
+                    value=r["value"],
+                    purpose=r.get("purpose", "general"),
+                )
             )
-            for r in request.requests
-        ]
 
         results = api.batch_verify(reqs)
         return [
@@ -266,6 +281,8 @@ async def batch_verify(request: BatchVerifyRequest) -> list[VerificationResponse
             )
             for r in results
         ]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Error in batch verification")
         raise HTTPException(

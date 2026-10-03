@@ -32,6 +32,8 @@ SUPPORTED_EXTENSIONS = {
     ".docx",
     ".xls",
     ".xlsx",
+    ".md",
+    ".jsonl",
 }
 
 
@@ -134,6 +136,8 @@ def main() -> None:
         ".docx": 0,
         ".xls": 0,
         ".xlsx": 0,
+        ".md": 0,
+        ".jsonl": 0,
     }
 
     rows = []
@@ -207,6 +211,12 @@ def main() -> None:
     )
     print(
         f"XLSX files        : {counts['.xlsx']}"
+    )
+    print(
+        f"MD files          : {counts['.md']}"
+    )
+    print(
+        f"JSONL files       : {counts['.jsonl']}"
     )
     print()
     print(

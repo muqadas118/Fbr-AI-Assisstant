@@ -25,7 +25,11 @@ TEST_CASES = [
     {
         "name": "Section 177",
         "question": "What is Section 177 of the Income Tax Ordinance 2001?",
-        "expected_source": "IncomeTaxOrdinance2001_upto2025.pdf",
+        # Family marker: the corpus legitimately holds several ordinance
+        # versions (2019-final, upto-2025, 2026). Any Income Tax
+        # Ordinance 2001 edition satisfies the expectation; a distinct
+        # act (e.g. Sales Tax) does not.
+        "expected_source_markers": ["incometaxordinance2001"],
         "expected_terms": [
             "177",
             "Audit",
@@ -35,7 +39,7 @@ TEST_CASES = [
     {
         "name": "Section 114",
         "question": "What is Section 114 of the Income Tax Ordinance 2001?",
-        "expected_source": "IncomeTaxOrdinance2001_upto2025.pdf",
+        "expected_source_markers": ["incometaxordinance2001"],
         "expected_terms": [
             "114",
         ],
@@ -43,7 +47,7 @@ TEST_CASES = [
     {
         "name": "Section 120",
         "question": "What is Section 120 of the Income Tax Ordinance 2001?",
-        "expected_source": "IncomeTaxOrdinance2001_upto2025.pdf",
+        "expected_source_markers": ["incometaxordinance2001"],
         "expected_terms": [
             "120",
         ],
@@ -76,7 +80,7 @@ def contains_expected_term(text, terms):
 def run_test(retriever, test_case):
 
     question = test_case["question"]
-    expected_source = test_case["expected_source"]
+    expected_source_markers = test_case["expected_source_markers"]
     expected_terms = test_case["expected_terms"]
 
     print()
@@ -120,8 +124,12 @@ def run_test(retriever, test_case):
         print(f"Score: {result.get('score', 0.0):.4f}")
         print(f"Exact match: {result.get('exact_match', False)}")
 
-        # Expected source
-        if source == expected_source:
+        # Expected source family (normalized substring match)
+        normalized_source = normalize(source).replace(" ", "").replace("_", "")
+        if any(
+            normalize(marker) in normalized_source
+            for marker in expected_source_markers
+        ):
             source_found = True
 
         # Expected section/content terms
@@ -142,7 +150,7 @@ def run_test(retriever, test_case):
     print("RESULT: FAIL")
 
     if not source_found:
-        print("Reason: Expected source was not retrieved.")
+        print("Reason: Expected source family was not retrieved.")
 
     if not relevant_found:
         print("Reason: Expected section/content terms were not found.")
@@ -218,6 +226,11 @@ def main():
         print("RETRIEVAL VALIDATION FAILED")
 
     print("=" * 70)
+
+    # Gate contract: a failed validation must fail the run so the daily
+    # pipeline treats this stage honestly.
+    if failed:
+        raise SystemExit(1)
 
 
 # ============================================================

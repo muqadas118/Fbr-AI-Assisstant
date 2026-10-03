@@ -33,9 +33,12 @@ class TaxRegime(str, Enum):
 
 
 # Presumptive Tax Regime (Section 100A) - TY 2025
+# Keys MUST match BusinessTaxInput.business_category values
+# ("goods" | "services" | "manufacturer") - the PTR lookup uses the
+# same field, so mismatched keys silently fall back to the 1% default.
 PTR_RATES_TY2025 = {
-    "goods_supplier": 1.0,   # 1% of turnover (goods)
-    "services_provider": 2.0,  # 2% of turnover (services)
+    "goods": 1.0,   # 1% of turnover (goods)
+    "services": 2.0,  # 2% of turnover (services)
     "manufacturer": 1.5,  # 1.5% (manufacturing)
 }
 

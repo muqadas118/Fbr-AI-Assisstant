@@ -179,26 +179,94 @@ async def reconcile_period(
     Generates ITC reconciliation report.
     """
     try:
+        from app.invoice_intelligence.extractor import ExtractedInvoice
+
         api = get_invoice_api()
 
-        # Convert dicts to ExtractedInvoice if provided
+        # Convert dicts to ExtractedInvoice if provided.
+        # The UI lets users paste raw JSON arrays, so accept common field
+        # aliases (e.g. invoice_no -> invoice_number, amount -> total) and
+        # numeric strings — anything else must be a clean 400, not a 500.
+        def _coerce_invoice(raw: dict, kind: str) -> "ExtractedInvoice":
+            if not isinstance(raw, dict):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Each {kind} invoice must be a JSON object.",
+                )
+            data = dict(raw)
+            aliases = {
+                "invoice_no": "invoice_number",
+                "no": "invoice_number",
+                "number": "invoice_number",
+                "id": "invoice_id",
+                "amount": "total",
+                "value": "total",
+                "date": "invoice_date",
+                "tax": "tax_amount",
+                "rate": "tax_rate",
+                "seller": "seller_name",
+                "buyer": "buyer_name",
+                "ntn": "seller_ntn",
+            }
+            for src, dst in aliases.items():
+                if src in data and dst not in data:
+                    data[dst] = data.pop(src)
+            numeric_fields = (
+                "subtotal", "tax_rate", "tax_amount", "discount",
+                "total", "sales_tax", "wht_amount", "net_payable",
+            )
+            for key in numeric_fields:
+                if key in data and not isinstance(data[key], (int, float)):
+                    try:
+                        data[key] = float(str(data[key]).replace(",", "").strip())
+                    except (TypeError, ValueError):
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Invoice field '{key}' must be a number, "
+                                   f"got: {data[key]!r}.",
+                        )
+            string_fields = (
+                "invoice_id", "invoice_number", "invoice_date", "due_date",
+                "seller_name", "seller_ntn", "seller_address", "buyer_name",
+                "buyer_ntn", "buyer_address", "invoice_type", "currency",
+                "po_number", "reference", "raw_text",
+            )
+            for key in string_fields:
+                if key in data and data[key] is not None and not isinstance(data[key], str):
+                    data[key] = str(data[key])
+            unknown = set(data) - set(string_fields) - set(numeric_fields)
+            if unknown:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unknown invoice field(s): {sorted(unknown)}. "
+                           f"Expected fields like invoice_number, date, "
+                           f"subtotal, tax_amount, total.",
+                )
+            try:
+                return ExtractedInvoice(**data)
+            except TypeError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid invoice data: {exc}",
+                )
+
         purchase_invoices = None
         sales_invoices = None
 
         if request.purchase_invoices:
-            from app.invoice_intelligence.extractor import ExtractedInvoice
             purchase_invoices = [
-                ExtractedInvoice(**inv) for inv in request.purchase_invoices
+                _coerce_invoice(inv, "purchase") for inv in request.purchase_invoices
             ]
         if request.sales_invoices:
-            from app.invoice_intelligence.extractor import ExtractedInvoice
             sales_invoices = [
-                ExtractedInvoice(**inv) for inv in request.sales_invoices
+                _coerce_invoice(inv, "sales") for inv in request.sales_invoices
             ]
 
         result = api.reconcile_period(purchase_invoices, sales_invoices)
 
         return ReconciliationReportResponse(**result)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Error reconciling invoices")
         raise HTTPException(

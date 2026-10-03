@@ -42,6 +42,7 @@ FBR Notice Types:
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
+import re
 
 
 class NoticeType(str, Enum):
@@ -281,21 +282,34 @@ class NoticeClassifier:
             )
 
         text_lower = text.lower()
+        # Real FBR notices commonly write "u/s 114(4)" / "U/S. 122" —
+        # normalize to "section ..." so the section signals match.
+        text_lower = re.sub(r"\bu[./\s]*s\.?\s*", "section ", text_lower)
 
         # Score each notice type
-        scores: dict[NoticeType, tuple[float, list[str], dict]] = {}
+        scores: dict[NoticeType, tuple[float, list[str], dict, list[tuple[str, int]]]] = {}
         for notice_type, signals in CLASSIFICATION_SIGNALS.items():
             total_score = 0
             matched = []
             breakdown = {}
+            matched_pairs: list[tuple[str, int]] = []
             for signal, weight in signals:
                 count = text_lower.count(signal.lower())
+                if count == 0:
+                    # Subsection-specific signals like "114(3)" also match any
+                    # other subsection of the same section ("114(4)", "114(").
+                    if re.fullmatch(r"\d+[A-Z]?\(\d+[A-Z]?\)", signal.lower()):
+                        base = signal.lower().split("(", 1)[0]
+                        count = text_lower.count(base + "(")
+                        if count:
+                            weight = max(6, weight - 2)
                 if count > 0:
                     total_score += weight * count
                     matched.append(signal)
+                    matched_pairs.append((signal, weight))
                     breakdown[signal] = count
             if total_score > 0:
-                scores[notice_type] = (total_score, matched, breakdown)
+                scores[notice_type] = (total_score, matched, breakdown, matched_pairs)
 
         if not scores:
             return ClassificationResult(
@@ -305,10 +319,15 @@ class NoticeClassifier:
 
         # Sort by score
         sorted_scores = sorted(scores.items(), key=lambda x: x[1][0], reverse=True)
-        top_type, (top_score, top_matched, top_breakdown) = sorted_scores[0]
+        top_type, (top_score, top_matched, top_breakdown, top_pairs) = sorted_scores[0]
 
-        # Normalize confidence (cap at 50 score = 1.0)
-        confidence = min(top_score / 50.0, 1.0)
+        # Confidence: a specific section reference is strong evidence —
+        # start high and add a little for every corroborating signal.
+        # Generic keyword-only matches keep the conservative score/50 scale.
+        if any(w >= 8 for _s, w in top_pairs):
+            confidence = min(0.75 + 0.05 * (len(top_pairs) - 1), 0.97)
+        else:
+            confidence = min(top_score / 50.0, 1.0)
 
         # Get secondary types
         secondary = [

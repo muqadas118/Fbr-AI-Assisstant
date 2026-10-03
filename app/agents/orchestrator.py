@@ -46,6 +46,7 @@ exists in this architecture.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from app.agents.base import SpecializedAgent
@@ -137,10 +138,25 @@ class AgentOrchestrator:
         decision = self.router.route(question)
         domains = decision.domains
 
-        results = [
-            self.agents[domain].handle(question, top_k=top_k)
-            for domain in domains
-        ]
+        if len(domains) == 1:
+            results = [self.agents[domains[0]].handle(question, top_k=top_k)]
+        else:
+            # Multi-domain agents are independent (they share one
+            # read-only RAG engine), so run them in parallel. This
+            # halves latency for 2-domain queries instead of paying
+            # one full LLM round-trip per domain sequentially.
+            agents = self.agents
+            with ThreadPoolExecutor(
+                max_workers=min(len(domains), 4)
+            ) as pool:
+                results = list(
+                    pool.map(
+                        lambda domain: agents[domain].handle(
+                            question, top_k=top_k
+                        ),
+                        domains,
+                    )
+                )
 
         if len(results) == 1:
             only = results[0]
@@ -160,6 +176,32 @@ class AgentOrchestrator:
         combined_parts: list[str] = []
         aggregate_sources: list[dict] = []
         seen_chunk_ids: set[str] = set()
+        seen_answers: list[tuple[str, str, set[str]]] = []  # (normalized, label, numbers)
+
+        def _numbers(text: str) -> set[str]:
+            from app.verification_answer import extract_numeric_claims
+
+            return {n.replace(",", "") for n in extract_numeric_claims(str(text))}
+
+        def _is_repetition(answer: str) -> str | None:
+            """Return the first label whose answer is effectively the same.
+
+            Two routed domains restating the same verified fact is
+            repetition, not new information. Treat answers as the same
+            when they are near-identical AND carry the same numbers, so
+            a genuinely different figure in another domain is never
+            suppressed. No claims are merged or re-worded.
+            """
+            from difflib import SequenceMatcher
+
+            norm = " ".join(str(answer).lower().split())
+            nums = _numbers(answer)
+            for prev_norm, prev_label, prev_nums in seen_answers:
+                if nums == prev_nums and SequenceMatcher(
+                    None, norm, prev_norm
+                ).ratio() >= 0.90:
+                    return prev_label
+            return None
 
         for result in results:
             label = result["domain"].replace("_", " ").title()
@@ -168,7 +210,17 @@ class AgentOrchestrator:
                 combined_parts.append(
                     f"[{label}] {_NO_EVIDENCE_ANSWER}"
                 )
+                continue
+            first_label = _is_repetition(answer)
+            if first_label is not None:
+                combined_parts.append(
+                    f"[{label}] (Same answer as [{first_label}]; "
+                    "omitted to avoid repetition.)"
+                )
             else:
+                seen_answers.append(
+                    (" ".join(str(answer).lower().split()), label, _numbers(answer))
+                )
                 combined_parts.append(f"[{label}] {answer}")
 
             for source in result["sources"]:

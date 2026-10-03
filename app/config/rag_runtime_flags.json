@@ -1,0 +1,5 @@
+{
+  "top_k": 5,
+  "prompt_strict": true,
+  "chunks_rebuilt_overlap_200": true
+}

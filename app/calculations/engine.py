@@ -189,6 +189,7 @@ class TaxCalculationEngine:
             )
 
         try:
+            self._validate_inputs(inputs)
             result_data, formatted = handler(inputs)
             duration_ms = (time.time() - start_time) * 1000
 
@@ -475,8 +476,21 @@ class TaxCalculationEngine:
         formatted = CustomDutyCalculator.format_result(result)
         return result, formatted
 
+    @staticmethod
+    def _validate_inputs(inputs: dict) -> None:
+        """Early sanity checks: reject non-finite numbers with a clean validation error."""
+        for key, value in inputs.items():
+            if isinstance(value, float) and (value != value or value in (float("inf"), float("-inf"))):
+                raise ValueError(f"Input '{key}' must be a finite number (got {value}).")
+
     def _calc_custom(self, inputs: dict) -> tuple[CustomCalcResult, str]:
         """Route to Custom Calculator."""
+        if "expression" in inputs:
+            raise ValueError(
+                "custom_calc does not evaluate free-form expressions. "
+                "Use calc_type (percentage|penalty|compound_interest|conditional_threshold) "
+                "with base_value, rate, principal, days_late, monthly_rate or periods."
+            )
         calc_type = CustomCalcType(inputs.get("calc_type", "percentage"))
 
         custom_input = CustomCalcInput(

@@ -5,6 +5,7 @@
 # Local agent and configuration directories
 /.claude/
 /.kilo/
+/.freebuff/
 
 # Uploaded and source data
 /uploads/
@@ -38,6 +39,14 @@ __pycache__/
 /backups/
 /backup/
 *.log
+*.log.err
+server-*.log
+server-*.err.log
+
+# Generated test/audit reports and build caches
+tests/production_audit_report.json
+tests/production_test_report.json
+frontend/tsconfig.tsbuildinfo
 *.logs
 *.bak
 *.backup

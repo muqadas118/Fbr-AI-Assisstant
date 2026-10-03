@@ -39,7 +39,10 @@ class TaxBracket:
     lower: float
     upper: Optional[float]  # None = no upper limit
     rate: float
-    fixed: float = 0.0  # Fixed tax at this bracket (cumulative)
+    # FIX: dead `fixed` column - removed: calculate_tax_on_slab always uses the
+    # FBR marginal method and never read this field, and the legacy cumulative
+    # values (TY2025 salaried 390k/990k/2,490k) disagreed with the marginal
+    # sums (330k/810k/2,310k), inviting future misuse. No callers pass it.
 
 
 # ============================================================
@@ -48,57 +51,57 @@ class TaxBracket:
 
 # Salaried Individuals (TY 2025) - Reduced rates announced
 SALARIED_SLABS_TY2025 = [
-    TaxBracket(0, 600_000, 0.0, 0),
-    TaxBracket(600_000, 1_200_000, 0.05, 0),
-    TaxBracket(1_200_000, 2_400_000, 0.10, 30_000),
-    TaxBracket(2_400_000, 3_600_000, 0.15, 150_000),
-    TaxBracket(3_600_000, 6_000_000, 0.20, 390_000),
-    TaxBracket(6_000_000, 12_000_000, 0.25, 990_000),
-    TaxBracket(12_000_000, None, 0.35, 2_490_000),
+    TaxBracket(0, 600_000, 0.0),
+    TaxBracket(600_000, 1_200_000, 0.05),
+    TaxBracket(1_200_000, 2_400_000, 0.10),
+    TaxBracket(2_400_000, 3_600_000, 0.15),
+    TaxBracket(3_600_000, 6_000_000, 0.20),
+    TaxBracket(6_000_000, 12_000_000, 0.25),
+    TaxBracket(12_000_000, None, 0.35),
 ]
 
 # Business / AOP Individuals (TY 2025) - Normal rates
 BUSINESS_SLABS_TY2025 = [
-    TaxBracket(0, 600_000, 0.0, 0),
-    TaxBracket(600_000, 1_200_000, 0.10, 0),
-    TaxBracket(1_200_000, 2_400_000, 0.15, 60_000),
-    TaxBracket(2_400_000, 3_600_000, 0.20, 240_000),
-    TaxBracket(3_600_000, 6_000_000, 0.25, 600_000),
-    TaxBracket(6_000_000, 12_000_000, 0.30, 1_350_000),
-    TaxBracket(12_000_000, None, 0.35, 2_550_000),
+    TaxBracket(0, 600_000, 0.0),
+    TaxBracket(600_000, 1_200_000, 0.10),
+    TaxBracket(1_200_000, 2_400_000, 0.15),
+    TaxBracket(2_400_000, 3_600_000, 0.20),
+    TaxBracket(3_600_000, 6_000_000, 0.25),
+    TaxBracket(6_000_000, 12_000_000, 0.30),
+    TaxBracket(12_000_000, None, 0.35),
 ]
 
 # AOP / Non-Profit (TY 2025)
 AOP_SLABS_TY2025 = [
-    TaxBracket(0, 600_000, 0.0, 0),
-    TaxBracket(600_000, 1_200_000, 0.10, 0),
-    TaxBracket(1_200_000, 2_400_000, 0.15, 60_000),
-    TaxBracket(2_400_000, 3_600_000, 0.20, 240_000),
-    TaxBracket(3_600_000, 6_000_000, 0.25, 600_000),
-    TaxBracket(6_000_000, 12_000_000, 0.30, 1_350_000),
-    TaxBracket(12_000_000, None, 0.35, 2_550_000),
+    TaxBracket(0, 600_000, 0.0),
+    TaxBracket(600_000, 1_200_000, 0.10),
+    TaxBracket(1_200_000, 2_400_000, 0.15),
+    TaxBracket(2_400_000, 3_600_000, 0.20),
+    TaxBracket(3_600_000, 6_000_000, 0.25),
+    TaxBracket(6_000_000, 12_000_000, 0.30),
+    TaxBracket(12_000_000, None, 0.35),
 ]
 
 # Salaried Individuals (TY 2024 - older rates, kept for reference)
 SALARIED_SLABS_TY2024 = [
-    TaxBracket(0, 600_000, 0.0, 0),
-    TaxBracket(600_000, 1_200_000, 0.05, 0),
-    TaxBracket(1_200_000, 2_400_000, 0.10, 30_000),
-    TaxBracket(2_400_000, 3_600_000, 0.15, 150_000),
-    TaxBracket(3_600_000, 6_000_000, 0.20, 390_000),
-    TaxBracket(6_000_000, 12_000_000, 0.25, 990_000),
-    TaxBracket(12_000_000, None, 0.35, 2_490_000),
+    TaxBracket(0, 600_000, 0.0),
+    TaxBracket(600_000, 1_200_000, 0.05),
+    TaxBracket(1_200_000, 2_400_000, 0.10),
+    TaxBracket(2_400_000, 3_600_000, 0.15),
+    TaxBracket(3_600_000, 6_000_000, 0.20),
+    TaxBracket(6_000_000, 12_000_000, 0.25),
+    TaxBracket(12_000_000, None, 0.35),
 ]
 
 # Business / AOP Individuals (TY 2024)
 BUSINESS_SLABS_TY2024 = [
-    TaxBracket(0, 600_000, 0.0, 0),
-    TaxBracket(600_000, 1_200_000, 0.10, 0),
-    TaxBracket(1_200_000, 2_400_000, 0.15, 60_000),
-    TaxBracket(2_400_000, 3_600_000, 0.20, 240_000),
-    TaxBracket(3_600_000, 6_000_000, 0.25, 600_000),
-    TaxBracket(6_000_000, 12_000_000, 0.30, 1_350_000),
-    TaxBracket(12_000_000, None, 0.35, 2_550_000),
+    TaxBracket(0, 600_000, 0.0),
+    TaxBracket(600_000, 1_200_000, 0.10),
+    TaxBracket(1_200_000, 2_400_000, 0.15),
+    TaxBracket(2_400_000, 3_600_000, 0.20),
+    TaxBracket(3_600_000, 6_000_000, 0.25),
+    TaxBracket(6_000_000, 12_000_000, 0.30),
+    TaxBracket(12_000_000, None, 0.35),
 ]
 
 # Corporate Tax Rates (TY 2025)
@@ -107,6 +110,41 @@ COMPANY_RATES_TY2025 = {
     "company_private": 0.29,  # 29% for private companies (small co 20%)
     "small_company": 0.20,    # 20% for small companies (turnover < 250M)
 }
+
+# Salaried Individuals (TY 2026) - Finance Act 2025 rates
+# (First Schedule, Part I: salary > 75% of taxable income; effective
+# for tax year 2026, i.e. FY 2025-26). Verified against PwC Worldwide
+# Tax Summaries — Pakistan, personal income tax rates (2025-26).
+SALARIED_SLABS_TY2026 = [
+    TaxBracket(0, 600_000, 0.0),
+    TaxBracket(600_000, 1_200_000, 0.01),
+    TaxBracket(1_200_000, 2_200_000, 0.11),
+    TaxBracket(2_200_000, 3_200_000, 0.20),
+    TaxBracket(3_200_000, 4_100_000, 0.25),
+    TaxBracket(4_100_000, 5_600_000, 0.29),
+    TaxBracket(5_600_000, 7_000_000, 0.32),
+    TaxBracket(7_000_000, None, 0.35),
+]
+
+# Non-salaried individuals / AOPs (TY 2026) - Finance Act 2025 rates.
+BUSINESS_SLABS_TY2026 = [
+    TaxBracket(0, 600_000, 0.0),
+    TaxBracket(600_000, 1_200_000, 0.15),
+    TaxBracket(1_200_000, 1_600_000, 0.20),
+    TaxBracket(1_600_000, 3_200_000, 0.30),
+    TaxBracket(3_200_000, 5_600_000, 0.40),
+    TaxBracket(5_600_000, None, 0.45),
+]
+
+# AOP slabs follow the non-salaried individual table for TY 2026.
+AOP_SLABS_TY2026 = [
+    TaxBracket(0, 600_000, 0.0),
+    TaxBracket(600_000, 1_200_000, 0.15),
+    TaxBracket(1_200_000, 1_600_000, 0.20),
+    TaxBracket(1_600_000, 3_200_000, 0.30),
+    TaxBracket(3_200_000, 5_600_000, 0.40),
+    TaxBracket(5_600_000, None, 0.45),
+]
 
 # ============================================================
 # ALLOWANCES / DEDUCTIONS
@@ -122,7 +160,12 @@ STANDARD_DEDUCTIONS = {
 
 # Tax credits (rebateable from tax liability)
 TAX_CREDITS = {
-    "donations_fund": 0.15,  # 15% of donations to approved funds (Section 61)
+    # Section 61 (Division XIII, Part X, Second Schedule):
+    # credit = (donation / taxable income) * tax before credit,
+    # donations capped at 30% of taxable income for individuals / AOPs
+    # and 20% for companies. Previously simplified to a flat 15%.
+    "donations_limit_individual": 0.30,
+    "donations_limit_company": 0.20,
     "investment_pak_equity": 0.10,  # 10% rebate for investment in Pakistan Equity (Section 62)
     "education_expense_max": 200_000,  # Max education expense for employed persons
     "tuition_fee_max_dependent": 150_000,  # Max per child for tuition fees
@@ -187,10 +230,20 @@ class IncomeTaxCalculator:
     def get_slabs(filing_status: FilingStatus, tax_year: TaxYear) -> list[TaxBracket]:
         """Return appropriate tax slabs for filing status and year."""
         if filing_status == FilingStatus.SALARIED:
-            return SALARIED_SLABS_TY2024 if tax_year == TaxYear.TY_2024 else SALARIED_SLABS_TY2025
+            if tax_year == TaxYear.TY_2024:
+                return SALARIED_SLABS_TY2024
+            if tax_year == TaxYear.TY_2026:
+                return SALARIED_SLABS_TY2026
+            return SALARIED_SLABS_TY2025
         elif filing_status in (FilingStatus.BUSINESS, FilingStatus.INDIVIDUAL):
-            return BUSINESS_SLABS_TY2024 if tax_year == TaxYear.TY_2024 else BUSINESS_SLABS_TY2025
+            if tax_year == TaxYear.TY_2024:
+                return BUSINESS_SLABS_TY2024
+            if tax_year == TaxYear.TY_2026:
+                return BUSINESS_SLABS_TY2026
+            return BUSINESS_SLABS_TY2025
         elif filing_status == FilingStatus.AOP or filing_status == FilingStatus.NON_PROFIT:
+            if tax_year == TaxYear.TY_2026:
+                return AOP_SLABS_TY2026
             return AOP_SLABS_TY2025
         return []
 
@@ -232,8 +285,11 @@ class IncomeTaxCalculator:
         """Validate input for common errors."""
         if inp.gross_income < 0:
             return False, "Gross income cannot be negative."
-        if inp.gross_income > 10_000_000_000:  # 10 billion cap
-            return False, "Gross income exceeds maximum allowed (10 billion)."
+        if inp.gross_income > 1_000_000_000_000:  # 1 trillion cap
+            return False, (
+                "Gross income exceeds the maximum supported amount "
+                "(PKR 1,000,000,000,000). Please enter a smaller amount."
+            )
         if inp.zakat_paid < 0:
             return False, "Zakat cannot be negative."
         if inp.donations < 0:
@@ -290,6 +346,24 @@ class IncomeTaxCalculator:
                 credit = min(inp.investment_in_equity * TAX_CREDITS["investment_pak_equity"], tax_before_credits * 0.50)
                 credits += credit
                 notes.append(f"Investment in equity credit: PKR {credit:,.2f}")
+
+            if inp.donations > 0:
+                # Section 61 / Division XIII average-rate method for companies:
+                # donations capped at 20% of taxable income.
+                allowed_donation = min(
+                    inp.donations,
+                    taxable_income * TAX_CREDITS["donations_limit_company"],
+                )
+                if inp.donations > allowed_donation:
+                    notes.append(
+                        f"Donations limited to 20% of taxable income: PKR {allowed_donation:,.2f}"
+                    )
+                if taxable_income > 0:
+                    credit = (allowed_donation / taxable_income) * tax_before_credits
+                    credits += credit
+                    notes.append(f"Donations credit: PKR {credit:,.2f} (Section 61, average-rate method)")
+                else:
+                    notes.append("Donations credit: PKR 0.00 (no taxable income for Section 61 credit)")
 
             tax_after_credits = max(0, tax_before_credits - credits)
             effective_rate = (tax_after_credits / inp.gross_income * 100) if inp.gross_income > 0 else 0
@@ -369,13 +443,24 @@ class IncomeTaxCalculator:
             notes.append(f"Investment in equity credit: PKR {credit:,.2f} (Section 62)")
 
         if inp.donations > 0:
-            # Section 61: 15% of donations, max 30% of taxable income deduction (handled earlier)
-            # As credit: only for specific approved funds
-            credit = inp.donations * TAX_CREDITS["donations_fund"]
-            max_credit = tax_before_credits * 0.30
-            credit = min(credit, max_credit)
-            credits += credit
-            notes.append(f"Donations credit: PKR {credit:,.2f} (Section 61)")
+            # Section 61 / Division XIII: credit = (A/B) x C where A is the
+            # assessed donation (capped at 30% of taxable income for
+            # individuals/AOPs), B is taxable income and C is tax before
+            # the credit.
+            allowed_donation = min(
+                inp.donations,
+                taxable_income * TAX_CREDITS["donations_limit_individual"],
+            )
+            if inp.donations > allowed_donation:
+                notes.append(
+                    f"Donations limited to 30% of taxable income: PKR {allowed_donation:,.2f}"
+                )
+            if taxable_income > 0:
+                credit = (allowed_donation / taxable_income) * tax_before_credits
+                credits += credit
+                notes.append(f"Donations credit: PKR {credit:,.2f} (Section 61, average-rate method)")
+            else:
+                notes.append("Donations credit: PKR 0.00 (no taxable income for Section 61 credit)")
 
         tax_after_credits = max(0, tax_before_credits - credits)
         effective_rate = (tax_after_credits / inp.gross_income * 100) if inp.gross_income > 0 else 0

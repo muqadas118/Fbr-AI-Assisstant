@@ -1037,6 +1037,23 @@ class FBRHybridRetriever:
                 ):
                     final_score += 0.50
 
+            # Corpus-growth follow-up to the documented Phase 8 scoring
+            # limitation: the daily updater added 55 official statute
+            # documents (+27k chunks), and generic immovable-property
+            # valuation queries now match valuation PROVISIONS inside
+            # Finance Acts / the Income Tax Ordinance more strongly than
+            # the per-city valuation TABLES, which survive only in the
+            # BM25 candidate pool. When the query is explicitly about
+            # property valuation, apply the same deterministic
+            # source-identity boost to the canonical valuation-table
+            # documents. No value, rate, year, or section is invented.
+            if (
+                "valuation" in query_lower
+                and "property" in query_lower
+                and "propertyvaluation" in source_lower
+            ):
+                final_score += 0.50
+
             combined[idx] = {
                 "index": idx,
                 "score": float(

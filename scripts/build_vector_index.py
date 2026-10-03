@@ -155,14 +155,45 @@ def main():
 
     metadata = []
 
+    # Phase-6 retrieval contract: metadata rows carry the full chunk
+    # provenance schema with vector_id == embedding_index == row index.
+    # The 5-field schema previously written here failed the retriever's
+    # ordering check (app/hybrid_retriever.py) and dropped the fields the
+    # BM25 layer (title, document_type, section_reference) searches on.
+    EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+    EMBEDDING_MODEL_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+    EMBEDDING_GENERATION = {
+        "batch_size": BATCH_SIZE,
+        "device": "cpu",
+        "dtype": "float32",
+        "max_sequence_length": 256,
+        "seed": 0,
+    }
+
     for i, chunk in enumerate(chunks):
         metadata.append(
             {
-                "vector_id": i,
                 "chunk_id": chunk.get("chunk_id", i),
+                "chunk_index": chunk.get("chunk_index", i),
                 "document_id": chunk.get("document_id"),
+                "document_type": chunk.get("document_type"),
+                "effective_date": chunk.get("effective_date"),
+                "embedding_dimension": dimension,
+                "embedding_generation": dict(EMBEDDING_GENERATION),
+                "embedding_index": i,
+                "embedding_model": EMBEDDING_MODEL,
+                "embedding_model_revision": EMBEDDING_MODEL_REVISION,
+                "normalization": "l2",
+                "page_end": chunk.get("page_end"),
+                "page_start": chunk.get("page_start"),
+                "publication_date": chunk.get("publication_date"),
+                "section_reference": chunk.get("section_reference"),
+                "similarity_metric": "cosine_via_inner_product",
                 "source": chunk.get("source"),
-                "text": chunk.get("text", ""),
+                "source_path": chunk.get("source_path"),
+                "source_sha256": chunk.get("source_sha256"),
+                "title": chunk.get("title"),
+                "vector_id": i,
             }
         )
 

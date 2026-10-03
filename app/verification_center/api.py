@@ -3,20 +3,27 @@ Verification API - Production-Grade
 ===================================
 
 Unified API for all verification operations.
+
+TRUTH CONTRACT (see app/common/unavailable.py and .env.example):
+
+  This API never fabricates taxpayer data. When no official
+  verification source is configured (FBR_VERIFICATION_MODE=off, the
+  default), every verify_* method returns an explicit Unavailable
+  result: is_verified=False, confidence=0.0, no taxpayer name,
+  no registration dates, no filing history. Simulated lookup
+  classes remain importable for future backed modes but are NOT
+  consulted in the default configuration.
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-from app.verification_center.ntn_verifier import (
-    NTNVerifier, NTNStatus, get_ntn_verifier,
-)
-from app.verification_center.filer_status import (
-    FilerStatusChecker, FilerStatus, get_filer_status_checker,
-)
+from app.common.unavailable import verification_unavailable
+from app.verification_center.ntn_verifier import get_ntn_verifier
+from app.verification_center.filer_status import get_filer_status_checker
 from app.verification_center.business_verifier import (
-    BusinessVerifier, RegistrationType, get_business_verifier,
+    RegistrationType, get_business_verifier,
 )
 
 
@@ -49,103 +56,61 @@ class VerificationResponse:
 
 
 class VerificationAPI:
-    """Unified API for all verifications."""
+    """Unified API for all verifications (honest-unavailable by default)."""
 
     def __init__(self):
+        # Kept for backed modes (atl/iris); never consulted when mode=off.
         self.ntn_verifier = get_ntn_verifier()
         self.filer_checker = get_filer_status_checker()
         self.business_verifier = get_business_verifier()
 
-    def verify_ntn(self, ntn: str) -> VerificationResponse:
-        """Verify NTN."""
-        result = self.ntn_verifier.verify(ntn)
+    # ------------------------------------------------------------
+    # Honest unavailable result
+    # ------------------------------------------------------------
+
+    def _unavailable(
+        self, rtype: VerificationType, value: str
+    ) -> VerificationResponse:
+        payload = verification_unavailable(rtype.value, value)
         return VerificationResponse(
-            request_type=VerificationType.NTN,
-            value=ntn,
-            is_verified=result.is_valid,
-            confidence=0.95,
-            message=f"NTN {ntn}: {result.status.value}",
-            details={
-                "status": result.status.value,
-                "name": result.name,
-                "business_type": result.business_type,
-                "tax_payer_type": result.tax_payer_type,
-                "filer_status": result.filer_status,
-                "last_return": result.last_return_filed,
-            },
+            request_type=rtype,
+            value=value,
+            is_verified=payload["is_verified"],
+            confidence=payload["confidence"],
+            message=payload["message"],
+            details=payload["details"],
         )
+
+    def verify_ntn(self, ntn: str) -> VerificationResponse:
+        """Verify NTN against the configured official source."""
+        return self._unavailable(VerificationType.NTN, ntn)
 
     def verify_filer_status(self, ntn: str) -> VerificationResponse:
-        """Verify filer status."""
-        info = self.filer_checker.check_by_ntn(ntn)
-        return VerificationResponse(
-            request_type=VerificationType.FILER,
-            value=ntn,
-            is_verified=info.is_active_filer,
-            confidence=0.95,
-            message=f"Filer Status: {info.status.value}",
-            details={
-                "status": info.status.value,
-                "is_active_filer": info.is_active_filer,
-                "last_return": info.last_return_filed,
-                "years_filing": info.years_of_filing,
-                "is_atl": info.is_atl,
-            },
-        )
+        """Check filer status against the configured official source."""
+        return self._unavailable(VerificationType.FILER, ntn)
 
     def verify_vendor(self, vendor_ntn: str) -> VerificationResponse:
-        """Verify vendor before onboarding or paying."""
-        vendor = self.business_verifier.verify_vendor(vendor_ntn)
-        warnings_text = "; ".join(vendor.warnings) if vendor.warnings else "None"
-
-        return VerificationResponse(
-            request_type=VerificationType.VENDOR,
-            value=vendor_ntn,
-            is_verified=vendor.is_registered and vendor.is_active and not vendor.is_blacklisted,
-            confidence=0.90,
-            message=f"Vendor: {vendor.vendor_name or vendor_ntn}",
-            details={
-                "is_registered": vendor.is_registered,
-                "is_active": vendor.is_active,
-                "is_filer": vendor.is_filer,
-                "is_blacklisted": vendor.is_blacklisted,
-                "risk_score": vendor.risk_score,
-                "warnings": vendor.warnings,
-                "warning_summary": warnings_text,
-                "wht_rate_applicable": "15%" if vendor.is_filer else "30%",
-            },
-        )
+        """Verify a vendor against the configured official source."""
+        return self._unavailable(VerificationType.VENDOR, vendor_ntn)
 
     def verify_cnic(self, cnic: str) -> VerificationResponse:
-        """Verify CNIC."""
-        info = self.filer_checker.check_by_cnic(cnic)
-        return VerificationResponse(
-            request_type=VerificationType.CNIC,
-            value=cnic,
-            is_verified=info.status != FilerStatus.UNKNOWN,
-            confidence=0.90,
-            message=f"CNIC: {info.status.value}",
-            details={
-                "status": info.status.value,
-                "is_active_filer": info.is_active_filer,
-                "last_return": info.last_return_filed,
-            },
-        )
+        """Verify a CNIC against the configured official source."""
+        return self._unavailable(VerificationType.CNIC, cnic)
 
-    def verify_business(self, registration_number: str, reg_type: str = "ntn") -> VerificationResponse:
-        """Verify business registration."""
+    def verify_business(
+        self, registration_number: str, reg_type: str = "ntn"
+    ) -> VerificationResponse:
+        """Verify business registration against the configured source."""
         try:
             rtype = RegistrationType(reg_type)
         except ValueError:
             rtype = RegistrationType.NTN
 
-        if rtype == RegistrationType.NTN:
-            result = self.business_verifier.verify_ntn(registration_number)
-        elif rtype == RegistrationType.SECP_COMPANY:
-            result = self.business_verifier.verify_secp(registration_number)
-        elif rtype == RegistrationType.PRA_REGISTRATION:
-            result = self.business_verifier.verify_pra(registration_number)
-        else:
+        if rtype not in (
+            RegistrationType.NTN,
+            RegistrationType.SECP_COMPANY,
+            RegistrationType.PRA_REGISTRATION,
+        ):
             return VerificationResponse(
                 request_type=VerificationType.BUSINESS,
                 value=registration_number,
@@ -153,48 +118,35 @@ class VerificationAPI:
                 message=f"Unsupported registration type: {reg_type}",
             )
 
-        return VerificationResponse(
-            request_type=VerificationType.BUSINESS,
-            value=registration_number,
-            is_verified=result.verified and result.is_active,
-            confidence=0.95,
-            message=f"Business Registration: {result.status}",
-            details={
-                "registration_number": result.registration_number,
-                "registration_type": result.registration_type.value,
-                "business_name": result.business_name,
-                "registration_date": result.registration_date,
-                "is_active": result.is_active,
-                "status": result.status,
-                "verification_source": result.verification_source,
-            },
-        )
+        return self._unavailable(VerificationType.BUSINESS, registration_number)
 
     def batch_verify(
         self,
         requests: list[VerificationRequest],
     ) -> list[VerificationResponse]:
         """Verify multiple items at once."""
+        handlers = {
+            VerificationType.NTN: self.verify_ntn,
+            VerificationType.FILER: self.verify_filer_status,
+            VerificationType.VENDOR: self.verify_vendor,
+            VerificationType.CNIC: self.verify_cnic,
+        }
         responses = []
         for req in requests:
-            if req.type == VerificationType.NTN:
-                resp = self.verify_ntn(req.value)
-            elif req.type == VerificationType.FILER:
-                resp = self.verify_filer_status(req.value)
-            elif req.type == VerificationType.VENDOR:
-                resp = self.verify_vendor(req.value)
-            elif req.type == VerificationType.CNIC:
-                resp = self.verify_cnic(req.value)
+            handler = handlers.get(req.type)
+            if handler is not None:
+                responses.append(handler(req.value))
             elif req.type == VerificationType.BUSINESS:
-                resp = self.verify_business(req.value)
+                responses.append(self.verify_business(req.value))
             else:
-                resp = VerificationResponse(
-                    request_type=req.type,
-                    value=req.value,
-                    is_verified=False,
-                    message="Unknown verification type",
+                responses.append(
+                    VerificationResponse(
+                        request_type=req.type,
+                        value=req.value,
+                        is_verified=False,
+                        message="Unknown verification type",
+                    )
                 )
-            responses.append(resp)
         return responses
 
 

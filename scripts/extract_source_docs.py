@@ -421,8 +421,34 @@ def extract_document(
     extension = source_path.suffix.lower()
 
     if extension == ".pdf":
+        extracted_data = extract_pdf(source_path)
+
+        # Scanned / image-only PDFs yield zero text characters. Honest
+        # status: manual_review_required — labeling them "extracted"
+        # produces empty-text records that fail downstream validation.
+        pages_data = extracted_data.get("pages_data", [])
+        total_chars = sum(
+            len(str(page.get("text") or "").strip())
+            for page in pages_data
+            if isinstance(page, dict)
+        )
+
+        if total_chars == 0:
+            return (
+                {
+                    "format": "pdf",
+                    "message": (
+                        "No extractable text: scanned or image-only PDF. "
+                        "OCR/manual review required."
+                    ),
+                    "pages": extracted_data.get("pages", len(pages_data)),
+                    "text_characters": 0,
+                },
+                "manual_review_required",
+            )
+
         return (
-            extract_pdf(source_path),
+            extracted_data,
             "extracted",
         )
 
@@ -642,6 +668,26 @@ def main() -> None:
 
             elif status == "manual_review_required":
                 manual_review_count += 1
+
+                # Write the manual-review stub so downstream validation can
+                # account for every supported source document. Older runs
+                # silently skipped this write, leaving legacy .doc inputs
+                # with no extracted JSON at all.
+                output_path = output_path_for(
+                    source_path
+                )
+
+                write_json(
+                    output_path,
+                    {
+                        "source": str(
+                            relative_path
+                        ),
+                        "sha256": file_hash,
+                        "status": "manual_review_required",
+                        "data": extracted_data,
+                    },
+                )
 
                 print(
                     "    STATUS: MANUAL REVIEW REQUIRED"

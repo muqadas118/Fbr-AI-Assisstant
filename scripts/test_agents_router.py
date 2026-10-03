@@ -451,6 +451,41 @@ def test_query_expansion(results: list[dict[str, Any]]) -> None:
         == "federal excise duty on cement",
         fe.expand_query("federal excise duty on cement"),
     )
+    # Federal excise: SRO questions gain notification corpus
+    # vocabulary so retrieval surfaces SRO notification chunks.
+    _assert(
+        results,
+        "expansion[federal_excise]_sro_expanded",
+        fe.expand_query(
+            "Recent SROs (Statutory Regulatory Orders) issued by FBR 2025"
+        )
+        == (
+            "Recent SROs (Statutory Regulatory Orders) issued by FBR 2025"
+            " Statutory Regulatory Order SRO Notification Federal Board"
+            " of Revenue Revenue Division notification issued Islamabad"
+        ),
+        fe.expand_query(
+            "Recent SROs (Statutory Regulatory Orders) issued by FBR 2025"
+        ),
+    )
+    _assert(
+        results,
+        "expansion[federal_excise]_fed_sro_combined",
+        fe.expand_query("FED SRO on cigarettes")
+        == (
+            "Federal Excise Duty SRO on cigarettes Statutory Regulatory"
+            " Order SRO Notification Federal Board of Revenue Revenue"
+            " Division notification issued Islamabad"
+        ),
+        fe.expand_query("FED SRO on cigarettes"),
+    )
+    _assert(
+        results,
+        "expansion[federal_excise]_notification_qualified_unchanged",
+        fe.expand_query("SRO 1679 notification Abbottabad")
+        == "SRO 1679 notification Abbottabad",
+        fe.expand_query("SRO 1679 notification Abbottabad"),
+    )
 
     # Income tax: bare section -> "...under the Income Tax Ordinance 2001"
     _assert(
@@ -470,6 +505,60 @@ def test_query_expansion(results: list[dict[str, Any]]) -> None:
         it.expand_query(
             "What is Section 177 of the Income Tax Ordinance 2001?"
         ),
+    )
+    # Income tax: natural-language salaried rate/slab questions gain
+    # First Schedule Part I corpus vocabulary so hybrid retrieval
+    # surfaces the slab table instead of WHT cards/budget teasers.
+    _assert(
+        results,
+        "expansion[income_tax]_salary_rate_expanded",
+        it.expand_query(
+            "What is the current income tax rate for salaried individuals?"
+        )
+        == (
+            "What is the current income tax rate for salaried individuals?"
+            " under the Income Tax Ordinance 2001 First Schedule Part I"
+            " salary rates table where income chargeable under the head"
+            " salary exceeds seventy-five per cent"
+        ),
+        it.expand_query(
+            "What is the current income tax rate for salaried individuals?"
+        ),
+    )
+    # No section number may leak into the expansion: exact-section
+    # retrieval would hijack the query away from the slab table.
+    _assert(
+        results,
+        "expansion[income_tax]_salary_expansion_has_no_section_number",
+        "section" not in it.expand_query(
+            "What is the current income tax rate for salaried individuals?"
+        ).lower().replace("income tax ordinance", ""),
+        it.expand_query(
+            "What is the current income tax rate for salaried individuals?"
+        ),
+    )
+    # Withholding / other-domain salary questions keep WHT routing.
+    _assert(
+        results,
+        "expansion[income_tax]_withholding_salary_unchanged",
+        it.expand_query("What is the withholding tax rate on salary?")
+        == "What is the withholding tax rate on salary?",
+        it.expand_query("What is the withholding tax rate on salary?"),
+    )
+    _assert(
+        results,
+        "expansion[income_tax]_sales_tax_salary_unchanged",
+        it.expand_query("What is the sales tax rate on salaried services?")
+        == "What is the sales tax rate on salaried services?",
+        it.expand_query("What is the sales tax rate on salaried services?"),
+    )
+    # Already-qualified First Schedule queries are not double-expanded.
+    _assert(
+        results,
+        "expansion[income_tax]_first_schedule_unchanged",
+        it.expand_query("salary slabs First Schedule Part I")
+        == "salary slabs First Schedule Part I",
+        it.expand_query("salary slabs First Schedule Part I"),
     )
 
     # Customs: CD -> customs duty

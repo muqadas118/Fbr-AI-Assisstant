@@ -14,6 +14,9 @@ from app.routers.verify import router as verify_router
 from app.routers.monitor import router as monitor_router
 from app.routers.team import router as team_router
 from app.routers.workspaces import router as workspaces_router
+from app.routers.uploads import router as uploads_router
+from app.routers.assistant import router as assistant_router
+from app.routers.vault import router as vault_router
 
 __all__ = [
     "calendar_router",
@@ -25,4 +28,7 @@ __all__ = [
     "monitor_router",
     "team_router",
     "workspaces_router",
+    "uploads_router",
+    "assistant_router",
+    "vault_router",
 ]

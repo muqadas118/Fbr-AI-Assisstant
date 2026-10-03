@@ -689,6 +689,131 @@ class FBRRAGEngine:
             "verification": verification,
             "grounded": bool(verification["passed"]),
         }
+    # ------------------------------------------------------------------
+    # Retrieval-only variant (used by the streaming assistant endpoint)
+    # ------------------------------------------------------------------
+
+    def ground(self, question: str, top_k: int = DEFAULT_TOP_K) -> dict:
+        """Retrieve + assemble context WITHOUT any LLM call.
+
+        The streaming endpoint needs meta (sources) to reach the client
+        as soon as possible; engine.answer() would run a full
+        non-streaming generation first (~45s of dead air before the
+        first SSE byte). This returns the same retrieval/grounding
+        metadata plus `sufficient` so the caller can decide whether a
+        generation is worthwhile at all. No-evidence and ambiguous-
+        section cases skip the LLM exactly as answer() does.
+        """
+        try:
+            question = _validate_question(question)
+        except ValueError as e:
+            return {
+                "question": str(question),
+                "question_analysis": {},
+                "context": "",
+                "sources": [],
+                "verification": {
+                    "passed": False,
+                    "reason": str(e),
+                    "failed_checks": ["question_validation"],
+                    "checks": {},
+                },
+                "grounded": False,
+                "sufficient": False,
+                "skip_llm_answer": str(e),
+            }
+
+        question_analysis = _analyze_question(question)
+        ambiguous = _detect_ambiguous_section_query(question)
+        results = _retrieve(self.retriever, question, top_k)
+        provenance = _map_to_provenance(self.retriever, results)
+        sources = _serialize_provenance(provenance)
+
+        if (
+            ambiguous["is_ambiguous_section"]
+            and any(
+                record.get("multi_law_candidate")
+                for record in provenance
+            )
+        ):
+            laws = sorted({
+                str(record.get("law_tag", ""))
+                for record in provenance
+                if record.get("law_tag")
+            })
+            return {
+                "question": question,
+                "question_analysis": question_analysis,
+                "context": "",
+                "sources": sources,
+                "verification": {
+                    "passed": True,
+                    "reason": (
+                        f"Ambiguous section query: section "
+                        f"{ambiguous['section_number']} present in "
+                        f"multiple FBR laws: {', '.join(laws) or 'unknown'}."
+                    ),
+                    "failed_checks": [],
+                    "checks": {},
+                    "ambiguous_section": True,
+                    "candidate_laws": laws,
+                    "section_number": ambiguous["section_number"],
+                },
+                "grounded": True,
+                "sufficient": True,
+                "skip_llm_answer": _AMBIGUOUS_SECTION_ANSWER,
+            }
+
+        if not _has_sufficient_evidence(question_analysis, provenance) or not provenance:
+            reason = (
+                "Retrieved evidence was insufficient or out of domain."
+                if not provenance
+                else "No evidence to verify."
+            )
+            return {
+                "question": question,
+                "question_analysis": question_analysis,
+                "context": "",
+                "sources": [],
+                "verification": {
+                    "passed": True,
+                    "reason": reason,
+                    "failed_checks": [],
+                    "checks": {},
+                },
+                "grounded": True,
+                "sufficient": False,
+                "skip_llm_answer": _NO_EVIDENCE_ANSWER,
+            }
+
+        context = _assemble_context(provenance)
+        if not context.strip():
+            return {
+                "question": question,
+                "question_analysis": question_analysis,
+                "context": "",
+                "sources": sources,
+                "verification": {
+                    "passed": True,
+                    "reason": "Empty context after assembly.",
+                    "failed_checks": [],
+                    "checks": {},
+                },
+                "grounded": True,
+                "sufficient": False,
+                "skip_llm_answer": _NO_EVIDENCE_ANSWER,
+            }
+
+        return {
+            "question": question,
+            "question_analysis": question_analysis,
+            "context": context,
+            "sources": sources,
+            "verification": None,  # filled after generation by the caller
+            "grounded": False,
+            "sufficient": True,
+            "skip_llm_answer": None,
+        }
 
 
 # ============================================================

@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import os
+import threading
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -14,6 +16,7 @@ from app.agents.orchestrator import AgentOrchestrator
 from app.calculations import get_tax_engine, TaxCalculationEngine
 from app.llm import LLMError
 from app.routers import (
+    assistant_router,
     calendar_router,
     documents_router,
     invoices_router,
@@ -21,6 +24,8 @@ from app.routers import (
     notices_router,
     tax_health_router,
     team_router,
+    uploads_router,
+    vault_router,
     verify_router,
     workspaces_router,
 )
@@ -40,18 +45,24 @@ logging.basicConfig(
 logger = logging.getLogger("fbr_api")
 
 # Rate limiting storage (in-memory, use Redis for production)
-# 10 requests per minute per IP
+# Buckets are per-scope so a cheap endpoint (/calculate) cannot be starved
+# by an expensive one (/answer) and vice versa:
+#   answer    : 10 req / 60s per client (LLM round-trips are costly)
+#   calculate : 30 req / 60s per client (deterministic local math)
+#   verify-batch: 10 req / 60s per IP (defense-in-depth under auth)
 RATE_LIMIT = 10
 RATE_WINDOW = 60  # seconds
+CALC_RATE_LIMIT = 30
 _rate_store: dict[str, list[datetime]] = defaultdict(list)
 
 
-def _check_rate_limit(client_key: str) -> tuple[bool, int]:
+def _check_rate_limit(client_key: str, limit: int = RATE_LIMIT) -> tuple[bool, int]:
     """Check if a client is within the rate limit. Returns (allowed, remaining).
 
-    `client_key` is "user:<id>" when authenticated, "ip:<addr>" otherwise.
-    NOTE: in-memory and per-process — it resets on restart and is not shared
-    across uvicorn workers. Move to Redis before relying on it in production.
+    `client_key` is "<scope>:user:<id>" when authenticated,
+    "<scope>:ip:<addr>" otherwise. NOTE: in-memory and per-process — it
+    resets on restart and is not shared across uvicorn workers. Move to
+    Redis before relying on it in production.
     """
     now = datetime.now()
     window_start = now - timedelta(seconds=RATE_WINDOW)
@@ -61,11 +72,11 @@ def _check_rate_limit(client_key: str) -> tuple[bool, int]:
         ts for ts in _rate_store[client_key] if ts > window_start
     ]
 
-    if len(_rate_store[client_key]) >= RATE_LIMIT:
+    if len(_rate_store[client_key]) >= limit:
         return False, 0
 
     _rate_store[client_key].append(now)
-    remaining = RATE_LIMIT - len(_rate_store[client_key])
+    remaining = limit - len(_rate_store[client_key])
     return True, remaining
 
 
@@ -76,7 +87,7 @@ def _check_rate_limit(client_key: str) -> tuple[bool, int]:
 # available for a future user-keyed upgrade like POST /answer.
 async def _verify_batch_rate_limit(request: Request) -> None:
     client_ip = request.client.host if request.client else "unknown"
-    allowed, _remaining = _check_rate_limit("ip:" + client_ip)
+    allowed, _remaining = _check_rate_limit("verify-batch:ip:" + client_ip)
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -91,25 +102,47 @@ for _r in verify_router.routes:
         _r.dependencies.append(Depends(_verify_batch_rate_limit))
 
 
-async def log_requests(request: Request, call_next):
-    """Log all incoming requests for audit trail."""
-    start_time = time.time()
-    client_ip = request.client.host if request.client else "unknown"
+class RequestLoggingMiddleware:
+    """Pure-ASGI request logging (audit trail).
 
-    logger.info(
-        f"Request | {request.method} {request.url.path} | IP: {client_ip}"
-    )
+    Deliberately NOT a function-style BaseHTTPMiddleware: those buffer
+    StreamingResponse bodies (call_next only returns after the body
+    finishes), which defeats SSE streaming — /assistant/ask/stream
+    tokens would only reach the client when the whole answer completed.
+    This passes every ASGI message through untouched and only intercepts
+    http.response.start to log the response and stamp X-Response-Time.
+    """
 
-    response = await call_next(request)
+    def __init__(self, app):
+        self.app = app
 
-    duration = time.time() - start_time
-    logger.info(
-        f"Response | {request.method} {request.url.path} | "
-        f"Status: {response.status_code} | Duration: {duration:.3f}s"
-    )
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        start_time = time.time()
+        client_ip = (scope.get("client") or ("unknown", 0))[0]
+        method = scope.get("method", "")
+        path = scope.get("path", "")
+        logger.info(f"Request | {method} {path} | IP: {client_ip}")
 
-    response.headers["X-Response-Time"] = f"{duration:.3f}s"
-    return response
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                duration = time.time() - start_time
+                logger.info(
+                    f"Response | {method} {path} | "
+                    f"Status: {message.get('status', 0)} | Duration: {duration:.3f}s"
+                )
+                message.setdefault("headers", []).append(
+                    (b"x-response-time", f"{duration:.3f}s".encode())
+                )
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        except Exception:
+            logger.exception(f"Response | {method} {path} | Unhandled error")
+            raise
 
 
 class AnswerRequest(BaseModel):
@@ -123,7 +156,10 @@ class AnswerRequest(BaseModel):
     @field_validator("query")
     @classmethod
     def query_strip_whitespace(cls, v: str) -> str:
-        return v.strip()
+        v = v.strip()
+        if not v:
+            raise ValueError("query must not be blank")
+        return v
 
 
 class SourceItem(BaseModel):
@@ -155,7 +191,6 @@ class VerificationCheck(BaseModel):
     passed: bool
     reason: str
     weak_sentences: Optional[list[str]] = None
-
     @field_validator("weak_sentences", mode="before")
     @classmethod
     def _normalize_weak_sentences(cls, v):
@@ -185,6 +220,49 @@ class VerificationResult(BaseModel):
     checks: VerificationChecks
     failed_checks: list[str]
     reason: str
+
+
+_CANONICAL_CHECKS = (
+    "answer_size",
+    "section_consistency",
+    "grounding",
+    "speculation",
+)
+
+
+def _panel_checks(verification_data: dict, result: dict) -> dict:
+    """
+    Normalize the four verification-panel checks.
+
+    Single-domain responses already carry the canonical four-check shape
+    and pass through unchanged. Multi-domain aggregates instead carry a
+    per-domain boolean map, which previously rendered as all-Fail in the
+    UI even for domains that fully passed. For aggregates, each panel
+    check is the AND of that check across the grounded domains, so the
+    panel reflects what the delivered content actually passed; the
+    overall badge and failed_checks list still report unverified domains.
+    """
+    checks_data = verification_data.get("checks", {}) or {}
+    if all(isinstance(checks_data.get(name), dict) for name in _CANONICAL_CHECKS):
+        return checks_data
+    grounded = [
+        d for d in result.get("domain_results", []) if d.get("grounded")
+    ]
+    panel: dict = {}
+    for name in _CANONICAL_CHECKS:
+        details = [
+            ((d.get("verification", {}) or {}).get("checks", {}) or {}).get(name, {})
+            for d in grounded
+        ]
+        passed = bool(details) and all(
+            (item or {}).get("passed", False) for item in details
+        )
+        panel[name] = {
+            "passed": passed,
+            "reason": verification_data.get("reason", ""),
+            "weak_sentences": None,
+        }
+    return panel
 
 
 class AnswerResponse(BaseModel):
@@ -225,6 +303,9 @@ app.include_router(verify_router)
 app.include_router(monitor_router)
 app.include_router(team_router)
 app.include_router(workspaces_router)
+app.include_router(uploads_router)
+app.include_router(assistant_router)
+app.include_router(vault_router)
 
 # SECURITY NOTE - deferred auth hardening (owner decision):
 # The feature routers mounted above expose 51 endpoints with no Depends auth
@@ -246,7 +327,9 @@ _origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
 if not _origins:
     _origins = [
         "http://localhost:5173",  # Local dev
+        "http://127.0.0.1:5173",  # Local dev (IPv4 loopback)
         "http://localhost:3000",  # Alternative local dev
+        "http://127.0.0.1:3000",  # Alternative local dev (IPv4 loopback)
         # Add your production frontend URL here
         # "https://your-frontend-domain.com",
     ]
@@ -258,11 +341,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register request logging middleware
-app.middleware("http")(log_requests)
+# Register request logging middleware (pure-ASGI: streams pass through)
+app.add_middleware(RequestLoggingMiddleware)
 
 
 _orchestrator: Optional[AgentOrchestrator] = None
+_answer_cache: dict[str, tuple[float, AnswerResponse]] = {}
+_cache_lock = threading.Lock()
+_ANSWER_CACHE_TTL_S = 300  # 5 minutes; FBR law changes don't move faster
+_ANSWER_CACHE_MAX = 100
 
 
 def _get_orchestrator() -> AgentOrchestrator:
@@ -283,8 +370,8 @@ async def calculate(
     Expects JSON body: {"calc_type": "...", "inputs": {...}}
     """
     # Rate limiting - same in-memory limiter as POST /answer (10 req/60s).
-    rate_key = "user:" + str(user.get("id")) if user and user.get("id") else ("ip:" + str(request.client.host) if request.client else "ip:unknown")
-    allowed, remaining = _check_rate_limit(rate_key)
+    rate_key = "calculate:user:" + str(user.get("id")) if user and user.get("id") else ("calculate:ip:" + str(request.client.host) if request.client else "calculate:ip:unknown")
+    allowed, remaining = _check_rate_limit(rate_key, CALC_RATE_LIMIT)
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -295,6 +382,11 @@ async def calculate(
         body = await request.json()
         calc_type = body.get("calc_type", "income_tax")
         inputs = body.get("inputs", {})
+        if not isinstance(inputs, dict) or not inputs:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No inputs provided: 'inputs' must be a non-empty object.",
+            )
 
         engine = get_tax_engine()
         result = engine.calculate(calc_type, inputs)
@@ -359,6 +451,216 @@ async def health() -> dict[str, str]:
     }
 
 
+_TAX_REDUCER_REFUSALS = (
+    "The provided FBR documents do not contain enough information to answer this.",
+    "The retrieved evidence does not support a verified answer.",
+)
+
+
+def _augment_tax_reducer(query: str, result: dict) -> dict:
+    """Deterministic Tax Reducer support for /answer.
+
+    The Tax Reducer frontend sends a structured "Lawful tax reduction
+    analysis ..." query. When the canonical RAG pipeline could not ground
+    it (a refusal), run the registered tax_optimization tool directly —
+    it is deterministic (no LLM, no retrieval), so it always produces a
+    concrete, lawful savings estimate with sources. The refusal text is
+    replaced by a human-readable rendering of the tool's structured
+    result; the raw structured data is attached additively.
+    """
+    lowered = (query or "").lower()
+    if "lawful tax reduction analysis" not in lowered:
+        return result
+
+    answer_text = str(result.get("answer", "") or "").strip()
+    is_refusal = (not answer_text) or (
+        any(refusal in answer_text for refusal in _TAX_REDUCER_REFUSALS)
+    )
+    if not is_refusal:
+        return result
+
+    try:
+        from app.tools import get_default_registry
+        from app.tools.tax_optimization import (
+            detect_unlawful_intent,
+            extract_tax_reducer_payload,
+        )
+
+        if detect_unlawful_intent(query):
+            result["answer"] = (
+                "This tool only supports lawful tax planning. It cannot help "
+                "conceal income, fabricate expenses, falsify records, or evade taxes."
+            )
+            return result
+
+        payload = extract_tax_reducer_payload(query)
+        if payload is None:
+            # Not enough structured data (no tax year / income) — keep the refusal.
+            return result
+
+        tool_result = get_default_registry().execute("tax_optimization", payload)
+        if not (tool_result.ok and isinstance(tool_result.data, dict)):
+            return result
+
+        data = tool_result.data
+        baseline = data.get("baseline", {}) or {}
+        optimized = data.get("optimized", {}) or {}
+
+        def _fmt(v: Any) -> str:
+            try:
+                return f"PKR {float(v):,.2f}"
+            except (TypeError, ValueError):
+                return str(v)
+
+        lines = [
+            "LAWFUL TAX-SAVING ANALYSIS (deterministic estimate)",
+            "",
+            f"Taxpayer: {str(data.get('entity_type', 'individual')).title()} — "
+            f"Tax type: {str(data.get('tax_type', 'income_tax')).replace('_', ' ').title()} — "
+            f"Tax year: {data.get('tax_year', '—')}",
+            "",
+            f"Baseline taxable income: {_fmt(baseline.get('taxable_income', 0))}",
+            f"Baseline estimated tax: {_fmt(baseline.get('estimated_tax', 0))}",
+            f"Optimized taxable income (after lawful deductions/incentives): {_fmt(optimized.get('taxable_income', 0))}",
+            f"Optimized estimated tax: {_fmt(optimized.get('estimated_tax', 0))}",
+            f"Estimated lawful savings: {_fmt(data.get('estimated_savings', 0))}",
+            f"Net liability after payments already made: {_fmt(data.get('net_liability_after_payments', 0))}",
+            "",
+        ]
+        opportunities = data.get("opportunities", []) or []
+        if opportunities:
+            lines.append(f"LAWFUL OPPORTUNITIES ({len(opportunities)}):")
+            for opp in opportunities:
+                if isinstance(opp, dict):
+                    lines.append(
+                        f"- {opp.get('title', 'Opportunity')} — "
+                        f"{opp.get('description', '')}"
+                    )
+                    impact = str(opp.get("estimated_impact", "") or "").strip()
+                    if impact:
+                        lines.append(f"  Impact: {impact}")
+                    evidence = opp.get("required_evidence", []) or []
+                    if evidence:
+                        lines.append(f"  Evidence needed: {', '.join(str(x) for x in evidence)}")
+                    lines.append(f"  Legal basis: {opp.get('legal_basis', '—')}")
+                else:
+                    lines.append(f"- {opp}")
+        else:
+            lines.append(
+                "No specific lawful opportunities matched the provided profile; "
+                "the baseline vs optimized comparison above still applies "
+                "where deductions/incentives were provided."
+            )
+        lines.extend([
+            "",
+            str(data.get("estimate_disclaimer", "")),
+        ])
+
+        result["answer"] = "\n".join(lines)
+        result["grounded"] = True
+        result["tax_optimization"] = data
+        # Normalize the tool's source dicts into the SourceItem shape the
+        # API schema (and the frontend citation list) expects.
+        norm_sources = []
+        for s in data.get("sources", []) or []:
+            if isinstance(s, dict):
+                norm_sources.append({
+                    **s,
+                    "source": s.get("source") or s.get("document") or s.get("title", ""),
+                    "section": s.get("section") or s.get("legal_reference"),
+                })
+            else:
+                norm_sources.append(s)
+        result["sources"] = norm_sources or result.get("sources", [])
+        result["verification"] = {
+            "passed": True,
+            "checks": {
+                "answer_size": {"passed": True, "reason": "deterministic tax_optimization tool output"},
+                "section_consistency": {"passed": True, "reason": "deterministic tax_optimization tool output"},
+                "grounding": {"passed": True, "reason": "figures computed by the registered tax_optimization tool"},
+                "speculation": {"passed": True, "reason": "deterministic tax_optimization tool output"},
+            },
+            "failed_checks": [],
+            "reason": "tool-computed result (deterministic engine; figures quoted verbatim)",
+        }
+        return result
+    except Exception as e:  # noqa: BLE001
+        logging.warning("Tax Reducer augmentation failed: %s", e)
+        return result
+
+
+def _serialize_answer(query: str, result: dict) -> AnswerResponse:
+    """Build the typed AnswerResponse from an orchestrator result dict."""
+    # FIX: refusal (grounded=False) ke saath citations mat bhejo — frontend
+    # sources dekh kar refusal ke saath bhi citations dikhata hai.
+    sources_raw = [] if not result.get("grounded") else (result.get("sources", []) or [])
+    sources = [
+        SourceItem(
+            chunk_id=s.get("chunk_id", ""),
+            document_id=s.get("document_id", ""),
+            source=s.get("source", ""),
+            source_path=s.get("source_path", ""),
+            source_sha256=s.get("source_sha256"),
+            page=s.get("page"),
+            page_start=s.get("page_start"),
+            page_end=s.get("page_end"),
+            section=s.get("section"),
+            section_reference=s.get("section_reference"),
+            section_number=s.get("section_number"),
+            law_tag=s.get("law_tag"),
+            multi_law_candidate=s.get("multi_law_candidate", False),
+            score=s.get("score", 0.0),
+            semantic_score=s.get("semantic_score", 0.0),
+            bm25_score=s.get("bm25_score", 0.0),
+            exact_match=s.get("exact_match", False),
+        )
+        for s in sources_raw
+    ]
+
+    verification_data = result.get("verification", {})
+    checks_data = _panel_checks(verification_data, result)
+    verification = VerificationResult(
+        passed=verification_data.get("passed", False),
+        checks=VerificationChecks(
+            answer_size=VerificationCheck(
+                passed=checks_data.get("answer_size", {}).get("passed", False),
+                reason=checks_data.get("answer_size", {}).get("reason", ""),
+                weak_sentences=checks_data.get("answer_size", {}).get("weak_sentences"),
+            ),
+            section_consistency=VerificationCheck(
+                passed=checks_data.get("section_consistency", {}).get("passed", False),
+                reason=checks_data.get("section_consistency", {}).get("reason", ""),
+                weak_sentences=checks_data.get("section_consistency", {}).get("weak_sentences"),
+            ),
+            grounding=VerificationCheck(
+                passed=checks_data.get("grounding", {}).get("passed", False),
+                reason=checks_data.get("grounding", {}).get("reason", ""),
+                weak_sentences=checks_data.get("grounding", {}).get("weak_sentences"),
+            ),
+            speculation=VerificationCheck(
+                passed=checks_data.get("speculation", {}).get("passed", False),
+                reason=checks_data.get("speculation", {}).get("reason", ""),
+                weak_sentences=checks_data.get("speculation", {}).get("weak_sentences"),
+            ),
+        ),
+        failed_checks=verification_data.get("failed_checks", []),
+        reason=verification_data.get("reason", ""),
+    )
+
+    return AnswerResponse(
+        question=result.get("question", query),
+        domains=result.get("domains", []),
+        primary_domain=result.get("primary_domain", ""),
+        multi_domain=result.get("multi_domain", False),
+        routing=result.get("routing", {}),
+        domain_results=result.get("domain_results", []),
+        answer=result.get("answer", ""),
+        sources=sources,
+        verification=verification,
+        grounded=result.get("grounded", False),
+    )
+
+
 @app.post("/answer", response_model=AnswerResponse, tags=["qa"])
 async def answer(
     request: AnswerRequest,
@@ -368,8 +670,8 @@ async def answer(
     # Rate limiting — key on the authenticated user when we have one, since an IP
     # is shared behind NAT and trivially rotated. Falls back to IP for the
     # FBR_AUTH_REQUIRED=false dev path.
-    rate_key = f"user:{user['id']}" if user and user.get("id") else (
-        f"ip:{http_request.client.host}" if http_request.client else "ip:unknown"
+    rate_key = f"answer:user:{user['id']}" if user and user.get("id") else (
+        f"answer:ip:{http_request.client.host}" if http_request.client else "answer:ip:unknown"
     )
     allowed, remaining = _check_rate_limit(rate_key)
     if not allowed:
@@ -378,81 +680,34 @@ async def answer(
             detail=f"Rate limit exceeded: max {RATE_LIMIT} requests per {RATE_WINDOW}s",
         )
 
-    if not request.query.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Query is required.",
-        )
+    cache_key = request.query.lower()
+    now = time.time()
+    with _cache_lock:
+        hit = _answer_cache.get(cache_key)
+        if hit is not None and now - hit[0] < _ANSWER_CACHE_TTL_S:
+            return hit[1]
 
     try:
         orch = _get_orchestrator()
-        result = orch.handle(request.query)
+        # orch.handle() does CPU/network-bound RAG + LLM work; run it in a
+        # worker thread so it cannot stall the event loop (a slow LLM call
+        # used to block /calculate and other endpoints for its full duration).
+        result = await asyncio.to_thread(orch.handle, request.query)
 
-        sources = [
-            SourceItem(
-                chunk_id=s.get("chunk_id", ""),
-                document_id=s.get("document_id", ""),
-                source=s.get("source", ""),
-                source_path=s.get("source_path", ""),
-                source_sha256=s.get("source_sha256"),
-                page=s.get("page"),
-                page_start=s.get("page_start"),
-                page_end=s.get("page_end"),
-                section=s.get("section"),
-                section_reference=s.get("section_reference"),
-                section_number=s.get("section_number"),
-                law_tag=s.get("law_tag"),
-                multi_law_candidate=s.get("multi_law_candidate", False),
-                score=s.get("score", 0.0),
-                semantic_score=s.get("semantic_score", 0.0),
-                bm25_score=s.get("bm25_score", 0.0),
-                exact_match=s.get("exact_match", False),
-            )
-            for s in result.get("sources", [])
-        ]
+        # Tax Reducer: when the RAG pipeline refused but the query carries
+        # structured tax-reducer data, fall back to the deterministic
+        # tax_optimization tool so the user always gets a concrete analysis.
+        result = _augment_tax_reducer(request.query, result)
 
-        verification_data = result.get("verification", {})
-        checks_data = verification_data.get("checks", {})
-        verification = VerificationResult(
-            passed=verification_data.get("passed", False),
-            checks=VerificationChecks(
-                answer_size=VerificationCheck(
-                    passed=checks_data.get("answer_size", {}).get("passed", False),
-                    reason=checks_data.get("answer_size", {}).get("reason", ""),
-                    weak_sentences=checks_data.get("answer_size", {}).get("weak_sentences"),
-                ),
-                section_consistency=VerificationCheck(
-                    passed=checks_data.get("section_consistency", {}).get("passed", False),
-                    reason=checks_data.get("section_consistency", {}).get("reason", ""),
-                    weak_sentences=checks_data.get("section_consistency", {}).get("weak_sentences"),
-                ),
-                grounding=VerificationCheck(
-                    passed=checks_data.get("grounding", {}).get("passed", False),
-                    reason=checks_data.get("grounding", {}).get("reason", ""),
-                    weak_sentences=checks_data.get("grounding", {}).get("weak_sentences"),
-                ),
-                speculation=VerificationCheck(
-                    passed=checks_data.get("speculation", {}).get("passed", False),
-                    reason=checks_data.get("speculation", {}).get("reason", ""),
-                    weak_sentences=checks_data.get("speculation", {}).get("weak_sentences"),
-                ),
-            ),
-            failed_checks=verification_data.get("failed_checks", []),
-            reason=verification_data.get("reason", ""),
-        )
+        response = _serialize_answer(request.query, result)
 
-        return AnswerResponse(
-            question=result.get("question", request.query),
-            domains=result.get("domains", []),
-            primary_domain=result.get("primary_domain", ""),
-            multi_domain=result.get("multi_domain", False),
-            routing=result.get("routing", {}),
-            domain_results=result.get("domain_results", []),
-            answer=result.get("answer", ""),
-            sources=sources,
-            verification=verification,
-            grounded=result.get("grounded", False),
-        )
+        with _cache_lock:
+            if len(_answer_cache) >= _ANSWER_CACHE_MAX:
+                oldest = min(_answer_cache, key=lambda k: _answer_cache[k][0])
+                del _answer_cache[oldest]
+            _answer_cache[cache_key] = (now, response)
+
+        return response
 
     except LLMError as e:
         raise HTTPException(
@@ -460,6 +715,7 @@ async def answer(
             detail="LLM unavailable",
         )
     except Exception as e:
+        logger.error("POST /answer failed for query %r: %s", request.query[:120], e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal error",
