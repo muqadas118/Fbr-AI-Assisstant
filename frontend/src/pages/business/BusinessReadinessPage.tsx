@@ -8,6 +8,7 @@ import { StatusBanner } from "@/components/ui/StatusBanner";
 import { Tag } from "@/components/ui/Tag";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { Kv } from "@/components/ui/Kv";
 
 const CURRENT_TAX_YEAR = new Date().getFullYear();
@@ -213,12 +214,6 @@ export function BusinessReadinessPage() {
       setForm((prev) => ({ ...prev, [field]: val }));
     };
 
-  const handleSelectChange =
-    <K extends keyof ReadinessFormValues>(field: K) =>
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      setForm((prev) => ({ ...prev, [field]: e.target.value as ReadinessFormValues[K] }));
-    };
-
   const handleNtnChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value.replace(/[^0-9]/g, "").slice(0, 9);
     setForm((prev) => ({ ...prev, ntn: val }));
@@ -288,7 +283,7 @@ export function BusinessReadinessPage() {
       <div className="page page--readiness">
         <header className="page__header">
           <div>
-            <p className="page-eyebrow">Business · Filing</p>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Filing</div>
             <h2 className="page__title">Business Return Readiness</h2>
             <p className="page__subtitle">
               Check whether your business returns can be filed today. Provide your business NTN and tax year to get started.
@@ -339,17 +334,16 @@ export function BusinessReadinessPage() {
                 helperText="The tax year you are filing for"
                 data-testid="biz-readiness-tax-year-field"
               >
-                <select
-                  value={form.taxYear}
-                  onChange={handleSelectChange("taxYear")}
-                  data-testid="biz-readiness-tax-year-select"
-                >
-                  {Array.from({ length: 6 }, (_, i) => CURRENT_TAX_YEAR - i).map((yr) => (
-                    <option key={yr} value={yr}>
-                      Tax Year {yr}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  value={String(form.taxYear)}
+                  onChange={(v) => setForm((prev) => ({ ...prev, taxYear: Number(v) }))}
+                  testId="biz-readiness-tax-year-select"
+                  ariaLabel="Tax year"
+                  options={Array.from({ length: 6 }, (_, i) => CURRENT_TAX_YEAR - i).map((yr) => ({
+                    value: String(yr),
+                    label: `Tax Year ${yr}`,
+                  }))}
+                />
               </Field>
 
               <Field
@@ -485,6 +479,7 @@ export function BusinessReadinessPage() {
             <fieldset className="readiness-checkboxes">
               <legend className="readiness-checkboxes__legend">Business filing status</legend>
 
+              <div className="readiness-checkboxes__grid">
               <label className="readiness-checkbox">
                 <input
                   type="checkbox"
@@ -544,6 +539,7 @@ export function BusinessReadinessPage() {
                 />
                 <span>Form 16A (WHT certificate) received</span>
               </label>
+              </div>
             </fieldset>
 
             <div className="form__actions">

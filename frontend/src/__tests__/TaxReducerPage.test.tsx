@@ -145,6 +145,8 @@ describe("TaxReducerPage — workspace and navigation", () => {
   it("opens Tax Reducer from the sidebar navigation", async () => {
     const user = userEvent.setup();
     renderWithRoutes("/personal/overview");
+    // The Calculators group dropdown starts closed — open it first.
+    await user.click(screen.getByTestId("group-toggle-calculators"));
     await user.click(screen.getByRole("link", { name: "Tax Reducer" }));
     expect(screen.getByTestId("tax-reducer-form")).toBeInTheDocument();
     expect(
@@ -249,10 +251,8 @@ describe("TaxReducerPage — form and validation", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.selectOptions(
-      screen.getByTestId("tax-reducer-taxpayer-select"),
-      "business",
-    );
+    await user.click(screen.getByTestId("tax-reducer-taxpayer-select"));
+    await user.click(screen.getByTestId("tax-reducer-taxpayer-select-option-business"));
     await user.type(screen.getByTestId("tax-reducer-income-input"), "2500000");
     await user.type(
       screen.getByTestId("tax-reducer-other-info-input"),
@@ -370,7 +370,10 @@ describe("TaxReducerPage — results", () => {
     });
     expect(screen.getByTestId("tax-reducer-analysis-card")).toBeInTheDocument();
     expect(screen.getByTestId("tax-reducer-summary")).toBeInTheDocument();
+    // Confidence & verification card sits between summary and independence notice.
+    expect(screen.getByTestId("tax-reducer-verification-card")).toBeInTheDocument();
     expect(screen.getByTestId("tax-reducer-verification")).toBeInTheDocument();
+    expect(screen.getByTestId("tax-reducer-disclaimer-card")).toBeInTheDocument();
   });
 
   it("renders estimated savings together with the estimate caveat", async () => {

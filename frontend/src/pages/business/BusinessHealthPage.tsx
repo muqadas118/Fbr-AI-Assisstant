@@ -734,7 +734,7 @@ export function BusinessHealthPage() {
       <section className="page page--health">
         <header className="page__header">
           <div>
-            <p className="page-eyebrow">Business · Health</p>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Health</div>
             <h2 className="page__title">Business Tax Health</h2>
             <p className="page__subtitle">
               Comprehensive business tax health assessment with compliance scoring, corporate sales-tax signals, risk analysis, and penalty estimation.

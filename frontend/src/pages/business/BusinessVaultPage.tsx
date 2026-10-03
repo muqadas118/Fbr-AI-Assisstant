@@ -10,6 +10,7 @@ import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
 import { Loading } from "@/components/shell/Loading";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Tag } from "@/components/ui/Tag";
 import { StatusBanner } from "@/components/ui/StatusBanner";
@@ -142,23 +143,25 @@ function VaultTab() {
                 />
               </Field>
               <Field label="Document Type" data-testid="biz-vault-add-type">
-                <select
+                <Select
                   value={newType}
-                  onChange={(e) => setNewType(e.target.value)}
-                  data-testid="biz-vault-add-type-select"
-                >
-                  <option>Sales Tax Return</option>
-                  <option>Withholding (WHT) Statement</option>
-                  <option>Company Income Tax Return</option>
-                  <option>Input Tax Credit (ITC) Sheet</option>
-                  <option>Sales Tax Invoice</option>
-                  <option>Supplier/Vendor Invoice</option>
-                  <option>Federal Excise Return</option>
-                  <option>Corporate Registration / NTN</option>
-                  <option>Bank Statement</option>
-                  <option>Business Contract</option>
-                  <option>Other</option>
-                </select>
+                  onChange={setNewType}
+                  testId="biz-vault-add-type-select"
+                  ariaLabel="Document type"
+                  options={[
+                    "Sales Tax Return",
+                    "Withholding (WHT) Statement",
+                    "Company Income Tax Return",
+                    "Input Tax Credit (ITC) Sheet",
+                    "Sales Tax Invoice",
+                    "Supplier/Vendor Invoice",
+                    "Federal Excise Return",
+                    "Corporate Registration / NTN",
+                    "Bank Statement",
+                    "Business Contract",
+                    "Other",
+                  ]}
+                />
               </Field>
             </div>
             <Field label="Content / Notes" data-testid="biz-vault-add-content">
@@ -433,14 +436,16 @@ function BusinessTab() {
               />
             </Field>
             <Field label="Registration Type" data-testid="biz-reg-type-field">
-              <select
+              <Select
                 value={regType}
-                onChange={(e) => setRegType(e.target.value)}
-                data-testid="biz-reg-type-select"
-              >
-                <option value="ntn">NTN</option>
-                <option value="strn">STRN (Sales Tax)</option>
-              </select>
+                onChange={setRegType}
+                testId="biz-reg-type-select"
+                ariaLabel="Registration type"
+                options={[
+                  { value: "ntn", label: "NTN" },
+                  { value: "strn", label: "STRN (Sales Tax)" },
+                ]}
+              />
             </Field>
           </div>
           <div className="form__actions">
@@ -627,7 +632,7 @@ export function BusinessVaultPage() {
       <section className="page page--vault">
         <header className="page__header">
           <div>
-            <p className="page-eyebrow">Business · Vault</p>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Vault</div>
             <h2 className="page__title">Business Tax Vault</h2>
             <p className="page__subtitle">
               Secure storage for business tax documents and FBR verification tools — company NTN, business registration, and supplier/vendor checks.

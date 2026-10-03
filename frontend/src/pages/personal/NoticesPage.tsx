@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   api,
   ApiError,
@@ -447,12 +447,53 @@ export function NoticesPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<NoticeAnalysisResponse | null>(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [, setActiveHistoryId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showTypes, setShowTypes] = useState(false);
   const [textError, setTextError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /** Extract text from an uploaded notice file into the textarea so the
+   * standard text-analysis flow can run on it. */
+  const handleNoticeFile = useCallback(
+    async (file: File) => {
+      setUploadingFile(true);
+      setError(null);
+      setTextError(null);
+      try {
+        if (file.name.toLowerCase().endsWith(".txt")) {
+          const text = await file.text();
+          setNoticeText(text);
+        } else {
+          // PDF / image → backend OCR + extraction endpoint.
+          const resp = await api.documents.uploadAnalyze(file);
+          const extracted =
+            resp.analysis?.formatted_text ||
+            String(resp.analysis?.extracted_info?.text ?? "");
+          if (!extracted.trim()) {
+            setError("Could not extract readable text from that file. Please paste the notice text instead.");
+            notify("err", "Text extraction returned nothing usable.");
+            return;
+          }
+          setNoticeText(extracted);
+        }
+        notify("ok", "Notice text extracted — review it below, then Analyze.");
+      } catch (err) {
+        const msg =
+          err instanceof ApiError
+            ? `Could not read that file (${err.status}): ${err.detail}`
+            : "Could not read that file. Please paste the notice text instead.";
+        setError(msg);
+        notify("err", msg);
+      } finally {
+        setUploadingFile(false);
+      }
+    },
+    [notify],
+  );
 
   const analyze = useCallback(async () => {
     setTextError(null);
@@ -564,6 +605,37 @@ export function NoticesPage() {
             testId="notice-analyze-card"
           >
             <div className="notice-input">
+              {/* Optional file shortcut: extract text from a PDF/image notice
+                  into the textarea, then analyze as usual. */}
+              <div className="notice-input__file">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.txt"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleNoticeFile(f);
+                    e.target.value = "";
+                  }}
+                  data-testid="notice-file-input"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  loading={uploadingFile}
+                  disabled={uploadingFile || analyzing}
+                  onClick={() => fileInputRef.current?.click()}
+                  data-testid="notice-file-button"
+                >
+                  {uploadingFile ? "Extracting text…" : "📎 Attach notice file (optional)"}
+                </Button>
+                <span className="notice-input__file-hint">
+                  PDF, image or text — we extract the text and fill it below.
+                </span>
+              </div>
+
               <Field
                 label="Notice Text"
                 error={textError ?? undefined}
@@ -670,314 +742,7 @@ export function NoticesPage() {
         </div>
       </section>
 
-      <style>{`
-        /* Notice input */
-        .notice-input__textarea {
-          width: 100%;
-          padding: var(--s-4);
-          border: 1px solid var(--c-line-strong);
-          border-radius: var(--r-2);
-          background: #fffaf0;
-          font-family: var(--f-body);
-          font-size: 14px;
-          line-height: 1.6;
-          resize: vertical;
-          min-height: 180px;
-        }
-
-        .notice-input__textarea:focus {
-          outline: 2px solid var(--c-accent);
-          outline-offset: -1px;
-          border-color: var(--c-accent);
-        }
-
-        .notice-input__meta {
-          margin-top: var(--s-2);
-          text-align: right;
-        }
-
-        .notice-input__actions {
-          display: flex;
-          gap: var(--s-3);
-          margin-top: var(--s-4);
-          align-items: center;
-        }
-
-        /* Result */
-        .notice-result {
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-5);
-        }
-
-        .notice-result__badges {
-          display: flex;
-          align-items: center;
-          gap: var(--s-2);
-          flex-wrap: wrap;
-        }
-
-        .notice-result__analysis-id {
-          margin-left: auto;
-        }
-
-        .notice-result__summary {
-          font-size: 14px;
-          line-height: 1.7;
-          padding: var(--s-4);
-          background: var(--c-accent-soft);
-          border-left: 3px solid var(--c-accent);
-          border-radius: var(--r-2);
-        }
-
-        /* Notice deadline */
-        .notice-deadline {
-          display: flex;
-          align-items: center;
-          gap: var(--s-5);
-          flex-wrap: wrap;
-        }
-
-        .notice-deadline__date {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .notice-deadline__label {
-          font-size: 11px;
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-          color: var(--c-text-faint);
-        }
-
-        .notice-deadline__value {
-          font-size: 16px;
-          font-weight: 600;
-        }
-
-        .notice-deadline__urgency {
-          font-size: 14px;
-          font-weight: 700;
-        }
-
-        /* Action plan */
-        .notice-plan__summary {
-          font-size: 13.5px;
-          line-height: 1.65;
-          margin-bottom: var(--s-4);
-          color: var(--c-text-muted);
-        }
-
-        .notice-steps {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-4);
-          counter-reset: steps;
-        }
-
-        .notice-step {
-          padding: var(--s-4);
-          background: var(--c-paper-2);
-          border-radius: var(--r-2);
-          border: 1px solid var(--c-line);
-        }
-
-        .notice-step__head {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: var(--s-3);
-          margin-bottom: var(--s-2);
-          flex-wrap: wrap;
-        }
-
-        .notice-step__title {
-          font-size: 14px;
-        }
-
-        .notice-step__badges {
-          display: flex;
-          gap: var(--s-2);
-          flex-shrink: 0;
-        }
-
-        .notice-step__desc {
-          font-size: 13.5px;
-          line-height: 1.65;
-          color: var(--c-text-muted);
-          margin: 0 0 var(--s-3);
-        }
-
-        .notice-step__docs {
-          font-size: 12.5px;
-        }
-
-        .notice-step__docs-label {
-          font-weight: 600;
-          color: var(--c-text);
-          margin-right: var(--s-2);
-        }
-
-        .notice-step__docs ul {
-          margin: var(--s-1) 0 0 var(--s-4);
-          padding: 0;
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-        }
-
-        .notice-plan__tips {
-          margin-top: var(--s-4);
-          padding: var(--s-4);
-          background: var(--c-paper-2);
-          border-radius: var(--r-2);
-        }
-
-        .notice-plan__tips-title {
-          font-size: 13px;
-          font-weight: 700;
-          margin-bottom: var(--s-2);
-        }
-
-        .notice-plan__tips ul {
-          margin: 0;
-          padding-left: var(--s-5);
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-1);
-          font-size: 13px;
-        }
-
-        /* Appeal guide */
-        .notice-appeal__section {
-          margin-top: var(--s-4);
-          padding-top: var(--s-4);
-          border-top: 1px dashed var(--c-line);
-        }
-
-        .notice-appeal__section-title {
-          font-size: 13px;
-          font-weight: 700;
-          margin-bottom: var(--s-2);
-          color: var(--c-text);
-        }
-
-        .notice-appeal__list {
-          margin: 0;
-          padding-left: var(--s-5);
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-1);
-          font-size: 13px;
-        }
-
-        /* Collapsible */
-        .notice-collapse {
-          background: #fffaf0;
-          border: 1px solid var(--c-line);
-          border-radius: var(--r-2);
-          overflow: hidden;
-        }
-
-        .notice-collapse__toggle {
-          width: 100%;
-          text-align: left;
-          background: var(--c-paper-2);
-          border: 0;
-          padding: var(--s-3) var(--s-5);
-          font-size: 13.5px;
-          font-weight: 600;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: var(--s-2);
-        }
-
-        .notice-collapse__toggle:hover {
-          background: var(--c-line);
-        }
-
-        .notice-collapse__body {
-          padding: var(--s-4) var(--s-5);
-          border-top: 1px solid var(--c-line);
-        }
-
-        .notice-collapse__text {
-          font-family: var(--f-body);
-          font-size: 13px;
-          line-height: 1.7;
-          white-space: pre-wrap;
-          word-wrap: break-word;
-          color: var(--c-text-muted);
-          margin: 0;
-        }
-
-        /* History */
-        .notice-history {
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-4);
-        }
-
-        .notice-history__item {
-          padding: var(--s-4);
-          background: var(--c-paper-2);
-          border: 1px solid var(--c-line);
-          border-radius: var(--r-2);
-        }
-
-        .notice-history__item-head {
-          display: flex;
-          align-items: center;
-          gap: var(--s-2);
-          flex-wrap: wrap;
-          margin-bottom: var(--s-2);
-        }
-
-        .notice-history__item-date {
-          font-size: 12px;
-          color: var(--c-text-muted);
-        }
-
-        .notice-history__item-ts {
-          margin-left: auto;
-        }
-
-        .notice-history__item-preview {
-          font-size: 13px;
-          color: var(--c-text-muted);
-          line-height: 1.5;
-          margin: 0 0 var(--s-3);
-        }
-
-        /* Notice types */
-        .notice-types-list {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-          gap: var(--s-2);
-        }
-
-        .notice-types-list__item {
-          font-size: 13px;
-          padding: var(--s-2) var(--s-3);
-          background: var(--c-paper-2);
-          border-radius: var(--r-2);
-          border-left: 2px solid var(--c-accent);
-        }
-
-        /* Page header actions */
-        .page__header-actions {
-          display: flex;
-          gap: var(--s-2);
-          align-items: center;
-        }
-      `}</style>
+      
     </ErrorBoundary>
   );
 }

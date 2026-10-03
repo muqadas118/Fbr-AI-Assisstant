@@ -79,7 +79,7 @@ function StatCard({
           </Tag>
         )}
       </div>
-      {badge && <div className="stat-card__badge">{badge}</div>}
+      <div className="stat-card__badge">{badge ?? <span className="stat-card__badge-empty" aria-hidden="true" />}</div>
     </div>
   );
 }
@@ -163,7 +163,8 @@ function UpcomingTaskRow({ task }: { task: UpcomingTask }) {
 }
 
 export function OverviewPage() {
-  const [taxpayerType, setTaxpayerType] = useState<TaxpayerType>("individual");
+  // Workspace-fixed: signup decides the workspace, so the type is display-only.
+  const [taxpayerType] = useState<TaxpayerType>("individual");
   const storeNtn = useProfile((s) => s.ntn);
   const ntn = storeNtn || localStorage.getItem("fbr_ntn") || "";
   const [loading, setLoading] = useState(true);
@@ -269,19 +270,14 @@ export function OverviewPage() {
             <p className="page__subtitle">Your tax status snapshot and upcoming compliance deadlines.</p>
           </div>
           <div className="page__header-controls">
-            <label className="field__label" htmlFor="overview-taxpayer-type">
-              Taxpayer Type
-            </label>
-            <select
-              id="overview-taxpayer-type"
-              className="page__select"
-              value={taxpayerType}
-              onChange={(e) => setTaxpayerType(e.target.value as TaxpayerType)}
+            <span
+              className="overview__type-pill"
               data-testid="overview-taxpayer-type"
+              title={taxpayerType === "business" ? "Signed up as Business" : "Signed up as Individual"}
             >
-              <option value="individual">Individual</option>
-              <option value="business">Business</option>
-            </select>
+              <span className="overview__type-dot" aria-hidden />
+              {taxpayerType === "business" ? "Business" : "Individual"}
+            </span>
             <Button variant="ghost" size="sm" onClick={() => void fetchAll()} data-testid="overview-refresh">
               Refresh
             </Button>
@@ -321,9 +317,9 @@ export function OverviewPage() {
 
           <div className="snapshot__metrics">
             <StatCard
-              label="Upcoming (30d)"
+              label="Upcoming"
               value={total30d}
-              unit="events"
+              unit="events · 30d"
               testId="overview-upcoming-total"
             />
             <StatCard
@@ -333,8 +329,9 @@ export function OverviewPage() {
               testId="overview-overdue"
             />
             <StatCard
-              label="Critical (7d)"
+              label="Critical"
               value={critical7d}
+              unit="next 7 days"
               badge={critical7d > 0 ? <Tag variant="err">{critical7d} critical</Tag> : undefined}
               testId="overview-critical-7d"
             />
@@ -347,9 +344,14 @@ export function OverviewPage() {
             <div className="stats-grid">
               <StatCard
                 label="Tax Health"
-                value={healthScore}
-                unit="/100"
-                grade={healthGrade}
+                value={taxHealth ? healthScore : "—"}
+                unit={taxHealth ? "/100" : undefined}
+                grade={taxHealth ? healthGrade : undefined}
+                badge={
+                  taxHealth ? undefined : (
+                    <Tag variant="default">needs tax data</Tag>
+                  )
+                }
                 testId="overview-health-score"
               />
               <StatCard
@@ -367,13 +369,10 @@ export function OverviewPage() {
                 testId="overview-filer-status"
               />
               <StatCard
-                label="Pending Notices"
+                label="Notices"
                 value={pendingNotices}
-                badge={
-                  pendingNotices > 0 ? (
-                    <Tag variant="warn">{pendingNotices} types available</Tag>
-                  ) : undefined
-                }
+                unit="types"
+                badge={<Tag variant="default">analyzer ready</Tag>}
                 testId="overview-pending-notices"
               />
               <StatCard
@@ -384,7 +383,9 @@ export function OverviewPage() {
                     <Tag variant={readinessPct >= 80 ? "ok" : readinessPct >= 50 ? "warn" : "err"}>
                       {readinessPct >= 80 ? "Ready" : readinessPct >= 50 ? "Partial" : "Not ready"}
                     </Tag>
-                  ) : undefined
+                  ) : (
+                    <Tag variant="default">needs tax data</Tag>
+                  )
                 }
                 testId="overview-readiness"
               />

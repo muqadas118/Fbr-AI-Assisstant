@@ -1,0 +1,325 @@
+/* ==================================================================
+   Team / Subordinates — Business Team page (designed section)
+   Theme: same FBR pine/brass tokens as the rest of the app —
+   no new colours introduced.
+   ================================================================== */
+
+/* Page grid: two-column form area -------------------------------- */
+.sub__forms {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-4);
+  align-items: start;
+  margin-bottom: var(--s-5);
+}
+@media (max-width: 980px) {
+  .sub__forms {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Team ID setup card ---------------------------------------------- */
+.sub__setup {
+  background:
+    linear-gradient(180deg, rgba(12, 59, 46, 0.035), rgba(12, 59, 46, 0) 70%),
+    var(--c-surface);
+}
+.sub__setup-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--s-4);
+}
+.sub__setup .field__input {
+  font-family: var(--f-mono);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  background: var(--c-paper-2);
+}
+@media (max-width: 720px) {
+  .sub__setup-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Forms ------------------------------------------------------------ */
+.sub__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.sub__form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3) var(--s-4);
+}
+@media (max-width: 640px) {
+  .sub__form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.sub__form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* Roles reference block (inside Invite card) ----------------------- */
+.sub__roles-ref {
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px dashed var(--c-line);
+}
+.sub__roles-title {
+  margin: 0 0 var(--s-3);
+  font-family: var(--f-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+.sub__roles-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.sub__role-item {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: var(--c-paper-2);
+}
+.sub__role-desc {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--c-text-muted);
+}
+.sub__role-desc .sub__role-name {
+  font-weight: 700;
+  color: var(--c-ink);
+}
+
+/* Members list ------------------------------------------------------ */
+.sub__members-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.sub__member {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-3);
+  background: var(--c-surface);
+  animation: sub-item-in 460ms var(--ease-out-expo) both;
+  transition:
+    box-shadow 180ms var(--ease),
+    border-color 180ms var(--ease),
+    transform 180ms var(--ease);
+}
+.sub__members-list .sub__member:nth-child(1) { animation-delay: 30ms; }
+.sub__members-list .sub__member:nth-child(2) { animation-delay: 70ms; }
+.sub__members-list .sub__member:nth-child(3) { animation-delay: 110ms; }
+.sub__members-list .sub__member:nth-child(n + 4) { animation-delay: 150ms; }
+.sub__member:hover {
+  border-color: var(--c-line-strong);
+  box-shadow: 0 10px 24px rgba(8, 42, 33, 0.09);
+  transform: translateY(-1px);
+}
+.sub__member--active {
+  border-color: var(--c-primary-3);
+  box-shadow: 0 12px 28px rgba(8, 42, 33, 0.1);
+}
+.sub__member-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+.sub__member-avatar {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--fbr-green) 0%, var(--c-primary-3) 100%);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 15px;
+  font-family: var(--f-display);
+}
+.sub__member-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sub__member-top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.sub__member-role {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--c-ink);
+}
+.sub__member-id,
+.sub__member-joined {
+  font-size: 11.5px;
+  color: var(--c-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sub__member-actions {
+  flex: 0 0 auto;
+}
+.sub__member-details {
+  border-top: 1px dashed var(--c-line);
+  background: var(--c-paper-2);
+  padding: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  animation: sub-details-in 220ms var(--ease) both;
+}
+.sub__member-details-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: center;
+  font-size: 13px;
+}
+.sub__detail-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+.sub__mono {
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  color: var(--c-text);
+}
+
+/* Credential verification ------------------------------------------ */
+.sub__verif-section {
+  margin-top: var(--s-2);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--c-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.sub__verif-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+.sub__verif-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  font-size: 13px;
+}
+.sub__verif-label {
+  color: var(--c-text-muted);
+}
+.sub__verif-check {
+  margin-top: var(--s-1);
+}
+.sub__verif-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--c-text-faint);
+}
+
+/* Pending invitations ----------------------------------------------- */
+.sub__invitations-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.sub__invitation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: var(--c-paper-2);
+  transition: border-color 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+.sub__invitation:hover {
+  border-color: var(--c-line-strong);
+  box-shadow: 0 6px 14px rgba(8, 42, 33, 0.07);
+}
+.sub__inv-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.sub__inv-email {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--c-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sub__inv-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+.sub__inv-date {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+  font-weight: 600;
+}
+
+@keyframes sub-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes sub-details-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sub__member {
+    animation: none;
+  }
+  .sub__member-details {
+    animation: none;
+  }
+}

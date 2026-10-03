@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { useLocation, useNavigate, Link } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { findSectionByPath as findPersonalSection } from "@/state/personalNav";
 import { findBusinessSectionByPath as findBusinessSection } from "@/state/businessNav";
 import { WORKSPACES, useWorkspace } from "@/state/workspace";
@@ -7,10 +6,9 @@ import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 interface HeaderProps {
   onToggleSidebar: () => void;
-  apiHealthy: boolean | null;
 }
 
-export function Header({ onToggleSidebar, apiHealthy }: HeaderProps) {
+export function Header({ onToggleSidebar }: HeaderProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const activeWs = useWorkspace((s) => s.active);
@@ -18,19 +16,6 @@ export function Header({ onToggleSidebar, apiHealthy }: HeaderProps) {
   const current = isBusiness
     ? findBusinessSection(location.pathname)
     : findPersonalSection(location.pathname);
-
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
-  const dateLabel = now.toLocaleDateString(undefined, {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
 
   return (
     <header className="app-header" role="banner">
@@ -47,19 +32,6 @@ export function Header({ onToggleSidebar, apiHealthy }: HeaderProps) {
       </button>
 
       <div className="app-header__title-block">
-        <nav className="app-header__crumbs" aria-label="Breadcrumb">
-          <Link to="/" data-testid="home-link">Home</Link>
-          <span aria-hidden>/</span>
-          <span>FBR</span>
-          <span aria-hidden>/</span>
-          <span>{WORKSPACES[activeWs].label}</span>
-          {current ? (
-            <>
-              <span aria-hidden>/</span>
-              <span aria-current="page">{current.label}</span>
-            </>
-          ) : null}
-        </nav>
         <div className="app-header__title-row">
           <span className="app-header__workspace-pill">{WORKSPACES[activeWs].label}</span>
           <h1 className="app-header__title">{current?.label ?? "FBR Tax & Compliance"}</h1>
@@ -69,26 +41,13 @@ export function Header({ onToggleSidebar, apiHealthy }: HeaderProps) {
 
       <div className="app-header__right">
         <WorkspaceSwitcher />
-        <div className="app-header__meta">
-          <span
-            className={`api-status api-status--${apiHealthy === null ? "unknown" : apiHealthy ? "ok" : "err"}`}
-            title={apiHealthy === null ? "API status not yet checked" : apiHealthy ? "Backend reachable" : "Backend unreachable"}
-            data-testid="api-status"
-          >
-            <span className="api-status__dot" />
-            <span className="api-status__label">
-              {apiHealthy === null ? "API ?" : apiHealthy ? "API Connected" : "API Offline"}
-            </span>
-          </span>
-          <span className="app-header__date">{dateLabel}</span>
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm"
-            onClick={() => navigate(isBusiness ? "/business/inbox" : "/personal/inbox")}
-          >
-            Notifications
-          </button>
-        </div>
+        <button
+          type="button"
+          className="btn btn--ghost btn--sm"
+          onClick={() => navigate(isBusiness ? "/business/workspace?tab=inbox" : "/personal/workspace?tab=inbox")}
+        >
+          Notifications
+        </button>
       </div>
     </header>
   );

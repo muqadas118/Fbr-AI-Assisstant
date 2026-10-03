@@ -4,6 +4,9 @@
 // ---------------------------------------------------------------------------
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+// Full RAG pipeline (FAISS + embeddings + LLM) can take well over a minute:
+// cold-start model load plus one slow provider round-trip per routed domain.
+const ANSWER_TIMEOUT_MS = 300_000;
 
 // ============================================================================
 // Core Types
@@ -60,6 +63,23 @@ export interface AnswerResponse {
   sources: SourceItem[];
   verification: VerificationResult;
   grounded: boolean;
+}
+
+export interface AssistantToolRun {
+  tool: string;
+  ok: boolean;
+  summary: string;
+  data: unknown;
+}
+
+export interface AssistantAskResponse {
+  question: string;
+  answer: string;
+  tools_used: AssistantToolRun[];
+  sources: SourceItem[];
+  verification: VerificationResult;
+  grounded: boolean;
+  mode: string;
 }
 
 export interface HealthResponse {
@@ -444,6 +464,22 @@ export interface VerificationResponse {
 }
 
 // ============================================================================
+// Vault Types
+// ============================================================================
+
+export interface VaultDocument {
+  id: string;
+  user_id: string;
+  filename: string;
+  type: string;
+  content: string;
+  size: string;
+  secure: boolean;
+  date: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // Monitor Types
 // ============================================================================
 
@@ -606,7 +642,7 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 async function request<T>(
-  method: "GET" | "POST" | "DELETE",
+  method: "GET" | "POST" | "PATCH" | "DELETE",
   path: string,
   init: { body?: unknown } = {},
   config: ApiClientConfig = getApiConfig(),
@@ -671,6 +707,117 @@ export function isUnauthorized(err: unknown): boolean {
 }
 
 // ============================================================================
+// File Upload (multipart) helper + types
+// ============================================================================
+
+export interface UploadMeta {
+  filename: string;
+  content_family: "pdf" | "image" | "text";
+  size_bytes: number;
+  pages?: number | null;
+  ocr_simulated: boolean;
+  ocr_warning?: string | null;
+}
+
+export interface UploadDocumentAnalysisResponse {
+  meta: UploadMeta;
+  // Full DocumentAnalysis payload from the backend pipeline.
+  analysis: {
+    analysis_id: string;
+    timestamp: string;
+    document_type: string;
+    document_category: string;
+    classification_confidence: number;
+    extracted_info: ExtractedInfo & { [key: string]: unknown };
+    formatted_text: string;
+    summary?: string | null;
+    ocr_simulated: boolean;
+    ocr_warning?: string | null;
+    [key: string]: unknown;
+  };
+}
+
+export interface UploadDocumentVerifyResponse {
+  meta: UploadMeta;
+  ntn?: string | null;
+  cnic?: string | null;
+  name?: string | null;
+  confidence: number;
+  extraction_quality: number;
+  ntn_format_valid: boolean;
+  cnic_format_valid: boolean;
+}
+
+export interface UploadInvoiceProcessResponse {
+  meta: UploadMeta;
+  result: InvoiceProcessResponse;
+}
+
+async function uploadRequest<T>(
+  path: string,
+  file: File,
+  fields: Record<string, string> = {},
+  config: ApiClientConfig = getApiConfig(),
+): Promise<T> {
+  const url = `${config.baseUrl}${path}`;
+  const controller = new AbortController();
+  // File extraction (PDF/OCR) can be slower than JSON endpoints.
+  const timeoutMs = Math.max(config.timeoutMs, 60_000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const auth = await authHeaders();
+  const form = new FormData();
+  form.append("file", file, file.name);
+  for (const [key, value] of Object.entries(fields)) {
+    form.append(key, value);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { Accept: "application/json", ...auth },
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new NetworkError(`Upload to ${path} timed out after ${timeoutMs}ms`);
+    }
+    throw new NetworkError(
+      err instanceof Error ? err.message : `Network error uploading to ${path}`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  let payload: unknown = null;
+  const text = await response.text();
+  if (text.length > 0) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = { detail: text };
+    }
+  }
+
+  if (!response.ok) {
+    const rawDetail =
+      payload && typeof payload === "object" && "detail" in payload
+        ? String((payload as { detail: unknown }).detail)
+        : `HTTP ${response.status}`;
+    const detail =
+      response.status === 401
+        ? "Authentication required — please login (session missing or expired)."
+        : rawDetail;
+    if (response.status === 401) unauthorizedHandler?.();
+    throw new ApiError(`POST ${path} failed: ${response.status}`, response.status, detail);
+  }
+
+  return payload as T;
+}
+
+// ============================================================================
 // API Methods
 // ============================================================================
 
@@ -686,7 +833,156 @@ export const api = {
   // Q&A
   // ---------------------------------------------------------------------------
   answer(query: string): Promise<AnswerResponse> {
-    return request<AnswerResponse>("POST", "/answer", { body: { query } });
+    return request<AnswerResponse>(
+      "POST",
+      "/answer",
+      { body: { query } },
+      { ...getApiConfig(), timeoutMs: ANSWER_TIMEOUT_MS },
+    );
+  },
+
+  /**
+   * Smart assistant: AI plans and uses every backend tool (calculators,
+   * verification, notices, documents, invoices, calendar, health) and
+   * grounds the answer in the FBR corpus. Optional file upload (PDF/
+   * image/text) is read by the backend pipeline before answering.
+   */
+  assistantAsk(query: string, file?: File | null): Promise<AssistantAskResponse> {
+    if (file) {
+      return uploadRequest<AssistantAskResponse>(
+        "/assistant/ask",
+        file,
+        { query },
+        { ...getApiConfig(), timeoutMs: ANSWER_TIMEOUT_MS },
+      );
+    }
+    return request<AssistantAskResponse>(
+      "POST",
+      "/assistant/ask",
+      { body: { query } },
+      { ...getApiConfig(), timeoutMs: ANSWER_TIMEOUT_MS },
+    );
+  },
+
+  /**
+   * Streaming variant of assistantAsk (Server-Sent Events).
+   * Calls onMeta once with the tool/verification payload, then onDelta
+   * for each answer text chunk. Resolves with the assembled response
+   * when the stream completes. Falls back to the plain endpoint when
+   * the stream cannot even be opened (e.g. older backend).
+   */
+  async assistantAskStream(
+    query: string,
+    handlers: {
+      onMeta?: (meta: Partial<AssistantAskResponse>) => void;
+      onDelta?: (chunk: string) => void;
+    },
+  ): Promise<AssistantAskResponse> {
+    const config = getApiConfig();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ANSWER_TIMEOUT_MS);
+    try {
+      const auth = await authHeaders();
+      let response: Response;
+      try {
+        response = await fetch(`${config.baseUrl}/assistant/ask/stream`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "text/event-stream", ...auth },
+          body: JSON.stringify({ query }),
+          signal: controller.signal,
+        });
+      } catch (err) {
+        throw new NetworkError(
+          err instanceof Error ? err.message : "Network error contacting /assistant/ask/stream",
+        );
+      }
+      if (!response.ok || !response.body) {
+        // Non-streaming failure — let the plain endpoint produce a typed error.
+        if (response.status === 429 || response.status === 422 || response.status === 401) {
+          let detail = `HTTP ${response.status}`;
+          try {
+            const j = await response.json();
+            if (j && typeof j === "object" && "detail" in j) detail = String((j as { detail: unknown }).detail);
+          } catch { /* keep default */ }
+          if (response.status === 401) unauthorizedHandler?.();
+          throw new ApiError("POST /assistant/ask/stream failed", response.status, detail);
+        }
+        return this.assistantAsk(query);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const dataAcc: string[] = [];
+      let meta: Partial<AssistantAskResponse> = {};
+      let text = "";
+      let eventName = "message";
+      const handleEvent = () => {
+        const data = dataAcc.join("\n");
+        dataAcc.length = 0;
+        if (eventName === "meta") {
+          try { meta = JSON.parse(data) as Partial<AssistantAskResponse>; } catch { meta = {}; }
+          handlers.onMeta?.(meta);
+        } else if (eventName === "delta") {
+          try {
+            const chunk = JSON.parse(data) as string;
+            text += chunk;
+            handlers.onDelta?.(chunk);
+          } catch { /* ignore malformed chunk */ }
+        } else if (eventName === "verification") {
+          // Post-stream verification settles after the tokens (backend runs
+          // the verify pipeline after streaming so answers arrive instantly).
+          // A failed grounding carries replacement_answer — the deterministic
+          // refusal replaces the streamed prose (grounded-answer contract).
+          try {
+            const v = JSON.parse(data) as AssistantAskResponse["verification"];
+            meta = { ...meta, verification: v };
+            const replacement = (v as { replacement_answer?: string }).replacement_answer;
+            if (replacement) text = replacement;
+            handlers.onMeta?.(meta);
+          } catch { /* ignore malformed verification */ }
+        }
+        eventName = "message";
+      };
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line === "") { handleEvent(); continue; }
+          if (line.startsWith("event:")) eventName = line.slice(6).trim();
+          else if (line.startsWith("data:")) dataAcc.push(line.slice(5).trimStart());
+        }
+      }
+      if (dataAcc.length) handleEvent();
+
+      return {
+        question: meta.question ?? query,
+        answer: text || (meta as { answer?: string }).answer || "",
+        tools_used: meta.tools_used ?? [],
+        sources: meta.sources ?? [],
+        verification: meta.verification ?? {
+          passed: false,
+          checks: {
+            answer_size: { passed: false, reason: "unavailable" },
+            section_consistency: { passed: false, reason: "unavailable" },
+            grounding: { passed: false, reason: "unavailable" },
+            speculation: { passed: false, reason: "unavailable" },
+          },
+          failed_checks: [],
+          reason: "no verification data",
+        },
+        grounded: meta.grounded ?? false,
+        mode: meta.mode ?? "stream",
+      } satisfies AssistantAskResponse;
+    } finally {
+      clearTimeout(timer);
+    }
   },
 
   // ---------------------------------------------------------------------------
@@ -846,6 +1142,18 @@ export const api = {
     getTypes(): Promise<{ document_types: string[]; categories: string[] }> {
       return request("GET", "/documents/types");
     },
+
+    uploadAnalyze(file: File, documentTypeHint?: string): Promise<UploadDocumentAnalysisResponse> {
+      return uploadRequest<UploadDocumentAnalysisResponse>(
+        "/uploads/documents/analyze",
+        file,
+        documentTypeHint ? { document_type_hint: documentTypeHint } : {},
+      );
+    },
+
+    uploadVerify(file: File): Promise<UploadDocumentVerifyResponse> {
+      return uploadRequest<UploadDocumentVerifyResponse>("/uploads/documents/verify", file);
+    },
   },
 
   // ---------------------------------------------------------------------------
@@ -856,6 +1164,14 @@ export const api = {
       return request<InvoiceProcessResponse>("POST", "/invoices/process", {
         body: { text, invoice_id: invoiceId },
       });
+    },
+
+    uploadProcess(file: File, invoiceId?: string): Promise<UploadInvoiceProcessResponse> {
+      return uploadRequest<UploadInvoiceProcessResponse>(
+        "/uploads/invoices/process",
+        file,
+        invoiceId ? { invoice_id: invoiceId } : {},
+      );
     },
 
     getDashboard(): Promise<InvoiceDashboard> {
@@ -903,6 +1219,35 @@ export const api = {
     checkAtl(ntn: string): Promise<{ ntn: string; on_atl: boolean; filer_status: string; last_return: string }> {
       return request("GET", `/verify/atl/${ntn}`);
     },
+
+    batch(requests: Array<{ type: string; value: string }>): Promise<VerificationResponse[]> {
+      return request<VerificationResponse[]>("POST", "/verify/batch", { body: { requests } });
+    },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Vault (persistent per-user document storage)
+  // ---------------------------------------------------------------------------
+  vault: {
+    list(): Promise<{ user_id: string; documents: VaultDocument[]; count: number }> {
+      return request("GET", "/vault/documents");
+    },
+
+    create(payload: { filename: string; doc_type: string; content?: string; secure?: boolean }): Promise<VaultDocument> {
+      return request("POST", "/vault/documents", { body: payload });
+    },
+
+    get(docId: string): Promise<VaultDocument> {
+      return request("GET", `/vault/documents/${encodeURIComponent(docId)}`);
+    },
+
+    update(docId: string, payload: { filename?: string; doc_type?: string; content?: string }): Promise<VaultDocument> {
+      return request("PATCH", `/vault/documents/${encodeURIComponent(docId)}`, { body: payload });
+    },
+
+    remove(docId: string): Promise<{ deleted: boolean; id: string }> {
+      return request("DELETE", `/vault/documents/${encodeURIComponent(docId)}`);
+    },
   },
 
   // ---------------------------------------------------------------------------
@@ -941,6 +1286,17 @@ export const api = {
 
     getEventTypes(): Promise<{ event_types: string[]; severities: string[] }> {
       return request("GET", "/monitor/event-types");
+    },
+
+    /** Simulate a new FBR notice (demo/testing) — event lands in the inbox. */
+    simulateNotice(data: {
+      ntn: string;
+      notice_number: string;
+      title: string;
+      description: string;
+      action_deadline?: string;
+    }): Promise<Record<string, unknown>> {
+      return request("POST", "/monitor/simulate/notice", { body: data });
     },
   },
 
@@ -992,6 +1348,17 @@ export const api = {
 
     getHealth(): Promise<{ status: string; service: string; version: string }> {
       return request("GET", "/workspaces/health");
+    },
+
+    /** Create a personal or business workspace (a real team under the hood). */
+    createWorkspace(data: {
+      user_id: string;
+      name: string;
+      workspace_type: "personal" | "business";
+      ntn?: string;
+      description?: string;
+    }): Promise<{ workspace_id: string; name: string; type: string; created_at?: string }> {
+      return request("POST", "/workspaces/create", { body: data });
     },
   },
 };

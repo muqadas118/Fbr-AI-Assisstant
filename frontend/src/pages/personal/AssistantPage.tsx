@@ -1,172 +1,27 @@
-import { useState, useCallback } from "react";
-import { Link } from "react-router-dom";
-import { ApiError, NetworkError, api, isUnauthorized, type AnswerResponse } from "@/lib/api";
-import { Loading } from "@/components/shell/Loading";
+import { useCallback } from "react";
+import { api, type AssistantAskResponse } from "@/lib/api";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
-import { StatusBanner } from "@/components/ui/StatusBanner";
-import { VerificationPanel } from "@/components/ui/VerificationPanel";
-import { SourceList } from "@/components/ui/SourceCitation";
-import { Button } from "@/components/ui/Button";
-import { useAuth } from "@/state/auth";
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  payload?: AnswerResponse;
-  error?: string;
-  ts: number;
-}
-
-function MessageBubble({ message }: { message: Message }) {
-  const isUser = message.role === "user";
-  const payload = message.payload;
-
-  if (isUser) {
-    return (
-      <div className="chat__msg chat__msg--user" data-testid="chat-user">
-        <div className="chat__bubble">{message.text}</div>
-      </div>
-    );
-  }
-
-  if (message.error) {
-    const login = /login/i.test(message.text);
-    return (
-      <div className="chat__msg chat__msg--assistant" data-testid="chat-error">
-        <div className="chat__bubble">
-          <StatusBanner
-            kind="err"
-            title={login ? "Login required" : "Could not retrieve answer"}
-            description={message.text}
-            action={
-              login ? (
-                <Link to="/login">
-                  <Button variant="primary" size="sm" data-testid="message-login">
-                    Go to Login
-                  </Button>
-                </Link>
-              ) : undefined
-            }
-            testId="message-error"
-          />
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="chat__msg chat__msg--assistant" data-testid="chat-assistant">
-      <div className="chat__bubble">
-        <p className="chat__answer" data-testid="chat-answer">
-          {message.text}
-        </p>
-
-        {payload ? (
-          <>
-            <VerificationPanel
-              verification={payload.verification}
-              grounded={payload.grounded}
-              className="chat__verification"
-              testId="chat-verification"
-            />
-            <DomainBlock
-              primary={payload.primary_domain}
-              domains={payload.domains}
-              multi={payload.multi_domain}
-            />
-            {payload.sources && payload.sources.length > 0 ? (
-              <SourceList sources={payload.sources} testId="chat-sources" />
-            ) : null}
-          </>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function DomainBlock({
-  primary,
-  domains,
-  multi,
-}: {
-  primary: string;
-  domains: string[];
-  multi: boolean;
-}) {
-  if (!primary && (!domains || domains.length === 0)) return null;
-  return (
-    <div className="chat__domains" data-testid="chat-domains">
-      <span className="chat__domain-label">Routed to</span>
-      <span className="chat__domain-primary">{primary || "general"}</span>
-      {multi && domains && domains.length > 1 ? (
-        <span className="chat__domain-multi">+ {domains.length - 1} more</span>
-      ) : null}
-    </div>
-  );
-}
+import { AssistantChat } from "@/components/assistant/AssistantChat";
 
 export function AssistantPage() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const session = useAuth((s) => s.session);
-
-  const submit = useCallback(async () => {
-    const q = input.trim();
-    if (!q || loading) return;
-
-    const userMsg: Message = {
-      id: `u-${Date.now()}`,
-      role: "user",
-      text: q,
-      ts: Date.now(),
-    };
-    setMessages((m) => [...m, userMsg]);
-    setInput("");
-    setLoading(true);
-
-    try {
-      const resp = await api.answer(q);
-      const assistantMsg: Message = {
-        id: `a-${Date.now()}`,
-        role: "assistant",
-        text: resp.answer,
-        payload: resp,
-        ts: Date.now(),
-      };
-      setMessages((m) => [...m, assistantMsg]);
-    } catch (err) {
-      const detail =
-        err instanceof ApiError || err instanceof NetworkError
-          ? err instanceof ApiError && isUnauthorized(err)
-            ? "Login required — your session is missing or expired. Please login, then ask again."
-            : err.message
-          : "Unexpected error";
-      const errMsg: Message = {
-        id: `e-${Date.now()}`,
-        role: "assistant",
-        text: detail,
-        error: detail,
-        ts: Date.now(),
-      };
-      setMessages((m) => [...m, errMsg]);
-    } finally {
-      setLoading(false);
-    }
-  }, [input, loading]);
-
-  const clear = useCallback(() => {
-    setMessages([]);
-    setInput("");
-  }, []);
-
-  const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void submit();
-    }
-  };
+  // Smart mode: the AI plans and runs every backend tool (calculators,
+  // verification, notices, documents, invoices, calendar, health) and
+  // grounds the answer in the official FBR corpus. Attachments (text,
+  // PDF, image) are read by the backend before answering.
+  const ask = useCallback(
+    (question: string, file?: File | null) => api.assistantAsk(question, file),
+    [],
+  );
+  const askStream = useCallback(
+    (
+      question: string,
+      handlers: {
+        onMeta?: (meta: Partial<AssistantAskResponse>) => void;
+        onDelta?: (chunk: string) => void;
+      },
+    ) => api.assistantAskStream(question, handlers),
+    [],
+  );
 
   return (
     <ErrorBoundary>
@@ -176,87 +31,23 @@ export function AssistantPage() {
             <div className="page__eyebrow page-eyebrow eyebrow">FBR · AI Assistant</div>
             <h2 className="page__title">AI Tax Assistant</h2>
             <p className="page__subtitle">
-              Ask natural-language questions about FBR tax and compliance. Answers are generated by the verified backend pipeline (router + RAG + verification).
+              Ask natural-language questions about FBR tax and compliance. The assistant uses
+              every backend tool for you — calculators, verification, notice and document
+              analysis — and grounds every answer in official FBR law (router + RAG + verification).
             </p>
           </div>
-          {messages.length > 0 ? (
-            <Button variant="ghost" size="sm" onClick={clear} data-testid="assistant-clear">
-              Clear conversation
-            </Button>
-          ) : null}
         </header>
 
-        <div className="chat" data-testid="assistant-chat">
-          {!session ? (
-            <StatusBanner
-              kind="warn"
-              title="You are not logged in"
-              description="Answers need authentication. Please login first, then ask."
-              action={
-                <Link to="/login">
-                  <Button variant="primary" size="sm" data-testid="assistant-login">
-                    Go to Login
-                  </Button>
-                </Link>
-              }
-              testId="assistant-login-banner"
-            />
-          ) : null}
-          <div className="chat__messages" data-testid="assistant-messages">
-            {messages.length === 0 ? (
-              <div className="chat__empty">
-                <p>No questions yet. Ask anything about FBR tax, filing obligations, notice types, or compliance timelines.</p>
-              </div>
-            ) : (
-              messages.map((m) => (
-                <MessageBubble key={m.id} message={m} />
-              ))
-            )}
-            {loading ? (
-              <div className="chat__msg chat__msg--assistant" data-testid="assistant-typing">
-                <div className="chat__bubble">
-                  <Loading label="Thinking…" testId="assistant-loading" />
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          <form
-            className="chat__form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void submit();
-            }}
-            data-testid="assistant-form"
-          >
-            <label htmlFor="assistant-input" className="chat__label">
-              Ask a question
-            </label>
-            <textarea
-              id="assistant-input"
-              className="chat__textarea"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKey}
-              placeholder="e.g. What is the penalty for late filing of an annual return?"
-              rows={2}
-              disabled={loading}
-              data-testid="assistant-input"
-            />
-            <div className="chat__form-actions">
-              <span className="chat__hint">Press Enter to send, Shift+Enter for new line.</span>
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={!input.trim() || loading}
-                loading={loading}
-                data-testid="assistant-submit"
-              >
-                {loading ? "Thinking…" : "Send"}
-              </Button>
-            </div>
-          </form>
-        </div>
+        <AssistantChat
+          variant="personal"
+          ask={ask}
+          askStream={askStream}
+          loggedIn={true}
+          inputLabel="Ask a question"
+          inputPlaceholder="e.g. Calculate income tax on Rs 2,500,000 for tax year 2026"
+          emptyTitle="Ask your first question"
+          emptyDescription="No questions yet. Ask anything about FBR tax, filing obligations, notice types, or compliance timelines — or attach a document and let the AI analyze it."
+        />
       </section>
     </ErrorBoundary>
   );

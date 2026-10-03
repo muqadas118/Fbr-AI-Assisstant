@@ -79,7 +79,7 @@ function StatCard({
           </Tag>
         )}
       </div>
-      {badge && <div className="stat-card__badge">{badge}</div>}
+      <div className="stat-card__badge">{badge ?? <span className="stat-card__badge-empty" aria-hidden="true" />}</div>
     </div>
   );
 }
@@ -163,7 +163,8 @@ function UpcomingTaskRow({ task }: { task: UpcomingTask }) {
 }
 
 export function BusinessOverviewPage() {
-  const [taxpayerType, setTaxpayerType] = useState<TaxpayerType>("business");
+  // Workspace-fixed: signup decides the workspace, so the type is display-only.
+  const [taxpayerType] = useState<TaxpayerType>("business");
   const [ntn] = useState(() => localStorage.getItem("fbr_ntn") ?? "");
   const [loading, setLoading] = useState(true);
   const [fetchErrors, setFetchErrors] = useState<string[]>([]);
@@ -254,8 +255,10 @@ export function BusinessOverviewPage() {
     return (
       <div className="page page--overview">
         <header className="page__header">
-          <p className="page-eyebrow">Business · Overview</p>
+          <div>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Business Overview</div>
             <h2 className="page__title">Business Overview</h2>
+          </div>
         </header>
         <Loading label="Loading your business dashboard…" testId="biz-loading" />
       </div>
@@ -267,26 +270,19 @@ export function BusinessOverviewPage() {
       <div className="page page--overview">
         <header className="page__header">
           <div>
-            <p className="page-eyebrow">Business · Overview</p>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Business Overview</div>
             <h2 className="page__title">Business Overview</h2>
             <p className="page__subtitle">Your business tax snapshot: sales tax, withholding, and upcoming filing deadlines.</p>
           </div>
           <div className="page__header-controls">
-            <label className="field__label" htmlFor="biz-taxpayer-type">
-              Taxpayer Type
-            </label>
-            <select
-              id="biz-taxpayer-type"
-              className="page__select"
-              value={taxpayerType}
-              onChange={(e) => setTaxpayerType(e.target.value as TaxpayerType)}
+            <span
+              className="overview__type-pill"
               data-testid="biz-taxpayer-type"
+              title={taxpayerType === "individual" ? "Signed up as Individual" : taxpayerType === "company" ? "Signed up as Company" : taxpayerType === "aop" ? "Signed up as AOP" : "Signed up as Business"}
             >
-              <option value="business">Business</option>
-              <option value="company">Company</option>
-              <option value="aop">AOP</option>
-              <option value="individual">Individual</option>
-            </select>
+              <span className="overview__type-dot" aria-hidden />
+              {taxpayerType === "individual" ? "Individual" : taxpayerType === "company" ? "Company" : taxpayerType === "aop" ? "AOP" : "Business"}
+            </span>
             <Button variant="ghost" size="sm" onClick={handleRefresh} data-testid="biz-refresh">
               Refresh
             </Button>
@@ -326,9 +322,9 @@ export function BusinessOverviewPage() {
 
           <div className="snapshot__metrics">
             <StatCard
-              label="Upcoming (30d)"
+              label="Upcoming"
               value={total30d}
-              unit="filings"
+              unit="filings · 30d"
               testId="biz-upcoming-total"
             />
             <StatCard
@@ -338,8 +334,9 @@ export function BusinessOverviewPage() {
               testId="biz-overdue"
             />
             <StatCard
-              label="Critical (7d)"
+              label="Critical"
               value={critical7d}
+              unit="next 7 days"
               badge={critical7d > 0 ? <Tag variant="err">{critical7d} critical</Tag> : undefined}
               testId="biz-critical-7d"
             />
@@ -352,9 +349,14 @@ export function BusinessOverviewPage() {
             <div className="stats-grid">
               <StatCard
                 label="Tax Health"
-                value={healthScore}
-                unit="/100"
-                grade={healthGrade}
+                value={taxHealth ? healthScore : "—"}
+                unit={taxHealth ? "/100" : undefined}
+                grade={taxHealth ? healthGrade : undefined}
+                badge={
+                  taxHealth ? undefined : (
+                    <Tag variant="default">needs tax data</Tag>
+                  )
+                }
                 testId="biz-health-score"
               />
               <StatCard
@@ -374,11 +376,8 @@ export function BusinessOverviewPage() {
               <StatCard
                 label="Notice Types"
                 value={pendingNotices}
-                badge={
-                  pendingNotices > 0 ? (
-                    <Tag variant="warn">{pendingNotices} types available</Tag>
-                  ) : undefined
-                }
+                unit="types"
+                badge={<Tag variant="default">analyzer ready</Tag>}
                 testId="biz-pending-notices"
               />
               <StatCard
@@ -389,7 +388,9 @@ export function BusinessOverviewPage() {
                     <Tag variant={readinessPct >= 80 ? "ok" : readinessPct >= 50 ? "warn" : "err"}>
                       {readinessPct >= 80 ? "Ready" : readinessPct >= 50 ? "Partial" : "Not ready"}
                     </Tag>
-                  ) : undefined
+                  ) : (
+                    <Tag variant="default">needs tax data</Tag>
+                  )
                 }
                 testId="biz-readiness"
               />

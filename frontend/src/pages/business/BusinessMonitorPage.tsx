@@ -339,7 +339,7 @@ export function BusinessMonitorPage() {
       <section className="page page--inbox" data-testid="biz-monitor">
         <header className="page__header">
           <div>
-            <p className="page-eyebrow">Business · Monitor</p>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Monitor</div>
             <h2 className="page__title">Business Compliance Monitor</h2>
             <p className="page__subtitle">
               Filing deadlines, sales tax returns, withholding payments, refunds and audit risks for your company.

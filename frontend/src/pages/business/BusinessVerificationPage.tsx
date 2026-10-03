@@ -10,6 +10,7 @@ import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
 import { Loading } from "@/components/shell/Loading";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Tag } from "@/components/ui/Tag";
 import { StatusBanner } from "@/components/ui/StatusBanner";
@@ -172,15 +173,17 @@ function CompanyNtnTab() {
             />
           </Field>
           <Field label="Registration Type" data-testid="biz-company-regtype-field">
-            <select
+            <Select
               value={regType}
-              onChange={(e) => setRegType(e.target.value)}
-              data-testid="biz-company-regtype-select"
-            >
-              <option value="ntn">NTN</option>
-              <option value="company">Company</option>
-              <option value="aop">AOP</option>
-            </select>
+              onChange={setRegType}
+              testId="biz-company-regtype-select"
+              ariaLabel="Registration type"
+              options={[
+                { value: "ntn", label: "NTN" },
+                { value: "company", label: "Company" },
+                { value: "aop", label: "AOP" },
+              ]}
+            />
           </Field>
           <div className="form__actions">
             <Button type="submit" variant="primary" loading={loading} disabled={loading} data-testid="biz-company-verify-submit">
@@ -664,7 +667,7 @@ export function BusinessVerificationPage() {
       <section className="page page--vault">
         <header className="page__header">
           <div>
-            <p className="page-eyebrow">Business · Verification</p>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Verification</div>
             <h2 className="page__title">Business Verification</h2>
             <p className="page__subtitle">
               Verify business entities with FBR — company NTN, sales tax registration, vendor

@@ -3,13 +3,14 @@ import clsx from "clsx";
 import { api, type AnswerResponse } from "@/lib/api";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
 import { StatusBanner } from "@/components/ui/StatusBanner";
-import { VerificationPanel } from "@/components/ui/VerificationPanel";
 import { SourceList } from "@/components/ui/SourceCitation";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { Card } from "@/components/ui/Card";
 import { Kv } from "@/components/ui/Kv";
 import { Tag } from "@/components/ui/Tag";
+import { VerificationPanel } from "@/components/ui/VerificationPanel";
 
 const TAX_TYPES = [
   { value: "income_tax", label: "Corporate / AOP Income Tax" },
@@ -290,7 +291,7 @@ export function BusinessTaxReducerPage() {
     <ErrorBoundary>
       <section className="page page--tax-reducer">
         <header className="page__header">
-          <p className="page-eyebrow">Business · Tax Planning</p>
+          <div className="page__eyebrow page-eyebrow eyebrow">FBR · Tax Planning</div>
           <h2 className="page__title">Business Tax Reducer</h2>
           <p className="page__subtitle">
             Find lawful ways to reduce your company's and business's tax liability.
@@ -352,17 +353,13 @@ export function BusinessTaxReducerPage() {
                   helperText="Which tax the analysis applies to"
                   data-testid="biz-reducer-tax-type"
                 >
-                  <select
+                  <Select
                     value={form.taxType}
-                    onChange={handleChange("taxType")}
-                    data-testid="biz-reducer-tax-type-select"
-                  >
-                    {TAX_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setForm((prev) => ({ ...prev, taxType: v }))}
+                    testId="biz-reducer-tax-type-select"
+                    ariaLabel="Tax type"
+                    options={TAX_TYPES}
+                  />
                 </Field>
 
                 <Field
@@ -370,17 +367,13 @@ export function BusinessTaxReducerPage() {
                   helperText="Company, AOP, or registered business"
                   data-testid="biz-reducer-taxpayer"
                 >
-                  <select
+                  <Select
                     value={form.taxpayerType}
-                    onChange={handleChange("taxpayerType")}
-                    data-testid="biz-reducer-taxpayer-select"
-                  >
-                    {TAXPAYER_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setForm((prev) => ({ ...prev, taxpayerType: v }))}
+                    testId="biz-reducer-taxpayer-select"
+                    ariaLabel="Business entity"
+                    options={TAXPAYER_TYPES}
+                  />
                 </Field>
 
                 <Field
@@ -669,30 +662,6 @@ export function BusinessTaxReducerPage() {
                             : []),
                         ]
                       : []),
-                    {
-                      key: "Verified",
-                      value: (
-                        <Tag
-                          variant={
-                            active.result.verification.passed ? "ok" : "err"
-                          }
-                        >
-                          {active.result.verification.passed
-                            ? "Verified"
-                            : "Not verified"}
-                        </Tag>
-                      ),
-                    },
-                    {
-                      key: "Grounded",
-                      value: (
-                        <Tag
-                          variant={active.result.grounded ? "ok" : "warn"}
-                        >
-                          {active.result.grounded ? "Yes" : "No"}
-                        </Tag>
-                      ),
-                    },
                   ]}
                   testId="biz-reducer-summary"
                 />
@@ -707,6 +676,18 @@ export function BusinessTaxReducerPage() {
                   grounded={active.result.grounded}
                   testId="biz-reducer-verification"
                 />
+              </Card>
+
+              <Card
+                title="Independence notice"
+                testId="biz-reducer-disclaimer-card"
+              >
+                <p className="calc-disclaimer__text">
+                  These suggestions are AI-generated from official FBR law and are not tax
+                  advice. Eligibility and savings are estimates — please verify each option
+                  independently with the relevant Finance Act provisions or a licensed tax
+                  practitioner before acting on it.
+                </p>
               </Card>
 
               <Card
@@ -790,7 +771,17 @@ export function BusinessTaxReducerPage() {
                                   s.result.verification.passed ? "ok" : "err"
                                 }
                               >
-                                {s.result.verification.passed ? "Yes" : "No"}
+                                {s.result.verification.passed
+                                  ? "Verified"
+                                  : "Not verified"}
+                              </Tag>
+                            ),
+                          },
+                          {
+                            key: "Grounded",
+                            value: (
+                              <Tag variant={s.result.grounded ? "ok" : "warn"}>
+                                {s.result.grounded ? "Yes" : "No"}
                               </Tag>
                             ),
                           },

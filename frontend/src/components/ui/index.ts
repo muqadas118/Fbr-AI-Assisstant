@@ -2,6 +2,7 @@ export * from "./Button";
 export * from "./Card";
 export * from "./Field";
 export * from "./Kv";
+export * from "./Select";
 export * from "./Spinner";
 export * from "./StatusBanner";
 export * from "./Tag";

@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/Button";
 import { Tag } from "@/components/ui/Tag";
 import { Field } from "@/components/ui/Field";
 import { Kv } from "@/components/ui/Kv";
+import { FileDrop } from "@/components/ui/FileDrop";
 import { useNotification } from "@/state/notifications";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -449,8 +450,17 @@ function ReconcileView() {
                 {
                   key: "Net Payable",
                   value: (
-                    <strong style={{ color: report.net_payable >= 0 ? "var(--c-err)" : "var(--c-ok)" }}>
-                      {report.net_payable >= 0 ? "Payable: " : "Credit: "}
+                    <strong
+                      style={{
+                        color:
+                          report.net_payable > 0
+                            ? "var(--c-err)"
+                            : report.net_payable < 0
+                              ? "var(--c-ok)"
+                              : "var(--c-ink)",
+                      }}
+                    >
+                      {report.net_payable > 0 ? "Payable: " : report.net_payable < 0 ? "Credit: " : "Net: "}
                       {formatPkr(Math.abs(report.net_payable))}
                     </strong>
                   ),
@@ -557,7 +567,17 @@ function DashboardCard({ dashboard }: { dashboard: InvoiceDashboard }) {
           <span className="inv-dashboard__stat-label">Purchases</span>
         </div>
         <div className="inv-dashboard__stat inv-dashboard__stat--highlight">
-          <span className="inv-dashboard__stat-value" style={{ color: "var(--c-err)" }}>
+          <span
+            className="inv-dashboard__stat-value"
+            style={{
+              color:
+                dashboard.net_payable > 0
+                  ? "var(--c-err)"
+                  : dashboard.net_payable < 0
+                    ? "var(--c-ok)"
+                    : "var(--c-ink)",
+            }}
+          >
             {formatPkr(dashboard.net_payable)}
           </span>
           <span className="inv-dashboard__stat-label">Net Payable</span>
@@ -644,7 +664,7 @@ export function InvoicesPage() {
     setError(null);
 
     if (!invoiceText.trim()) {
-      setTextError("Please paste invoice text before processing.");
+      setTextError("Paste invoice text before processing — or upload an invoice file below.");
       return;
     }
     if (invoiceText.trim().length < 15) {
@@ -654,10 +674,7 @@ export function InvoicesPage() {
 
     setProcessing(true);
     try {
-      const resp = await api.invoices.process(
-        invoiceText.trim(),
-        invoiceId.trim() || undefined,
-      );
+      const resp = await api.invoices.process(invoiceText.trim(), invoiceId.trim() || undefined);
       setResult(resp);
       notify("ok", "Invoice processed successfully.");
       // Refresh dashboard
@@ -775,6 +792,25 @@ export function InvoicesPage() {
                   </Field>
 
                   <Field
+                    label="Invoice File (optional)"
+                    helperText="Upload a PDF, image, or spreadsheet invoice — it is extracted and processed server-side"
+                    data-testid="inv-file-field"
+                  >
+                    <FileDrop
+                      mode="invoice"
+                      invoiceId={invoiceId.trim() || undefined}
+                      onOutcome={(outcome) => {
+                        if (outcome.data.kind !== "invoice") return;
+                        setError(null);
+                        setTextError(null);
+                        setResult(outcome.data.response.result);
+                        notify("ok", "Invoice processed from uploaded file.");
+                        void fetchDashboard();
+                      }}
+                    />
+                  </Field>
+
+                  <Field
                     label="Invoice Text"
                     error={textError ?? undefined}
                     data-testid="inv-text-field"
@@ -862,369 +898,7 @@ export function InvoicesPage() {
         </div>
       </section>
 
-      <style>{`
-        /* Dashboard */
-        .inv-dashboard-loading {
-          padding: var(--s-6);
-          text-align: center;
-        }
-
-        .inv-dashboard {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: var(--s-4);
-          margin-bottom: var(--s-5);
-        }
-
-        @media (max-width: 768px) {
-          .inv-dashboard {
-            grid-template-columns: repeat(2, 1fr);
-          }
-        }
-
-        @media (max-width: 480px) {
-          .inv-dashboard {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .inv-dashboard__stat {
-          padding: var(--s-4);
-          background: var(--c-paper-2);
-          border-radius: var(--r-2);
-          text-align: center;
-        }
-
-        .inv-dashboard__stat--highlight {
-          background: var(--c-accent-soft);
-          border: 1px solid rgba(13, 107, 79, 0.2);
-        }
-
-        .inv-dashboard__stat-value {
-          display: block;
-          font-family: var(--f-display);
-          font-size: 22px;
-          font-weight: 700;
-          margin-bottom: 2px;
-        }
-
-        .inv-dashboard__stat-label {
-          font-size: 11px;
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-          color: var(--c-text-muted);
-        }
-
-        .inv-dashboard__breakdown {
-          border-top: 1px dashed var(--c-line);
-          padding-top: var(--s-4);
-        }
-
-        /* Tabs */
-        .inv-tabs {
-          display: flex;
-          gap: 0;
-          border-bottom: 2px solid var(--c-line);
-          margin-bottom: var(--s-5);
-        }
-
-        .inv-tabs__tab {
-          padding: var(--s-3) var(--s-5);
-          background: transparent;
-          border: 0;
-          border-bottom: 2px solid transparent;
-          margin-bottom: -2px;
-          font-size: 14px;
-          font-weight: 500;
-          color: var(--c-text-muted);
-          cursor: pointer;
-          transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
-        }
-
-        .inv-tabs__tab:hover {
-          color: var(--c-text);
-        }
-
-        .inv-tabs__tab--active {
-          color: var(--c-accent);
-          border-bottom-color: var(--c-accent);
-        }
-
-        /* Process form */
-        .inv-process__id-input {
-          width: 100%;
-          padding: 8px 12px;
-          border: 1px solid var(--c-line-strong);
-          border-radius: var(--r-2);
-          background: #fffaf0;
-          font-size: 14px;
-        }
-
-        .inv-process__id-input:focus {
-          outline: 2px solid var(--c-accent);
-          outline-offset: -1px;
-          border-color: var(--c-accent);
-        }
-
-        .inv-process__textarea {
-          width: 100%;
-          padding: var(--s-4);
-          border: 1px solid var(--c-line-strong);
-          border-radius: var(--r-2);
-          background: #fffaf0;
-          font-family: var(--f-body);
-          font-size: 14px;
-          line-height: 1.6;
-          resize: vertical;
-          min-height: 180px;
-        }
-
-        .inv-process__textarea:focus {
-          outline: 2px solid var(--c-accent);
-          outline-offset: -1px;
-          border-color: var(--c-accent);
-        }
-
-        .inv-process__meta {
-          margin-top: var(--s-2);
-          text-align: right;
-        }
-
-        .inv-process__actions {
-          display: flex;
-          gap: var(--s-3);
-          margin-top: var(--s-4);
-          align-items: center;
-          flex-wrap: wrap;
-        }
-
-        /* Result */
-        .inv-result {
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-5);
-        }
-
-        .inv-result__status {
-          /* status banner handles it */
-        }
-
-        .inv-result__badges {
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-3);
-        }
-
-        /* Validation score */
-        .inv-validation__score-row {
-          display: flex;
-          align-items: center;
-          gap: var(--s-3);
-          margin-bottom: var(--s-4);
-        }
-
-        .inv-validation__score-label {
-          font-size: 13px;
-          font-weight: 600;
-          min-width: 120px;
-          color: var(--c-text-muted);
-        }
-
-        .inv-validation__score-bar {
-          flex: 1;
-          height: 8px;
-          background: var(--c-line);
-          border-radius: 999px;
-          overflow: hidden;
-        }
-
-        .inv-validation__score-fill {
-          height: 100%;
-          border-radius: 999px;
-          transition: width 0.6s ease, background 0.4s ease;
-        }
-
-        .inv-validation__score-number {
-          font-size: 14px;
-          font-weight: 700;
-          min-width: 52px;
-          text-align: right;
-        }
-
-        /* Invoice issues */
-        .inv-issues {
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-4);
-        }
-
-        .inv-issues__group-head {
-          margin-bottom: var(--s-2);
-        }
-
-        .inv-issues__list {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-2);
-        }
-
-        .inv-issues__item {
-          display: flex;
-          gap: var(--s-3);
-          padding: var(--s-3) var(--s-4);
-          border-radius: var(--r-2);
-          font-size: 13px;
-        }
-
-        .inv-issues__item--error {
-          background: #fdf5f5;
-          border-left: 3px solid var(--c-err);
-        }
-
-        .inv-issues__item--warning {
-          background: #fdf8ec;
-          border-left: 3px solid var(--c-warn);
-        }
-
-        .inv-issues__item--info {
-          background: var(--c-accent-soft);
-          border-left: 3px solid var(--c-accent);
-        }
-
-        .inv-issues__field {
-          font-family: var(--f-mono);
-          font-size: 12px;
-          font-weight: 600;
-          min-width: 120px;
-          color: var(--c-text-muted);
-        }
-
-        .inv-issues__message {
-          flex: 1;
-          color: var(--c-text);
-        }
-
-        .inv-issues-empty {
-          padding: var(--s-4);
-          text-align: center;
-        }
-
-        /* Summary */
-        .inv-summary__text {
-          font-size: 13.5px;
-          line-height: 1.7;
-          margin-bottom: var(--s-3);
-        }
-
-        .inv-summary__meta {
-          margin-top: var(--s-3);
-          padding-top: var(--s-3);
-          border-top: 1px dashed var(--c-line);
-        }
-
-        /* Reconcile */
-        .inv-reconcile {
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-4);
-        }
-
-        .inv-reconcile__fields {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: var(--s-4);
-        }
-
-        @media (max-width: 768px) {
-          .inv-reconcile__fields {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .inv-reconcile__textarea {
-          width: 100%;
-          padding: var(--s-3);
-          border: 1px solid var(--c-line-strong);
-          border-radius: var(--r-2);
-          background: #fffaf0;
-          font-family: var(--f-mono);
-          font-size: 12px;
-          line-height: 1.5;
-          resize: vertical;
-          min-height: 120px;
-        }
-
-        .inv-reconcile__textarea:focus {
-          outline: 2px solid var(--c-accent);
-          outline-offset: -1px;
-          border-color: var(--c-accent);
-        }
-
-        .inv-reconcile__actions {
-          display: flex;
-          gap: var(--s-3);
-          align-items: center;
-        }
-
-        .inv-reconcile__report {
-          margin-top: var(--s-4);
-          padding: var(--s-5);
-          background: var(--c-paper-2);
-          border-radius: var(--r-2);
-          border: 1px solid var(--c-line);
-        }
-
-        .inv-reconcile__report-head {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: var(--s-4);
-        }
-
-        .inv-reconcile__report-title {
-          font-family: var(--f-display);
-          font-size: 16px;
-          margin: 0;
-        }
-
-        .inv-reconcile__recommendations {
-          margin-top: var(--s-4);
-          padding-top: var(--s-4);
-          border-top: 1px dashed var(--c-line);
-        }
-
-        .inv-reconcile__rec-title {
-          font-size: 13px;
-          font-weight: 700;
-          margin-bottom: var(--s-2);
-        }
-
-        .inv-reconcile__recommendations ul {
-          margin: 0;
-          padding-left: var(--s-5);
-          font-size: 13px;
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-1);
-        }
-
-        /* Export */
-        .inv-export {
-          margin-left: auto;
-          display: flex;
-          gap: var(--s-2);
-        }
-
-        /* Page header actions */
-        .page__header-actions {
-          display: flex;
-          gap: var(--s-2);
-          align-items: center;
-        }
-      `}</style>
+      
     </ErrorBoundary>
   );
 }

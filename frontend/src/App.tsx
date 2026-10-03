@@ -1,12 +1,11 @@
 ﻿import { Suspense, lazy } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
-import { RequireAuth } from "@/components/shell/RequireAuth";
 import { Loading } from "@/components/shell/Loading";
-import { LoginPage } from "@/pages/auth/LoginPage";
-import { SignupPage } from "@/pages/auth/SignupPage";
-import { AuthCallbackPage } from "@/pages/auth/AuthCallbackPage";
 import { LandingPage } from "@/pages/LandingPage";
+// DEV ONLY (login temporarily removed): RequireAuth + Login/Signup/Callback
+// pages are bypassed below — routes redirect into the workspace.
+// End me login wapis lagana hai to ye patch revert karna.
 
 const OverviewPage = lazy(() => import("@/pages/personal/OverviewPage").then((m) => ({ default: m.OverviewPage })));
 const AssistantPage = lazy(() => import("@/pages/personal/AssistantPage").then((m) => ({ default: m.AssistantPage })));
@@ -22,9 +21,6 @@ const VerificationPage = lazy(() => import("@/pages/personal/VerificationPage").
 const VaultPage = lazy(() => import("@/pages/personal/VaultPage").then((m) => ({ default: m.VaultPage })));
 const ResearchPage = lazy(() => import("@/pages/personal/ResearchPage").then((m) => ({ default: m.ResearchPage })));
 const SettingsPage = lazy(() => import("@/pages/personal/SettingsPage").then((m) => ({ default: m.SettingsPage })));
-const InboxPage = lazy(() => import("@/pages/personal/InboxPage").then((m) => ({ default: m.InboxPage })));
-const SubordinatesPage = lazy(() => import("@/pages/personal/SubordinatesPage").then((m) => ({ default: m.SubordinatesPage })));
-const WorkspacesPage = lazy(() => import("@/pages/personal/WorkspacesPage").then((m) => ({ default: m.WorkspacesPage })));
 const BusinessOverviewPage = lazy(() => import("@/pages/business/BusinessOverviewPage").then((m) => ({ default: m.BusinessOverviewPage })));
 const BusinessAssistantPage = lazy(() => import("@/pages/business/BusinessAssistantPage").then((m) => ({ default: m.BusinessAssistantPage })));
 const BusinessCalculatorPage = lazy(() => import("@/pages/business/BusinessCalculatorPage").then((m) => ({ default: m.BusinessCalculatorPage })));
@@ -39,6 +35,15 @@ const BusinessVerificationPage = lazy(() => import("@/pages/business/BusinessVer
 const BusinessVaultPage = lazy(() => import("@/pages/business/BusinessVaultPage").then((m) => ({ default: m.BusinessVaultPage })));
 const BusinessTeamPage = lazy(() => import("@/pages/business/BusinessTeamPage").then((m) => ({ default: m.BusinessTeamPage })));
 const BusinessMonitorPage = lazy(() => import("@/pages/business/BusinessMonitorPage").then((m) => ({ default: m.BusinessMonitorPage })));
+const BusinessSettingsPage = lazy(() => import("@/pages/business/BusinessSettingsPage").then((m) => ({ default: m.BusinessSettingsPage })));
+// Workspace-parity features: business reuses the (workspace-agnostic) personal
+// pages so both workspaces expose the same capabilities; business additionally
+// has Team + Compliance Monitor.
+const BusinessResearchPage = lazy(() => import("@/pages/personal/ResearchPage").then((m) => ({ default: m.ResearchPage })));
+// Workspace Hub: Inbox + Subordinates + Workspaces as internal tabs of ONE
+// sidebar entry, shared by both workspaces.
+const PersonalWorkspaceHubPage = lazy(() => import("@/pages/workspace/WorkspaceHubPage").then((m) => ({ default: m.WorkspaceHubPage })));
+const BusinessWorkspaceHubPage = lazy(() => import("@/pages/workspace/WorkspaceHubPage").then((m) => ({ default: m.WorkspaceHubPage })));
 
 export function App() {
   return (
@@ -46,17 +51,11 @@ export function App() {
       <Suspense fallback={<Loading label="Loading…" testId="route-loading" />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/auth/callback" element={<AuthCallbackPage />} />
-          <Route
-            path="/personal"
-            element={
-              <RequireAuth>
-                <AppShell />
-              </RequireAuth>
-            }
-          >
+          {/* DEV ONLY: auth pages redirect into the app until login is restored. */}
+          <Route path="/login" element={<Navigate to="/personal/overview" replace />} />
+          <Route path="/signup" element={<Navigate to="/personal/overview" replace />} />
+          <Route path="/auth/callback" element={<Navigate to="/personal/overview" replace />} />
+          <Route path="/personal" element={<AppShell />}>
             <Route index element={<OverviewPage />} />
             <Route path="overview" element={<OverviewPage />} />
             <Route path="assistant" element={<AssistantPage />} />
@@ -72,18 +71,13 @@ export function App() {
             <Route path="vault" element={<VaultPage />} />
             <Route path="research" element={<ResearchPage />} />
             <Route path="settings" element={<SettingsPage />} />
-            <Route path="inbox" element={<InboxPage />} />
-            <Route path="subordinates" element={<SubordinatesPage />} />
-            <Route path="workspaces" element={<WorkspacesPage />} />
+            <Route path="workspace" element={<PersonalWorkspaceHubPage />} />
+            {/* Legacy flat routes → hub (tab carried over). */}
+            <Route path="inbox" element={<Navigate to="/personal/workspace?tab=inbox" replace />} />
+            <Route path="subordinates" element={<Navigate to="/personal/workspace?tab=subordinates" replace />} />
+            <Route path="workspaces" element={<Navigate to="/personal/workspace?tab=workspaces" replace />} />
           </Route>
-          <Route
-            path="/business"
-            element={
-              <RequireAuth>
-                <AppShell variant="business" />
-              </RequireAuth>
-            }
-          >
+          <Route path="/business" element={<AppShell variant="business" />}>
             <Route index element={<BusinessOverviewPage />} />
             <Route path="overview" element={<BusinessOverviewPage />} />
             <Route path="assistant" element={<BusinessAssistantPage />} />
@@ -97,8 +91,15 @@ export function App() {
             <Route path="health" element={<BusinessHealthPage />} />
             <Route path="verification" element={<BusinessVerificationPage />} />
             <Route path="vault" element={<BusinessVaultPage />} />
+            <Route path="research" element={<BusinessResearchPage />} />
             <Route path="team" element={<BusinessTeamPage />} />
             <Route path="monitor" element={<BusinessMonitorPage />} />
+            <Route path="workspace" element={<BusinessWorkspaceHubPage />} />
+            {/* Legacy flat routes → hub (tab carried over). */}
+            <Route path="inbox" element={<Navigate to="/business/workspace?tab=inbox" replace />} />
+            <Route path="subordinates" element={<Navigate to="/business/workspace?tab=subordinates" replace />} />
+            <Route path="workspaces" element={<Navigate to="/business/workspace?tab=workspaces" replace />} />
+            <Route path="settings" element={<BusinessSettingsPage />} />
           </Route>
           <Route path="*" element={<LandingPage />} />
         </Routes>

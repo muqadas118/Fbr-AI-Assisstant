@@ -15,7 +15,7 @@ export function VerificationPanel({
   className,
   testId,
 }: VerificationPanelProps) {
-  const checks = verification.checks;
+  const checks = verification.checks ?? {};
   const rows = [
     { name: "Answer size", check: checks.answer_size },
     { name: "Section consistency", check: checks.section_consistency },
@@ -32,9 +32,9 @@ export function VerificationPanel({
         </span>
       </div>
       <p className="verification__reason">{verification.reason}</p>
-      {verification.failed_checks.length > 0 ? (
+      {(verification.failed_checks ?? []).length > 0 ? (
         <p className="verification__failed">
-          Failed: {verification.failed_checks.join(", ")}
+          Failed: {(verification.failed_checks ?? []).join(", ")}
         </p>
       ) : null}
       <dl className="verification__checks">
@@ -42,7 +42,9 @@ export function VerificationPanel({
           <div key={r.name} className="verification__check-row">
             <dt>{r.name}</dt>
             <dd>
-              {r.check.passed ? (
+              {r.check == null ? (
+                <span className="verification__check-na">—</span>
+              ) : r.check.passed ? (
                 <Tag variant="ok">Pass</Tag>
               ) : (
                 <Tag variant="err">Fail</Tag>

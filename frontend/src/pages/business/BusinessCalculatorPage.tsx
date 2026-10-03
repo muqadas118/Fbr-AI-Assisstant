@@ -2,16 +2,39 @@ import { useState, useCallback } from "react";
 import { ApiError, NetworkError, api, type SourceItem, type VerificationResult } from "@/lib/api";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
 import { StatusBanner } from "@/components/ui/StatusBanner";
-import { VerificationPanel } from "@/components/ui/VerificationPanel";
 import { SourceList } from "@/components/ui/SourceCitation";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
+import { Kv } from "@/components/ui/Kv";
+import { Tag } from "@/components/ui/Tag";
+import { VerificationPanel } from "@/components/ui/VerificationPanel";
 
 interface CalculatorResult {
   answer: string;
+  /** True when the engine produced this result (not the RAG pipeline). */
+  deterministic: boolean;
+  sources: SourceItem[];
+  /** Verification status: synthesized for the deterministic engine, real for RAG. */
   verification: VerificationResult;
   grounded: boolean;
-  sources: SourceItem[];
+}
+
+/** Verification payload shown while only the deterministic engine has run —
+ * the deterministic path bypasses the RAG verification layer, so we present
+ * an honest "deterministic engine" verification instead of a fake pass. */
+function deterministicVerification(): VerificationResult {
+  return {
+    passed: true,
+    checks: {
+      answer_size: { passed: true, reason: "deterministic engine" },
+      section_consistency: { passed: true, reason: "deterministic engine" },
+      grounding: { passed: true, reason: "deterministic engine" },
+      speculation: { passed: true, reason: "deterministic engine" },
+    },
+    failed_checks: [],
+    reason: "deterministic calculation engine",
+  };
 }
 
 interface CalculatorFormValues {
@@ -25,6 +48,10 @@ interface CalculatorFormValues {
   businessRegistration: string;
   additionalInfo: string;
 }
+
+/** Engine-side hard cap: IncomeTaxCalculator rejects gross income above
+ * PKR 1 trillion. Kept in sync with app/calculations/income_tax.py. */
+const INCOME_CAP = 1_000_000_000_000;
 
 const CALCULATION_TYPES = [
   { value: "income_tax", label: "Corporate / AOP Income Tax" },
@@ -56,6 +83,14 @@ export function BusinessCalculatorPage() {
   const [result, setResult] = useState<CalculatorResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /** Live hint when the typed turnover crosses the engine's 1T cap
+   * (applies to income/minimum-tax calculations on the turnover). */
+  const incomeCapExceeded =
+    (form.calculationType === "income_tax" || form.calculationType === "minimum_tax") &&
+    form.taxableTurnover.trim() !== "" &&
+    Number.isFinite(Number(form.taxableTurnover)) &&
+    Number(form.taxableTurnover) > INCOME_CAP;
 
   const handleChange =
     <K extends keyof CalculatorFormValues>(field: K) =>
@@ -113,31 +148,32 @@ export function BusinessCalculatorPage() {
       const data = calc as { formatted_text?: string; data?: unknown };
       const deterministic = String(data.formatted_text ?? JSON.stringify(data.data ?? calc));
 
+      // Show the deterministic result IMMEDIATELY — the AI explanation
+      // below is a bonus that streams in later when it is ready.
+      setResult({
+        answer: deterministic,
+        deterministic: true,
+        sources: [],
+        verification: deterministicVerification(),
+        grounded: true,
+      });
+
       try {
         const resp = await api.answer(query);
-        setResult({
-          answer: `${deterministic}\n\n---\n\n${resp.answer}`,
-          verification: resp.verification,
-          grounded: resp.grounded,
-          sources: resp.sources,
-        });
+        setResult((prev) =>
+          prev
+            ? {
+                ...prev,
+                answer: `${prev.answer}\n\n---\n\n${resp.answer}`,
+                deterministic: false,
+                sources: resp.sources,
+                verification: resp.verification,
+                grounded: resp.grounded,
+              }
+            : prev,
+        );
       } catch {
-        setResult({
-          answer: deterministic,
-          verification: {
-            passed: true,
-            checks: {
-              answer_size: { passed: true, reason: "deterministic engine" },
-              section_consistency: { passed: true, reason: "deterministic engine" },
-              grounding: { passed: true, reason: "deterministic engine" },
-              speculation: { passed: true, reason: "deterministic engine" },
-            },
-            failed_checks: [],
-            reason: "deterministic calculation engine",
-          },
-          grounded: true,
-          sources: [],
-        });
+        // Deterministic result already on screen — nothing to do.
       }
     } catch (err) {
       if (err instanceof ApiError || err instanceof NetworkError) {
@@ -170,10 +206,10 @@ export function BusinessCalculatorPage() {
     <ErrorBoundary>
       <section className="page page--calculator">
         <header className="page__header">
-          <p className="page-eyebrow">Business · Calculator</p>
+          <div className="page__eyebrow page-eyebrow eyebrow">FBR · Calculator</div>
           <h2 className="page__title">Business Tax Calculator</h2>
           <p className="page__subtitle">
-            Calculate corporate and AOP income tax, sales tax, and withholding tax for your business. Enter your turnover and expenses, and get a verified calculation with sources.
+            Calculate corporate and AOP income tax, sales tax, and withholding tax for your business. Enter your turnover and expenses, and get an instant calculation with sources.
           </p>
         </header>
 
@@ -192,17 +228,13 @@ export function BusinessCalculatorPage() {
                 helperText="Select the business tax to calculate"
                 data-testid="biz-calc-type"
               >
-                <select
+                <Select
                   value={form.calculationType}
-                  onChange={handleChange("calculationType")}
-                  data-testid="biz-calc-type-select"
-                >
-                  {CALCULATION_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setForm((prev) => ({ ...prev, calculationType: v }))}
+                  testId="biz-calc-type-select"
+                  ariaLabel="Calculation type"
+                  options={CALCULATION_TYPES}
+                />
               </Field>
 
               <Field
@@ -210,17 +242,13 @@ export function BusinessCalculatorPage() {
                 helperText="Company, AOP, or registered business"
                 data-testid="biz-taxpayer-type"
               >
-                <select
+                <Select
                   value={form.taxpayerType}
-                  onChange={handleChange("taxpayerType")}
-                  data-testid="biz-taxpayer-type-select"
-                >
-                  {TAXPAYER_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setForm((prev) => ({ ...prev, taxpayerType: v }))}
+                  testId="biz-taxpayer-type-select"
+                  ariaLabel="Taxpayer type"
+                  options={TAXPAYER_TYPES}
+                />
               </Field>
 
               <Field
@@ -267,6 +295,13 @@ export function BusinessCalculatorPage() {
                   data-testid="biz-turnover-input"
                 />
               </Field>
+
+              {incomeCapExceeded ? (
+                <p className="calc-cap-hint" data-testid="biz-income-cap-hint" role="status">
+                  Heads-up: the engine supports amounts up to PKR 1,000,000,000,000 (1 trillion).
+                  Larger values will be rejected when you calculate.
+                </p>
+              ) : null}
 
               <Field
                 label="Allowable Business Deductions (PKR)"
@@ -384,6 +419,30 @@ export function BusinessCalculatorPage() {
                   <SourceList sources={result.sources} testId="biz-sources" />
                 </div>
               )}
+
+              <div className="calc-disclaimer" data-testid="biz-calc-disclaimer">
+                <Kv
+                  rows={[
+                    {
+                      key: "Calculated by",
+                      value: (
+                        <Tag variant={result.deterministic ? "ok" : "accent"}>
+                          {result.deterministic
+                            ? "Deterministic tax engine (FBR rules)"
+                            : "AI explanation + deterministic engine"}
+                        </Tag>
+                      ),
+                    },
+                  ]}
+                  testId="biz-calc-engine-source"
+                />
+                <p className="calc-disclaimer__text">
+                  This is an automated estimate, not tax advice. Figures follow the Finance Act
+                  rules coded into the engine, but your circumstances may differ. Please verify
+                  the results independently — cross-check with the official FBR calculator or a
+                  licensed tax practitioner before filing.
+                </p>
+              </div>
             </div>
           ) : !loading && !error && (form.taxableTurnover || form.additionalInfo) ? (
             <StatusBanner

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { act } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -120,12 +121,12 @@ describe("CalendarPage", () => {
     expect(
       screen.getByText(/tax compliance deadlines, upcoming tasks, and overdue items/),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("cal-taxpayer-select")).toBeInTheDocument();
+    expect(screen.getByTestId("cal-taxpayer-type")).toBeInTheDocument();
     expect(screen.getByTestId("cal-refresh-btn")).toBeInTheDocument();
     expect(screen.getByTestId("cal-filters")).toBeInTheDocument();
   });
 
-  it("shows loading indicators while dashboard and events are pending", async () => {
+  it("shows the dashboard loader while its request is pending", async () => {
     const { api } = await import("../lib/api");
     vi.mocked(api.calendar.getDashboard).mockImplementation(() => new Promise(() => {}));
     vi.mocked(api.calendar.get).mockImplementation(() => new Promise(() => {}));
@@ -133,7 +134,22 @@ describe("CalendarPage", () => {
 
     renderPage();
 
+    // Dashboard loader shows while its request is pending; the events loader
+    // takes over once the dashboard slot resolves (progressive loading).
     expect(screen.getByTestId("cal-dashboard-loading")).toBeInTheDocument();
+  });
+
+  it("shows the events loader after the dashboard has loaded", async () => {
+    const { api } = await import("../lib/api");
+    vi.mocked(api.calendar.getDashboard).mockResolvedValue(mockDashboard);
+    vi.mocked(api.calendar.get).mockImplementation(() => new Promise(() => {}));
+    vi.mocked(api.calendar.getUpcoming).mockImplementation(() => new Promise(() => {}));
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("cal-dashboard-card")).toBeInTheDocument();
+    });
     expect(screen.getByTestId("cal-events-loading")).toBeInTheDocument();
   });
 
@@ -148,19 +164,29 @@ describe("CalendarPage", () => {
     expect(api.calendar.getUpcoming).toHaveBeenCalledWith("individual", 30);
   });
 
-  it("refetches the dashboard when taxpayer type changes", async () => {
+  it("shows Individual for the personal workspace and Business after switching", async () => {
     const { api } = await import("../lib/api");
-    const user = userEvent.setup();
+    const { useWorkspace } = await import("../state/workspace");
     renderPage();
 
+    // Personal workspace → Individual
     await waitFor(() => {
       expect(api.calendar.getDashboard).toHaveBeenCalledWith("individual");
     });
+    expect(screen.getByTestId("cal-taxpayer-value")).toHaveTextContent("Individual");
 
-    await user.selectOptions(screen.getByTestId("cal-taxpayer-select"), "business");
+    // Switch workspace → Business
+    act(() => {
+      useWorkspace.setState({ active: "business" });
+    });
 
     await waitFor(() => {
       expect(api.calendar.getDashboard).toHaveBeenCalledWith("business");
+    });
+    expect(screen.getByTestId("cal-taxpayer-value")).toHaveTextContent("Business");
+
+    act(() => {
+      useWorkspace.setState({ active: "personal" });
     });
   });
 

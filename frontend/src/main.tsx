@@ -6,6 +6,11 @@ import { getAccessToken } from "@/lib/supabase";
 import { useAuth } from "@/state/auth";
 import "@/styles/tokens.css";
 import "@/styles/app.css";
+import "@/styles/inbox.css";
+import "@/styles/team.css";
+import "@/styles/sections.css";
+import "@/styles/workspaces.css";
+import "@/styles/readiness.css";
 import "@/styles/gov-fbr.css";
 
 // Wire Supabase JWT -> API Bearer header once at startup.
@@ -13,11 +18,8 @@ import "@/styles/gov-fbr.css";
 // so unauthenticated flows (and tests) keep working.
 setAuthTokenGetter(getAccessToken);
 setUnauthorizedHandler(() => {
-  const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  if (currentPath.startsWith("/login")) return;
-  void useAuth.getState().signOut().finally(() => {
-    window.location.replace(`/login?returnTo=${encodeURIComponent(currentPath)}`);
-  });
+  // DEV ONLY: login temporarily removed — do not redirect to /login.
+  // End me login restore karte waqt ye handler wapis lagana.
 });
 
 // Restore session + subscribe to auth changes (supabase auto-persist).

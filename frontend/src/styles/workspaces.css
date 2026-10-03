@@ -1,0 +1,417 @@
+/* ==================================================================
+   Workspaces — Workspace Hub tab (designed section)
+   Same FBR pine/brass tokens; no new colours.
+   ================================================================== */
+
+/* Setup card -------------------------------------------------------- */
+.ws__setup {
+  background:
+    linear-gradient(180deg, rgba(12, 59, 46, 0.035), rgba(12, 59, 46, 0) 70%),
+    var(--c-surface);
+}
+.ws__setup-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--s-4);
+}
+.ws__setup .field__input {
+  font-family: var(--f-mono);
+  font-size: 13px;
+  background: var(--c-paper-2);
+}
+@media (max-width: 720px) {
+  .ws__setup-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Hero / active workspace ------------------------------------------- */
+.ws__hero {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  margin-bottom: var(--s-5);
+  animation: ws-item-in 460ms var(--ease-out-expo) both;
+}
+.ws__hero-avatar {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--fbr-green) 0%, var(--c-primary-3) 100%);
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(8, 42, 33, 0.2);
+}
+.ws__hero-avatar svg {
+  width: 26px;
+  height: 26px;
+}
+.ws__hero-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ws__hero-label {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+.ws__hero-name {
+  font-family: var(--f-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--c-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws__hero-ntn {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--c-text-muted);
+}
+.ws__hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  flex: 0 0 auto;
+}
+
+/* Quick stats --------------------------------------------------------- */
+.ws__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+}
+@media (max-width: 720px) {
+  .ws__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.ws__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--s-4) var(--s-2);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-3);
+  background: var(--c-paper-2);
+  text-align: center;
+  transition: transform 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+.ws__stat:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(8, 42, 33, 0.08);
+}
+.ws__stat-value {
+  font-family: var(--f-display);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--c-ink);
+  font-variant-numeric: tabular-nums;
+}
+.ws__stat-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+
+/* Section titles ------------------------------------------------------ */
+.ws__section-title {
+  margin: 0 0 var(--s-3);
+  font-family: var(--f-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-ink);
+}
+
+/* Workspace cards grid ------------------------------------------------ */
+.ws__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+}
+.ws__card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-3);
+  background: var(--c-surface);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  transition:
+    border-color 180ms var(--ease),
+    box-shadow 180ms var(--ease),
+    transform 180ms var(--ease);
+  animation: ws-item-in 460ms var(--ease-out-expo) both;
+}
+.ws__grid .ws__card:nth-child(2) { animation-delay: 60ms; }
+.ws__grid .ws__card:nth-child(3) { animation-delay: 120ms; }
+.ws__grid .ws__card:nth-child(n + 4) { animation-delay: 180ms; }
+.ws__card:hover {
+  border-color: var(--c-line-strong);
+  box-shadow: 0 10px 24px rgba(8, 42, 33, 0.1);
+  transform: translateY(-2px);
+}
+.ws__card--active {
+  border-color: var(--c-primary);
+  box-shadow: 0 10px 24px rgba(8, 42, 33, 0.12);
+}
+.ws__card-active-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--c-gold), var(--fbr-green));
+}
+.ws__card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+.ws__card--active .ws__card-icon {
+  background: var(--c-gold-soft);
+  color: var(--c-primary-2);
+}
+.ws__card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.ws__card-name {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--c-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws__card-ntn {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  color: var(--c-text-faint);
+}
+.ws__card-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: 11.5px;
+  color: var(--c-text-muted);
+}
+.ws__card-members {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ws__card-date {
+  font-size: 11px;
+  color: var(--c-text-faint);
+}
+
+/* Quick links ----------------------------------------------------------- */
+.ws__quick-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+}
+.ws__quick-link {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-3);
+  background: var(--c-surface);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  transition: border-color 180ms var(--ease), box-shadow 180ms var(--ease), transform 180ms var(--ease);
+}
+.ws__quick-link:hover {
+  border-color: var(--c-primary-3);
+  box-shadow: 0 8px 18px rgba(8, 42, 33, 0.09);
+  transform: translateY(-1px);
+}
+.ws__quick-link-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+.ws__quick-link-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-ink);
+}
+
+/* Upcoming tasks ---------------------------------------------------------- */
+.ws__tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.ws__task {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: var(--c-paper-2);
+}
+.ws__task--overdue {
+  border-left: 3px solid var(--c-err);
+}
+.ws__task-priority {
+  flex: 0 0 auto;
+}
+.ws__task-body {
+  flex: 1;
+  min-width: 0;
+}
+.ws__task-title {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--c-ink);
+}
+.ws__task-category {
+  margin-left: var(--s-2);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+.ws__task-due {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--c-text-muted);
+}
+.ws__task-days {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-primary-2);
+  font-variant-numeric: tabular-nums;
+}
+.ws__task-days--overdue {
+  color: var(--c-err);
+}
+
+/* Create workspace form ----------------------------------------------------- */
+.ws__create-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3) var(--s-4);
+}
+.ws__create-form .form__actions,
+.ws__create-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--s-2);
+}
+@media (max-width: 640px) {
+  .ws__create-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Errors ---------------------------------------------------------------- */
+.ws__error {
+  margin-bottom: var(--s-4);
+}
+
+/* Empty state ------------------------------------------------------------- */
+.ws__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--s-2);
+  padding: var(--s-8) var(--s-5);
+  margin-bottom: var(--s-5);
+  border: 1.5px dashed var(--c-line-strong);
+  border-radius: var(--r-3);
+  background:
+    radial-gradient(360px 140px at 50% -30%, rgba(198, 161, 91, 0.12), rgba(198, 161, 91, 0) 70%),
+    var(--c-paper-2);
+}
+.ws__empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  margin-bottom: var(--s-2);
+  border-radius: 50%;
+  background: var(--c-primary-soft);
+  border: 1px solid rgba(12, 59, 46, 0.16);
+  color: var(--c-primary);
+}
+.ws__empty-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-ink);
+}
+.ws__empty-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--c-text-muted);
+  max-width: 46ch;
+}
+.ws__empty .btn {
+  margin-top: var(--s-2);
+}
+
+@keyframes ws-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ws__hero,
+  .ws__card {
+    animation: none;
+  }
+}

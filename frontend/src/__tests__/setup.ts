@@ -27,3 +27,8 @@ globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
   unobserve: vi.fn(),
   disconnect: vi.fn(),
 })) as unknown as typeof ResizeObserver;
+// Chat history persists in localStorage — tests must start with a clean
+// conversation so duplicate-message assertions stay deterministic.
+afterEach(() => {
+  window.localStorage.clear();
+});

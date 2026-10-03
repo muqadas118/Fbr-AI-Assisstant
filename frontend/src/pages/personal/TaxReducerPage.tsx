@@ -3,13 +3,14 @@ import clsx from "clsx";
 import { api, type AnswerResponse } from "@/lib/api";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
 import { StatusBanner } from "@/components/ui/StatusBanner";
-import { VerificationPanel } from "@/components/ui/VerificationPanel";
 import { SourceList } from "@/components/ui/SourceCitation";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { Card } from "@/components/ui/Card";
 import { Kv } from "@/components/ui/Kv";
 import { Tag } from "@/components/ui/Tag";
+import { VerificationPanel } from "@/components/ui/VerificationPanel";
 
 const TAX_TYPES = [
   { value: "income_tax", label: "Income Tax" },
@@ -342,17 +343,13 @@ export function TaxReducerPage() {
                   helperText="Which tax the analysis applies to"
                   data-testid="tax-reducer-tax-type"
                 >
-                  <select
+                  <Select
                     value={form.taxType}
-                    onChange={handleChange("taxType")}
-                    data-testid="tax-reducer-tax-type-select"
-                  >
-                    {TAX_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setForm((prev) => ({ ...prev, taxType: v }))}
+                    testId="tax-reducer-tax-type-select"
+                    ariaLabel="Tax type"
+                    options={TAX_TYPES}
+                  />
                 </Field>
 
                 <Field
@@ -360,17 +357,13 @@ export function TaxReducerPage() {
                   helperText="Individual or business"
                   data-testid="tax-reducer-taxpayer"
                 >
-                  <select
+                  <Select
                     value={form.taxpayerType}
-                    onChange={handleChange("taxpayerType")}
-                    data-testid="tax-reducer-taxpayer-select"
-                  >
-                    {TAXPAYER_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setForm((prev) => ({ ...prev, taxpayerType: v }))}
+                    testId="tax-reducer-taxpayer-select"
+                    ariaLabel="Taxpayer"
+                    options={TAXPAYER_TYPES}
+                  />
                 </Field>
 
                 <Field
@@ -641,30 +634,6 @@ export function TaxReducerPage() {
                             : []),
                         ]
                       : []),
-                    {
-                      key: "Verified",
-                      value: (
-                        <Tag
-                          variant={
-                            active.result.verification.passed ? "ok" : "err"
-                          }
-                        >
-                          {active.result.verification.passed
-                            ? "Verified"
-                            : "Not verified"}
-                        </Tag>
-                      ),
-                    },
-                    {
-                      key: "Grounded",
-                      value: (
-                        <Tag
-                          variant={active.result.grounded ? "ok" : "warn"}
-                        >
-                          {active.result.grounded ? "Yes" : "No"}
-                        </Tag>
-                      ),
-                    },
                   ]}
                   testId="tax-reducer-summary"
                 />
@@ -679,6 +648,18 @@ export function TaxReducerPage() {
                   grounded={active.result.grounded}
                   testId="tax-reducer-verification"
                 />
+              </Card>
+
+              <Card
+                title="Independence notice"
+                testId="tax-reducer-disclaimer-card"
+              >
+                <p className="calc-disclaimer__text">
+                  These suggestions are AI-generated from official FBR law and are not tax
+                  advice. Eligibility and savings are estimates — please verify each option
+                  independently with the relevant Finance Act provisions or a licensed tax
+                  practitioner before acting on it.
+                </p>
               </Card>
 
               <Card
@@ -762,7 +743,17 @@ export function TaxReducerPage() {
                                   s.result.verification.passed ? "ok" : "err"
                                 }
                               >
-                                {s.result.verification.passed ? "Yes" : "No"}
+                                {s.result.verification.passed
+                                  ? "Verified"
+                                  : "Not verified"}
+                              </Tag>
+                            ),
+                          },
+                          {
+                            key: "Grounded",
+                            value: (
+                              <Tag variant={s.result.grounded ? "ok" : "warn"}>
+                                {s.result.grounded ? "Yes" : "No"}
                               </Tag>
                             ),
                           },

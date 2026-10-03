@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { BrowserRouter } from "react-router-dom";
 import { CalculatorPage } from "../pages/personal/CalculatorPage";
+import { api } from "../lib/api";
 
 vi.mock("../lib/api", async () => {
   const actual = await vi.importActual<typeof import("../lib/api")>("../lib/api");
@@ -109,18 +110,22 @@ describe("CalculatorPage", () => {
     const user = userEvent.setup();
     renderWithRouter(<CalculatorPage />);
 
-    await user.selectOptions(screen.getByTestId("calc-type-select"), "income_tax");
+    await user.click(screen.getByTestId("calc-type-select"));
+    await user.click(screen.getByTestId("calc-type-select-option-income_tax"));
     await user.clear(screen.getByTestId("tax-year-input"));
     await user.type(screen.getByTestId("tax-year-input"), "2024");
-    await user.selectOptions(screen.getByTestId("filing-status-select"), "single");
+    await user.click(screen.getByTestId("filing-status-select"));
+    await user.click(screen.getByTestId("filing-status-select-option-single"));
     await user.type(screen.getByTestId("income-input"), "1200000");
 
     await user.click(screen.getByTestId("calculate-button"));
 
+    // Structured card renders the deterministic summary (rich text has
+    // replaced the old single <p data-testid="calc-result-amount">).
     await waitFor(() => {
-      expect(screen.getByTestId("calc-result-amount")).toBeInTheDocument();
+      expect(screen.getByTestId("calc-explanation")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("calc-result-amount").textContent).toContain("Estimated tax: Rs 150,000");
+    expect(screen.getByTestId("calc-explanation").textContent).toContain("Estimated tax: Rs 150,000");
   });
 
   it("sends constructed query to the API", async () => {
@@ -173,18 +178,39 @@ describe("CalculatorPage", () => {
 
     await user.type(screen.getByTestId("income-input"), "1000000");
     await user.type(screen.getByTestId("deductions-input"), "200000");
-    await user.selectOptions(screen.getByTestId("calc-type-select"), "sales_tax");
-    await user.selectOptions(screen.getByTestId("filing-status-select"), "married_jointly");
+    await user.click(screen.getByTestId("calc-type-select"));
+    await user.click(screen.getByTestId("calc-type-select-option-sales_tax"));
+    await user.click(screen.getByTestId("filing-status-select"));
+    await user.click(screen.getByTestId("filing-status-select-option-married_jointly"));
 
     await user.click(screen.getByTestId("reset-button"));
 
     expect(screen.getByTestId("income-input")).toHaveValue(null);
     expect(screen.getByTestId("deductions-input")).toHaveValue(null);
-    expect(screen.getByTestId("calc-type-select")).toHaveValue("income_tax");
-    expect(screen.getByTestId("filing-status-select")).toHaveValue("single");
+    expect(screen.getByTestId("calc-type-select")).toHaveTextContent("Income Tax");
+    expect(screen.getByTestId("filing-status-select")).toHaveTextContent("Single");
   });
 
-  it("shows verification panel when result is available", async () => {
+  it("shows a live cap hint when income exceeds 1 trillion, and blocks submit with an error", async () => {
+    const user = userEvent.setup();
+    renderWithRouter(<CalculatorPage />);
+
+    // Below the cap: no hint.
+    await user.type(screen.getByTestId("income-input"), "999000000");
+    expect(screen.queryByTestId("income-cap-hint")).not.toBeInTheDocument();
+
+    // Above the cap: hint appears immediately, before submitting.
+    await user.clear(screen.getByTestId("income-input"));
+    await user.type(screen.getByTestId("income-input"), "1000000000001");
+    expect(screen.getByTestId("income-cap-hint")).toBeInTheDocument();
+
+    // Submitting shows a field error instead of calling the API.
+    await user.click(screen.getByTestId("calculate-button"));
+    expect(await screen.findByText(/exceeds the maximum supported amount/i)).toBeInTheDocument();
+    expect(api.calculate).not.toHaveBeenCalled();
+  });
+
+  it("shows the independent-verification disclaimer when result is available", async () => {
     const user = userEvent.setup();
     renderWithRouter(<CalculatorPage />);
 
@@ -192,8 +218,12 @@ describe("CalculatorPage", () => {
     await user.click(screen.getByTestId("calculate-button"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("calc-verification")).toBeInTheDocument();
+      expect(screen.getByTestId("calc-disclaimer")).toBeInTheDocument();
     });
+    // ChatGPT-style guidance: verify results yourself.
+    expect(screen.getByText(/verify.*independently/i)).toBeInTheDocument();
+    // Deterministic results carry an honest "deterministic engine" verification.
+    expect(screen.getByTestId("calc-verification")).toBeInTheDocument();
   });
 
   it("shows sources when available", async () => {
@@ -212,12 +242,13 @@ describe("CalculatorPage", () => {
     const user = userEvent.setup();
     renderWithRouter(<CalculatorPage />);
 
-    await user.selectOptions(screen.getByTestId("calc-type-select"), "sales_tax");
+    await user.click(screen.getByTestId("calc-type-select"));
+    await user.click(screen.getByTestId("calc-type-select-option-sales_tax"));
     await user.type(screen.getByTestId("income-input"), "500000");
     await user.click(screen.getByTestId("calculate-button"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("calc-result-amount")).toBeInTheDocument();
+      expect(screen.getByTestId("calc-explanation")).toBeInTheDocument();
     });
   });
 });

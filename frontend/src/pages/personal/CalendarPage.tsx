@@ -15,8 +15,10 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Tag } from "@/components/ui/Tag";
 import { Field } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { Kv } from "@/components/ui/Kv";
 import { useNotification } from "@/state/notifications";
+import { useWorkspace } from "@/state/workspace";
 
 type TaxpayerType = "individual" | "business";
 
@@ -279,8 +281,11 @@ export function CalendarPage() {
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [taxpayerType, setTaxpayerType] = useState<TaxpayerType>("individual");
   const [filter, setFilter] = useState<FilterState>({ priority: "", category: "" });
+
+  // Taxpayer type mirrors the active workspace: Personal = Individual, Business = Business.
+  const workspace = useWorkspace((s) => s.active);
+  const taxpayerType: TaxpayerType = workspace === "business" ? "business" : "individual";
 
   // Derive filtered events from allEvents
   const filteredEvents = allEvents.filter((e) => {
@@ -294,6 +299,7 @@ export function CalendarPage() {
   const priorities = ["critical", "high", "medium", "low"];
 
   const fetchDashboard = useCallback(async () => {
+    setLoadingDashboard(true);
     try {
       const data = await api.calendar.getDashboard(taxpayerType);
       setDashboard(data);
@@ -303,6 +309,8 @@ export function CalendarPage() {
       } else if (err instanceof ApiError) {
         notify("err", `Failed to load dashboard: ${err.detail}`);
       }
+    } finally {
+      setLoadingDashboard(false);
     }
   }, [taxpayerType, notify]);
 
@@ -340,7 +348,6 @@ export function CalendarPage() {
   }, [taxpayerType, filter]);
 
   useEffect(() => {
-    setLoadingDashboard(true);
     void fetchDashboard();
   }, [fetchDashboard]);
 
@@ -375,17 +382,12 @@ export function CalendarPage() {
             </p>
           </div>
           <div className="page__header-actions">
-            <Field label="Taxpayer Type" data-testid="cal-taxpayer-type">
-              <select
-                value={taxpayerType}
-                onChange={(e) => setTaxpayerType(e.target.value as TaxpayerType)}
-                className="field__select"
-                data-testid="cal-taxpayer-select"
-              >
-                <option value="individual">Individual</option>
-                <option value="business">Business</option>
-              </select>
-            </Field>
+            <div className="cal-taxpayer-chip" data-testid="cal-taxpayer-type" title="Taxpayer type follows your active workspace">
+              <span className="cal-taxpayer-chip__label">Taxpayer Type</span>
+              <span className="cal-taxpayer-chip__value" data-testid="cal-taxpayer-value">
+                {taxpayerType === "business" ? "Business" : "Individual"}
+              </span>
+            </div>
             <Button
               variant="ghost"
               size="sm"
@@ -466,31 +468,26 @@ export function CalendarPage() {
             <div className="cal-filters__row">
               <span className="cal-filters__label">Filter:</span>
               <Field label="Priority" data-testid="cal-filter-priority">
-                <select
+                <Select
                   value={filter.priority}
-                  onChange={(e) => setFilter((f) => ({ ...f, priority: e.target.value }))}
-                  className="field__select"
-                  data-testid="cal-priority-select"
-                >
-                  <option value="">All priorities</option>
-                  {priorities.map((p) => (
-                    <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
-                  ))}
-                </select>
+                  onChange={(v) => setFilter((f) => ({ ...f, priority: v }))}
+                  testId="cal-priority-select"
+                  ariaLabel="Priority filter"
+                  options={[
+                    { value: "", label: "All priorities" },
+                    ...priorities.map((p) => ({ value: p, label: p.charAt(0).toUpperCase() + p.slice(1) })),
+                  ]}
+                />
               </Field>
               {categories.length > 0 && (
                 <Field label="Category" data-testid="cal-filter-category">
-                  <select
+                  <Select
                     value={filter.category}
-                    onChange={(e) => setFilter((f) => ({ ...f, category: e.target.value }))}
-                    className="field__select"
-                    data-testid="cal-category-select"
-                  >
-                    <option value="">All categories</option>
-                    {categories.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setFilter((f) => ({ ...f, category: v }))}
+                    testId="cal-category-select"
+                    ariaLabel="Category filter"
+                    options={[{ value: "", label: "All categories" }, ...categories]}
+                  />
                 </Field>
               )}
               {hasActiveFilters && (
@@ -507,10 +504,10 @@ export function CalendarPage() {
           </div>
 
           {/* ── Loading Events ── */}
-          {loadingDashboard || loadingEvents ? (
+          {!loadingDashboard && loadingEvents ? (
             <div className="cal-events-loading">
               <Loading
-                label={loadingDashboard ? "Loading compliance dashboard…" : "Loading events…"}
+                label="Loading events…"
                 testId="cal-events-loading"
               />
             </div>
@@ -625,361 +622,7 @@ export function CalendarPage() {
         </div>
       </section>
 
-      <style>{`
-        /* Calendar page layout */
-        .cal-dashboard-loading,
-        .cal-events-loading {
-          padding: var(--s-6);
-          text-align: center;
-        }
-
-        .cal-dashboard .cal-dashboard__grid {
-          display: grid;
-          grid-template-columns: auto 1fr auto;
-          gap: var(--s-6);
-          align-items: start;
-        }
-
-        @media (max-width: 768px) {
-          .cal-dashboard .cal-dashboard__grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        /* Score gauge */
-        .cal-score {
-          text-align: center;
-        }
-
-        .cal-score__ring {
-          position: relative;
-          width: 120px;
-          height: 120px;
-          margin: 0 auto;
-        }
-
-        .cal-score__svg {
-          width: 100%;
-          height: 100%;
-        }
-
-        .cal-score__center {
-          position: absolute;
-          inset: 0;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .cal-score__number {
-          font-family: var(--f-display);
-          font-size: 32px;
-          font-weight: 700;
-          line-height: 1;
-        }
-
-        .cal-score__grade {
-          font-size: 13px;
-          font-weight: 700;
-          letter-spacing: 0.08em;
-        }
-
-        .cal-score__label {
-          margin-top: var(--s-2);
-          font-size: 11.5px;
-          color: var(--c-text-muted);
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-        }
-
-        .cal-dashboard__stats {
-          min-width: 200px;
-        }
-
-        .cal-dashboard__message {
-          font-size: 13.5px;
-          color: var(--c-text-muted);
-          padding: var(--s-4);
-          background: var(--c-paper-2);
-          border-radius: var(--r-2);
-          border-left: 3px solid var(--c-accent);
-          max-width: 400px;
-        }
-
-        /* Filters */
-        .cal-filters {
-          background: #fffaf0;
-          border: 1px solid var(--c-line);
-          border-radius: var(--r-2);
-          padding: var(--s-4) var(--s-5);
-          margin-bottom: var(--s-5);
-        }
-
-        .cal-filters__row {
-          display: flex;
-          align-items: flex-end;
-          gap: var(--s-4);
-          flex-wrap: wrap;
-        }
-
-        .cal-filters__row .field {
-          margin-bottom: 0;
-        }
-
-        .cal-filters__label {
-          font-size: 12px;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-          color: var(--c-text-muted);
-          align-self: center;
-        }
-
-        /* Sections */
-        .cal-section {
-          margin-bottom: var(--s-6);
-        }
-
-        .cal-section__head {
-          display: flex;
-          align-items: center;
-          gap: var(--s-3);
-          margin-bottom: var(--s-4);
-        }
-
-        .cal-section__title {
-          font-family: var(--f-display);
-          font-size: 17px;
-          display: flex;
-          align-items: center;
-          gap: var(--s-2);
-        }
-
-        .cal-section__meta {
-          font-size: 12px;
-          color: var(--c-text-muted);
-        }
-
-        /* Event list */
-        .cal-event-list {
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-3);
-        }
-
-        .cal-event {
-          display: flex;
-          gap: var(--s-5);
-          padding: var(--s-4) var(--s-5);
-          background: #fffaf0;
-          border: 1px solid var(--c-line);
-          border-radius: var(--r-2);
-          align-items: flex-start;
-        }
-
-        .cal-event--overdue {
-          border-left: 3px solid var(--c-err);
-          background: #fdf5f5;
-        }
-
-        .cal-event--completed {
-          opacity: 0.55;
-        }
-
-        .cal-event__left {
-          flex: 1;
-          min-width: 0;
-        }
-
-        .cal-event__title-row {
-          display: flex;
-          align-items: center;
-          gap: var(--s-2);
-          flex-wrap: wrap;
-          margin-bottom: var(--s-1);
-        }
-
-        .cal-event__title {
-          font-weight: 600;
-          font-size: 14.5px;
-        }
-
-        .cal-event__meta {
-          font-size: 12px;
-          color: var(--c-text-muted);
-          display: flex;
-          gap: var(--s-2);
-          flex-wrap: wrap;
-          align-items: center;
-        }
-
-        .cal-event__dot {
-          color: var(--c-text-faint);
-        }
-
-        .cal-event__desc {
-          margin-top: var(--s-2);
-          font-size: 13px;
-          color: var(--c-text-muted);
-        }
-
-        .cal-event__penalty {
-          margin-top: var(--s-1);
-          font-size: 12px;
-          color: var(--c-err);
-        }
-
-        .cal-event__right {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-end;
-          gap: var(--s-2);
-          flex-shrink: 0;
-        }
-
-        .cal-event__date {
-          text-align: right;
-        }
-
-        .cal-event__date-label {
-          display: block;
-          font-size: 10px;
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-          color: var(--c-text-faint);
-        }
-
-        .cal-event__date-value {
-          font-size: 13px;
-          font-weight: 600;
-        }
-
-        .cal-event__days {
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .cal-event__actions {
-          display: flex;
-          gap: var(--s-2);
-          flex-wrap: wrap;
-          justify-content: flex-end;
-        }
-
-        .cal-event__remind-form {
-          display: flex;
-          gap: var(--s-2);
-          align-items: center;
-          flex-wrap: wrap;
-          justify-content: flex-end;
-        }
-
-        .cal-event__remind-input {
-          padding: 5px 8px;
-          border: 1px solid var(--c-line-strong);
-          border-radius: var(--r-2);
-          font-size: 12px;
-          width: 180px;
-          background: #fffaf0;
-        }
-
-        /* Task grid */
-        .cal-task-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-          gap: var(--s-4);
-        }
-
-        .cal-task {
-          padding: var(--s-4);
-          background: #fffaf0;
-          border: 1px solid var(--c-line);
-          border-radius: var(--r-2);
-        }
-
-        .cal-task__header {
-          display: flex;
-          align-items: center;
-          gap: var(--s-2);
-          margin-bottom: var(--s-2);
-          flex-wrap: wrap;
-        }
-
-        .cal-task__title {
-          font-weight: 600;
-          font-size: 13.5px;
-        }
-
-        .cal-task__meta {
-          font-size: 11.5px;
-          color: var(--c-text-muted);
-          display: flex;
-          gap: var(--s-2);
-        }
-
-        .cal-task__urgency {
-          font-size: 12px;
-          font-weight: 600;
-          margin: var(--s-2) 0;
-        }
-
-        .cal-task__action {
-          font-size: 12px;
-          color: var(--c-text-muted);
-          margin: var(--s-1) 0;
-        }
-
-        .cal-task__date {
-          font-size: 11.5px;
-          color: var(--c-text-faint);
-        }
-
-        /* Recommendations */
-        .cal-recommendations {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-          display: flex;
-          flex-direction: column;
-          gap: var(--s-3);
-        }
-
-        .cal-recommendations__item {
-          font-size: 13.5px;
-          line-height: 1.6;
-          padding-left: var(--s-4);
-          border-left: 2px solid var(--c-accent);
-        }
-
-        /* Page header actions */
-        .page__header-actions {
-          display: flex;
-          align-items: flex-end;
-          gap: var(--s-3);
-        }
-
-        .page__header-actions .field {
-          margin-bottom: 0;
-        }
-
-        @media (max-width: 600px) {
-          .cal-event {
-            flex-direction: column;
-          }
-          .cal-event__right {
-            align-items: flex-start;
-          }
-          .cal-event__actions,
-          .cal-event__remind-form {
-            justify-content: flex-start;
-          }
-          .page__header-actions {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-        }
-      `}</style>
+      
     </ErrorBoundary>
   );
 }

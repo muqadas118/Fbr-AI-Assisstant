@@ -340,67 +340,34 @@ export function WorkspacesPage() {
             <Loading label="Loading workspaces…" testId="ws-loading" />
           )}
 
-          {workspaces.length > 0 && !loading && (
-            <>
-              {/* Hero / active workspace section */}
-              <section className="ws__hero card" data-testid="ws-hero">
-                <div className="ws__hero-left">
-                  <div className="ws__hero-avatar" aria-hidden>
-                    <WorkspaceIcon type={activeWorkspace?.type ?? "personal"} />
-                  </div>
-                  <div className="ws__hero-info">
-                    <p className="ws__hero-label">Active Workspace</p>
-                    <h3 className="ws__hero-name">
-                      {activeWorkspace?.name ?? "Personal Workspace"}
-                    </h3>
-                    {activeWorkspace?.ntn && (
-                      <code className="ws__hero-ntn">NTN: {activeWorkspace.ntn}</code>
-                    )}
-                  </div>
-                </div>
-                <div className="ws__hero-badges">
-                  <div className="ws__hero-badge">
-                    <span className="ws__hero-badge-label">Compliance Score</span>
-                    {loadingCalendar ? (
-                      <Loading label="…" testId="ws-compliance-loading" />
-                    ) : (
-                      <ComplianceBadge score={calendarDashboard?.compliance_score ?? null} />
-                    )}
-                  </div>
-                  <div className="ws__hero-badge">
-                    <span className="ws__hero-badge-label">Health Score</span>
-                    <Tag variant="accent">Coming Soon</Tag>
-                  </div>
-                </div>
-              </section>
-
-              {/* Quick stats */}
-              <section className="ws__stats card" data-testid="ws-stats">
-                <div className="ws__stat">
-                  <span className="ws__stat-value">{workspaces.length}</span>
-                  <span className="ws__stat-label">Total Workspaces</span>
-                </div>
-                <div className="ws__stat">
-                  <span className="ws__stat-value">{totalMembers}</span>
-                  <span className="ws__stat-label">Active Members</span>
-                </div>
-                <div className="ws__stat">
-                  <span className="ws__stat-value">{pendingInvitations}</span>
-                  <span className="ws__stat-label">Pending Invitations</span>
-                </div>
-                {calendarDashboard && (
-                  <>
-                    <div className="ws__stat">
-                      <span className="ws__stat-value">{calendarDashboard.overdue_count}</span>
-                      <span className="ws__stat-label">Overdue Items</span>
-                    </div>
-                    <div className="ws__stat">
-                      <span className="ws__stat-value">{calendarDashboard.critical_upcoming_7d}</span>
-                      <span className="ws__stat-label">Critical — 7 Days</span>
-                    </div>
-                  </>
-                )}
-              </section>
+          {/* Empty state — previously unreachable: this branch lived INSIDE
+              the workspaces.length > 0 gate, so an empty list showed nothing. */}
+          {!loading && workspaces.length === 0 && userId && (
+            <div className="ws__empty" data-testid="ws-empty">
+              <div className="ws__empty-icon" aria-hidden>
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                </svg>
+              </div>
+              <p className="ws__empty-title">No workspaces yet</p>
+              <p className="ws__empty-sub">
+                Create your first workspace to organize personal and business
+                tax work separately.
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowCreateForm(true)}
+                data-testid="ws-empty-create"
+              >
+                + New Workspace
+              </Button>
+            </div>
+          )}
 
               {/* Workspaces grid */}
               <div className="ws__workspaces-header">
@@ -470,25 +437,81 @@ export function WorkspacesPage() {
                 </Card>
               )}
 
-              {workspaces.length === 0 ? (
-                <StatusBanner
-                  kind="info"
-                  title="No workspaces found"
-                  description="No workspaces were returned for this user. Create a new workspace above."
-                  testId="ws-empty"
-                />
-              ) : (
-                <div className="ws__grid" data-testid="ws-grid">
-                  {workspaces.map((ws) => (
-                    <WorkspaceCard
-                      key={ws.id}
-                      workspace={ws}
-                      isActive={ws.id === activeWorkspaceId}
-                      onSelect={handleSwitchWorkspace}
-                    />
-                  ))}
+          {/* Loaded-state content: hero, stats, grid, tasks — only when the
+              user has workspaces. */}
+          {workspaces.length > 0 && !loading && (
+            <>
+              {/* Hero / active workspace section */}
+              <section className="ws__hero card" data-testid="ws-hero">
+                <div className="ws__hero-left">
+                  <div className="ws__hero-avatar" aria-hidden>
+                    <WorkspaceIcon type={activeWorkspace?.type ?? "personal"} />
+                  </div>
+                  <div className="ws__hero-info">
+                    <p className="ws__hero-label">Active Workspace</p>
+                    <h3 className="ws__hero-name">
+                      {activeWorkspace?.name ?? "Personal Workspace"}
+                    </h3>
+                    {activeWorkspace?.ntn && (
+                      <code className="ws__hero-ntn">NTN: {activeWorkspace.ntn}</code>
+                    )}
+                  </div>
                 </div>
-              )}
+                <div className="ws__hero-badges">
+                  <div className="ws__hero-badge">
+                    <span className="ws__hero-badge-label">Compliance Score</span>
+                    {loadingCalendar ? (
+                      <Loading label="…" testId="ws-compliance-loading" />
+                    ) : (
+                      <ComplianceBadge score={calendarDashboard?.compliance_score ?? null} />
+                    )}
+                  </div>
+                  <div className="ws__hero-badge">
+                    <span className="ws__hero-badge-label">Health Score</span>
+                    <Tag variant="accent">Coming Soon</Tag>
+                  </div>
+                </div>
+              </section>
+
+              {/* Quick stats */}
+              <section className="ws__stats card" data-testid="ws-stats">
+                <div className="ws__stat">
+                  <span className="ws__stat-value">{workspaces.length}</span>
+                  <span className="ws__stat-label">Total Workspaces</span>
+                </div>
+                <div className="ws__stat">
+                  <span className="ws__stat-value">{totalMembers}</span>
+                  <span className="ws__stat-label">Active Members</span>
+                </div>
+                <div className="ws__stat">
+                  <span className="ws__stat-value">{pendingInvitations}</span>
+                  <span className="ws__stat-label">Pending Invitations</span>
+                </div>
+                {calendarDashboard && (
+                  <>
+                    <div className="ws__stat">
+                      <span className="ws__stat-value">{calendarDashboard.overdue_count}</span>
+                      <span className="ws__stat-label">Overdue Items</span>
+                    </div>
+                    <div className="ws__stat">
+                      <span className="ws__stat-value">{calendarDashboard.critical_upcoming_7d}</span>
+                      <span className="ws__stat-label">Critical — 7 Days</span>
+                    </div>
+                  </>
+                )}
+              </section>
+
+
+              <div className="ws__grid" data-testid="ws-grid">
+                {workspaces.map((ws) => (
+                  <WorkspaceCard
+                    key={ws.id}
+                    workspace={ws}
+                    isActive={ws.id === activeWorkspaceId}
+                    onSelect={handleSwitchWorkspace}
+                  />
+                ))}
+              </div>
 
               {/* Quick links */}
               <h3 className="ws__section-title">Quick Links</h3>

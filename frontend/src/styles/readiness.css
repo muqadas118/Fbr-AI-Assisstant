@@ -1,0 +1,42 @@
+/* ==================================================================
+   Readiness — layout sections (meter / checklist / issues / recs /
+   financial / actions). Component styles already in sections.css;
+   these handle page structure + section rhythm. Same FBR tokens.
+   ================================================================== */
+
+.readiness-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.readiness__meter-section,
+.readiness__checklist-section,
+.readiness__issues-section,
+.readiness__recs-section,
+.readiness__fin-section,
+.readiness__actions-section {
+  display: flex;
+  flex-direction: column;
+}
+.readiness__meter-layout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-6);
+  flex-wrap: wrap;
+}
+.recs-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.readiness-fully-ready {
+  padding: var(--s-5);
+  text-align: center;
+  border: 1px solid var(--c-ok);
+  border-radius: var(--r-3);
+  background: var(--c-ok-soft);
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--c-ink);
+}

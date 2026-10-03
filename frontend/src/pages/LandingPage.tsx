@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ParticleField } from "@/components/landing/ParticleField";
+import { Reveal } from "@/components/landing/Reveal";
 import { useAuth } from "@/state/auth";
 import "@/styles/landing.css";
 
@@ -99,7 +100,14 @@ export function LandingPage() {
         )}
       </nav>
       <section className="landing-hero" data-testid="landing-hero">
+        <div className="landing-hero__aurora" aria-hidden />
         <ParticleField />
+        <svg className="landing-hero__seal" viewBox="0 0 120 120" aria-hidden focusable="false">
+          <circle cx="60" cy="60" r="56" fill="none" stroke="rgba(198,161,91,0.5)" strokeWidth="1" strokeDasharray="4 6" />
+          <circle cx="60" cy="60" r="44" fill="none" stroke="rgba(198,161,91,0.3)" strokeWidth="1" />
+          <path d="M66 34a26 26 0 1 0 0 52 30 30 0 1 1 0-52z" fill="rgba(198,161,91,0.55)" />
+          <path d="M78 52l2.6 6.2 6.7.5-5.1 4.4 1.6 6.6-5.8-3.6-5.8 3.6 1.6-6.6-5.1-4.4 6.7-.5z" fill="rgba(198,161,91,0.8)" />
+        </svg>
         <div className="landing-hero__inner">
           <p className="landing-hero__crest">Government of Pakistan — Federal Board of Revenue</p>
           <h1 className="landing-hero__title">FBR Tax &amp; Compliance Assistant</h1>
@@ -119,19 +127,19 @@ export function LandingPage() {
             </Link>
           </div>
            <div className="landing-trust" aria-label="Platform highlights">
-            <span><strong>9</strong> specialist agents</span>
+            <span><strong>107</strong> official FBR documents</span>
             <span aria-hidden>·</span>
-            <span><strong>59</strong> API endpoints</span>
+            <span><strong>Cited</strong> answers only</span>
             <span aria-hidden>·</span>
             <span><strong>11</strong> tax calculators</span>
             <span aria-hidden>·</span>
-            <span><strong>Grounded</strong> answers only</span>
+            <span><strong>Personal + Business</strong> workspaces</span>
            </div>
-           <img className="landing-hero__visual" src="/fbr-hero-illustration.svg" alt="" aria-hidden="true" />
          </div>
       </section>
 
-       <section className="landing-proof" aria-label="Platform promise">
+             <Reveal>
+      <section className="landing-proof" aria-label="Platform promise">
          <div className="landing-wrap landing-proof__inner">
            <div><span className="landing-proof__mark">01</span><strong>Official-source first</strong><span>Evidence before confidence.</span></div>
            <div><span className="landing-proof__mark">02</span><strong>Built for Pakistan</strong><span>FBR workflows, not generic tax chat.</span></div>
@@ -139,7 +147,10 @@ export function LandingPage() {
          </div>
        </section>
 
-       <section className="landing-section landing-section--capabilities" id="capabilities" data-testid="landing-features" aria-label="Features">
+             </Reveal>
+
+      <Reveal>
+      <section className="landing-section landing-section--capabilities" id="capabilities" data-testid="landing-features" aria-label="Features">
          <div className="landing-wrap">
            <p className="landing-eyebrow">The compliance desk, rethought</p>
            <div className="landing-section__heading"><h2 className="landing-h2">One assistant for every tax task</h2><p>From a quick question to a complete compliance trail, keep the work in one calm, evidence-led place.</p></div>
@@ -156,14 +167,20 @@ export function LandingPage() {
         </div>
        </section>
 
-       <section className="landing-showcase" aria-label="Workspace preview">
+             </Reveal>
+
+      <Reveal>
+      <section className="landing-showcase" aria-label="Workspace preview">
          <div className="landing-wrap landing-showcase__layout">
            <div className="landing-showcase__copy"><p className="landing-eyebrow">A clearer way to work</p><h2 className="landing-h2">Less searching.<br /><em>More certainty.</em></h2><p>Built around the rhythm of real tax work: understand the rule, calculate the impact, capture the evidence, and act before the deadline.</p><Link to={session ? "/personal/overview" : "/login"} className="landing-text-link">{session ? "Open your workspace" : "Create your workspace"} <span>→</span></Link></div>
            <div className="landing-dashboard" aria-label="Illustration of the assistant workspace"><div className="landing-dashboard__top"><span className="landing-dashboard__dot"></span><span>FBR / COMPLIANCE DESK</span><span className="landing-dashboard__date">TY 2025</span></div><div className="landing-dashboard__body"><div className="landing-dashboard__rail"><i></i><i></i><i></i><i></i></div><div className="landing-dashboard__main"><div className="landing-dashboard__line landing-dashboard__line--short"></div><div className="landing-dashboard__line"></div><div className="landing-dashboard__metrics"><div><small>COMPLIANCE SCORE</small><strong>86<span>/100</span></strong></div><div><small>NEXT DEADLINE</small><strong>12 <span>days</span></strong></div></div><div className="landing-dashboard__chart"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div></div><div className="landing-dashboard__stamp">VERIFIED<br /><small>FBR SOURCE INDEX</small></div></div>
          </div>
        </section>
 
-      <section className="landing-section landing-section--alt" aria-label="How it works">
+            </Reveal>
+
+      <Reveal>
+      <section className="landing-section landing-section--alt" id="method" aria-label="How it works">
         <div className="landing-wrap">
           <p className="landing-eyebrow">How it works</p>
           <h2 className="landing-h2">From question to compliance in three steps</h2>
@@ -179,29 +196,68 @@ export function LandingPage() {
         </div>
        </section>
 
-       <section className="landing-contact" id="contact" aria-label="Contact">
-         <div className="landing-wrap landing-contact__inner"><div><p className="landing-eyebrow">Stay in the loop</p><h2 className="landing-h2">Questions before you begin?</h2><p>We are building a more dependable way to navigate Pakistan&apos;s tax obligations. Tell us what would make your workflow easier.</p></div><a className="landing-contact__email" href="mailto:hello@fbrassistant.pk">hello@fbrassistant.pk <span>↗</span></a></div>
+             </Reveal>
+
+      <Reveal>
+      <section className="landing-contact" id="contact" aria-label="Contact and help">
+         <div className="landing-wrap">
+            <p className="landing-eyebrow">Help &amp; contact</p>
+            <div className="landing-contact__heading"><h2 className="landing-h2">Need help? Talk to us.</h2><p>Questions about your taxes, a notice, or your compliance score — start with the assistant or write to us directly.</p></div>
+            <div className="landing-contact__grid">
+              <a className="landing-contact__card" href="mailto:hello@fbrassistant.pk">
+                <span className="landing-contact__label">Email us</span>
+                <span className="landing-contact__value">hello@fbrassistant.pk</span>
+                <span className="landing-contact__hint">We reply within 2 working days <span aria-hidden>↗</span></span>
+              </a>
+              <Link className="landing-contact__card" to="/personal/assistant">
+                <span className="landing-contact__label">Ask the assistant</span>
+                <span className="landing-contact__value">Get a grounded answer</span>
+                <span className="landing-contact__hint">Cited from official FBR law <span aria-hidden>→</span></span>
+              </Link>
+              <Link className="landing-contact__card" to="/personal/overview">
+                <span className="landing-contact__label">Open workspace</span>
+                <span className="landing-contact__value">Continue your work</span>
+                <span className="landing-contact__hint">Dashboard, deadlines &amp; health <span aria-hidden>→</span></span>
+              </Link>
+            </div>
+         </div>
        </section>
+
+            </Reveal>
 
       <footer className="landing-footer">
         <div className="landing-wrap">
-          <p className="landing-disclaimer">
-            Disclaimer: This is an unofficial assistance tool for guidance only. It is not affiliated
-            with the Federal Board of Revenue. Always verify with official FBR notifications, SROs
-            and a qualified tax professional before acting.
-          </p>
-          <div className="landing-footer__row">
-             <span><strong>FBR</strong> Tax &amp; Compliance Assistant</span>
-             <span>
-               <a href="#capabilities">Capabilities</a>
-               {" · "}
-               <a href="#contact">Contact</a>
-               {" · "}
+          <div className="landing-footer__grid">
+            <div className="landing-footer__brand">
+              <span className="landing-brand__seal">FBR</span>
+              <p className="landing-footer__tag"><strong>FBR</strong> Tax &amp; Compliance Assistant</p>
+              <p className="landing-footer__note">Grounded tax guidance, calculators and compliance tracking for Pakistan.</p>
+            </div>
+            <nav className="landing-footer__col" aria-label="Product">
+              <p className="landing-footer__head">Product</p>
+              <Link to="/personal/assistant">Tax Assistant</Link>
+              <Link to="/personal/calculator">Tax Calculator</Link>
+              <Link to="/personal/notices">Notice Analyzer</Link>
+              <Link to="/personal/calendar">Compliance Calendar</Link>
+            </nav>
+            <nav className="landing-footer__col" aria-label="Workspaces">
+              <p className="landing-footer__head">Workspaces</p>
               <Link to="/personal/overview">Personal</Link>
-              {" · "}
               <Link to="/business/overview">Business</Link>
+            </nav>
+            <nav className="landing-footer__col" aria-label="Support">
+              <p className="landing-footer__head">Support</p>
+              <a href="#method">How it works</a>
+              <a href="#contact">Contact</a>
+              <a href="mailto:hello@fbrassistant.pk">hello@fbrassistant.pk</a>
+            </nav>
+          </div>
+          <div className="landing-footer__row">
+            <span>© 2026 FBR Tax &amp; Compliance Assistant</span>
+            <span>
+              <a href="#capabilities">Capabilities</a>
               {" · "}
-              <Link to="/login">Login</Link>
+              <a href="#contact">Contact</a>
             </span>
           </div>
         </div>

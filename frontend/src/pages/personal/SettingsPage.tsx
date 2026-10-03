@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/Card";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { useProfile } from "@/state/profile";
 
 interface SettingsForm {
@@ -156,38 +157,44 @@ export function SettingsPage() {
             </Field>
 
             <Field label="Language" helperText="Interface language">
-              <select
+              <Select
                 value={form.language}
-                onChange={handleChange("language")}
-                data-testid="settings-language"
-              >
-                <option value="en">English</option>
-                <option value="ur">Urdu</option>
-              </select>
+                onChange={(v) => setForm((prev) => ({ ...prev, language: v }))}
+                testId="settings-language"
+                ariaLabel="Interface language"
+                options={[
+                  { value: "en", label: "English" },
+                  { value: "ur", label: "Urdu" },
+                ]}
+              />
             </Field>
 
             <Field label="Timezone" helperText="Used for deadline and reminder calculations">
-              <select
+              <Select
                 value={form.timezone}
-                onChange={handleChange("timezone")}
-                data-testid="settings-timezone"
-              >
-                <option value="Asia/Karachi">Asia/Karachi (PKT)</option>
-                <option value="Asia/Islamabad">Asia/Islamabad (PKT)</option>
-                <option value="UTC">UTC</option>
-              </select>
+                onChange={(v) => setForm((prev) => ({ ...prev, timezone: v }))}
+                testId="settings-timezone"
+                ariaLabel="Timezone"
+                options={[
+                  { value: "Asia/Karachi", label: "Asia/Karachi (PKT)" },
+                  { value: "Asia/Islamabad", label: "Asia/Islamabad (PKT)" },
+                  { value: "UTC", label: "UTC" },
+                ]}
+              />
             </Field>
 
             <Field label="Theme" helperText="Visual theme">
-              <select
+              <Select
                 value={form.theme}
-                onChange={handleChange("theme")}
-                data-testid="settings-theme"
-              >
-                <option value="system">System</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </select>
+                onChange={(v) => setForm((prev) => ({ ...prev, theme: v as SettingsForm["theme"] }))}
+                testId="settings-theme"
+                ariaLabel="Visual theme"
+                options={[
+                  { value: "system", label: "System" },
+                  { value: "light", label: "Light" },
+                  { value: "dark", label: "Dark" },
+                ]}
+              />
             </Field>
           </div>
         </Card>

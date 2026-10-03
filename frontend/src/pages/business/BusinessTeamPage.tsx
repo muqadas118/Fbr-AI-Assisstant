@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Tag } from "@/components/ui/Tag";
 import { Field } from "@/components/ui/Field";
+import { Select } from "@/components/ui/Select";
 import { Kv } from "@/components/ui/Kv";
 import { useNotification } from "@/state/notifications";
 import { useAuth } from "@/state/auth";
@@ -56,6 +57,12 @@ const EMPTY_INVITE: InviteForm = {
   role: "member",
 };
 
+/** Shape of one role entry from GET /team/roles. */
+interface RoleDetails {
+  label?: string;
+  permissions?: string[];
+}
+
 function memberRoleVariant(role: string): "accent" | "warn" | "default" {
   const r = role?.toLowerCase() ?? "";
   if (r === "owner" || r === "admin") return "accent";
@@ -89,7 +96,7 @@ export function BusinessTeamPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
   const [teamDashboard, setTeamDashboard] = useState<TeamDashboard | null>(null);
-  const [roles, setRoles] = useState<Record<string, unknown> | null>(null);
+  const [roles, setRoles] = useState<Record<string, RoleDetails> | null>(null);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -108,7 +115,9 @@ export function BusinessTeamPage() {
       setLoadingRoles(true);
       try {
         const r = await api.team.getRoles();
-        setRoles(r);
+        // API wraps the map in an envelope: { roles: { admin: {...}, ... } }
+        const payload = (r as { roles?: Record<string, RoleDetails> }).roles ?? (r as Record<string, RoleDetails>);
+        setRoles(payload);
       } catch {
         // roles are non-critical
       } finally {
@@ -274,7 +283,7 @@ export function BusinessTeamPage() {
       <section className="page page--subordinates">
         <header className="page__header">
           <div>
-            <p className="page-eyebrow">Business · Team</p>
+            <div className="page__eyebrow page-eyebrow eyebrow">FBR · Team</div>
             <h2 className="page__title">Business Team</h2>
             <p className="page__subtitle">
               Manage your business team members, assign roles, and verify member credentials.
@@ -367,17 +376,18 @@ export function BusinessTeamPage() {
                   </Field>
 
                   <Field label="Business Role">
-                    <select
-                      className="field__select"
+                    <Select
                       value={addForm.role}
-                      onChange={(e) => setAddForm((f) => ({ ...f, role: e.target.value }))}
-                      data-testid="biz-role-select"
-                    >
-                      <option value="member">Member</option>
-                      <option value="manager">Manager</option>
-                      <option value="admin">Admin</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
+                      onChange={(v) => setAddForm((f) => ({ ...f, role: v }))}
+                      testId="biz-role-select"
+                      ariaLabel="Business role"
+                      options={[
+                        { value: "member", label: "Member" },
+                        { value: "manager", label: "Manager" },
+                        { value: "admin", label: "Admin" },
+                        { value: "viewer", label: "Viewer" },
+                      ]}
+                    />
                   </Field>
 
                   <Field label="NTN (Optional)">
@@ -468,17 +478,18 @@ export function BusinessTeamPage() {
                 </Field>
 
                 <Field label="Business Role">
-                  <select
-                    className="field__select"
+                  <Select
                     value={inviteForm.role}
-                    onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value }))}
-                    data-testid="biz-invite-role-select"
-                  >
-                    <option value="member">Member</option>
-                    <option value="manager">Manager</option>
-                    <option value="admin">Admin</option>
-                    <option value="viewer">Viewer</option>
-                  </select>
+                    onChange={(v) => setInviteForm((f) => ({ ...f, role: v }))}
+                    testId="biz-invite-role-select"
+                    ariaLabel="Invite business role"
+                    options={[
+                      { value: "member", label: "Member" },
+                      { value: "manager", label: "Manager" },
+                      { value: "admin", label: "Admin" },
+                      { value: "viewer", label: "Viewer" },
+                    ]}
+                  />
                 </Field>
 
                 <div className="sub__form-actions">
@@ -503,13 +514,11 @@ export function BusinessTeamPage() {
                   <div className="sub__roles-list">
                     {Object.entries(roles).map(([role, details]) => (
                       <div key={role} className="sub__role-item">
-                        <Tag variant={memberRoleVariant(role)}>{role}</Tag>
+                        <Tag variant={memberRoleVariant(role)}>{details?.label ?? role}</Tag>
                         <span className="sub__role-desc">
-                          {typeof details === "object" && details !== null
-                            ? Object.entries(details as Record<string, unknown>)
-                                .map(([k, v]) => `${k}: ${String(v)}`)
-                                .join(" | ")
-                            : String(details ?? "")}
+                          {details?.permissions?.length
+                            ? details.permissions.join(" · ")
+                            : "No permissions — read-only access."}
                         </span>
                       </div>
                     ))}

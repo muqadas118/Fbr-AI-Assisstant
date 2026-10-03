@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Tag } from "@/components/ui/Tag";
 import { Field } from "@/components/ui/Field";
 import { useAuth } from "@/state/auth";
+import { getDemoUserId } from "@/lib/demoSession";
 import type { MonitorEvent, MonitorDashboard } from "@/lib/api";
 
 type TabId = "all" | "unread" | "critical" | "acknowledged";
@@ -19,6 +20,9 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "critical", label: "Critical" },
   { id: "acknowledged", label: "Acknowledged" },
 ];
+
+/** Demo NTN used to preview the live monitor → inbox workflow. */
+const DEMO_NTN = "1234567-8";
 
 const SEVERITY_ORDER: Record<string, number> = {
   critical: 0,
@@ -238,16 +242,19 @@ function InboxItem({ event, onAcknowledge, onResolve, onMarkRead, acknowledging,
 }
 
 export function InboxPage() {
+  // Session user if signed in; a stable per-browser demo id otherwise.
+  // The inbox auto-loads — no manual user-ID form. An "Add demo notice"
+  // button (below) subscribes the demo NTN and simulates a real notice
+  // event through the monitor API so the flow is visible end-to-end.
   const sessionId = useAuth((s) => s.user?.id ?? "");
   const [userId, setUserId] = useState("");
-  const [userIdInput, setUserIdInput] = useState("");
   useEffect(() => {
-    if (sessionId && !userId) {
-      setUserId(sessionId);
-      setUserIdInput(sessionId);
+    if (!userId) {
+      setUserId(sessionId || getDemoUserId());
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+  const [simulating, setSimulating] = useState(false);
   const [dashboard, setDashboard] = useState<MonitorDashboard | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("all");
   const [loadingStats, setLoadingStats] = useState(false);
@@ -276,11 +283,34 @@ export function InboxPage() {
     }
   }, []);
 
-  const handleLoadDashboard = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    setUserId(userIdInput.trim());
-    void fetchDashboard(userIdInput.trim());
-  }, [userIdInput, fetchDashboard]);
+  // Demo: subscribe the session's demo NTN (idempotent) and simulate a real
+  // notice event so the inbox workflow is visible without the FBR portal.
+  const handleSimulateNotice = useCallback(async () => {
+    setSimulating(true);
+    setError(null);
+    try {
+      await api.monitor.subscribe({ user_id: userId, ntn: DEMO_NTN, check_interval_minutes: 60 });
+      await api.monitor.simulateNotice({
+        ntn: DEMO_NTN,
+        notice_number: `FBR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
+        title: "Income Tax Notice under Section 174",
+        description:
+          "Demo notice: records/documents required for audit. Simulated through the monitor API so the inbox workflow can be previewed end-to-end.",
+        action_deadline: new Date(Date.now() + 14 * 86400000).toISOString(),
+      });
+      void fetchDashboard(userId);
+    } catch (err) {
+      if (err instanceof NetworkError) {
+        setError("Network error — could not reach the monitor service.");
+      } else if (err instanceof ApiError) {
+        setError(`Could not simulate notice (${err.status}): ${err.detail}`);
+      } else {
+        setError("An unexpected error occurred while simulating the notice.");
+      }
+    } finally {
+      setSimulating(false);
+    }
+  }, [userId, fetchDashboard]);
 
   useEffect(() => {
     if (userId) {
@@ -343,27 +373,45 @@ export function InboxPage() {
         </header>
 
         <div className="page__content">
-          {/* User ID setup */}
+          {/* Identity + actions: auto-loaded from the session (or a stable
+              demo id when signed out) — no manual user-ID form anymore. */}
           <Card className="inbox__setup" testId="inbox-setup">
-            <form onSubmit={handleLoadDashboard} className="inbox__setup-form" data-testid="inbox-setup-form">
+            <div className="inbox__setup-form">
               <Field
-                label="User ID"
-                helperText="Enter your user ID to load inbox events from the monitor dashboard."
+                label="Inbox identity"
+                helperText="Loaded automatically from your session — a stable demo id is used when signed out."
               >
                 <input
                   type="text"
                   className="field__input"
-                  value={userIdInput}
-                  onChange={(e) => setUserIdInput(e.target.value)}
-                  placeholder="e.g. user-12345"
+                  value={userId}
+                  readOnly
                   data-testid="inbox-user-id-input"
-                  aria-label="User ID for inbox"
+                  aria-label="Inbox user ID (read-only)"
                 />
               </Field>
-              <Button type="submit" variant="primary" disabled={!userIdInput.trim() || loadingStats}>
-                {loadingStats ? "Loading…" : "Load Inbox"}
-              </Button>
-            </form>
+              <div className="form__actions">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void fetchDashboard(userId)}
+                  disabled={loadingStats}
+                  data-testid="inbox-refresh"
+                >
+                  {loadingStats ? "Loading…" : "Refresh"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => void handleSimulateNotice()}
+                  loading={simulating}
+                  disabled={simulating || !userId}
+                  data-testid="inbox-simulate-notice"
+                >
+                  {simulating ? "Simulating…" : "Add demo notice"}
+                </Button>
+              </div>
+            </div>
           </Card>
 
           {error && (
@@ -437,16 +485,32 @@ export function InboxPage() {
                 {filteredEvents.length === 0 ? (
                   <div className="inbox__empty" data-testid="inbox-empty">
                     <div className="inbox__empty-icon" aria-hidden>
-                      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                         <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                       </svg>
                     </div>
-                    <p className="inbox__empty-title">No notifications</p>
+                    <p className="inbox__empty-title">All clear</p>
                     <p className="inbox__empty-sub">
                       {activeTab === "all"
-                        ? "Your inbox is empty. No monitoring events detected yet."
-                        : `No ${activeTab} events to show.`}
+                        ? "Your inbox is empty — no monitoring events detected yet. When FBR activity appears, it lands here in real time."
+                        : `No ${activeTab} events to show right now.`}
+                    </p>
+                    {activeTab === "all" && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void handleSimulateNotice()}
+                        loading={simulating}
+                        disabled={simulating || !userId}
+                        data-testid="inbox-empty-simulate"
+                      >
+                        {simulating ? "Simulating…" : "Try a demo notice"}
+                      </Button>
+                    )}
+                    <p className="inbox__empty-hint">
+                      Demo notice simulates a real FBR event through the monitor API.
                     </p>
                   </div>
                 ) : (

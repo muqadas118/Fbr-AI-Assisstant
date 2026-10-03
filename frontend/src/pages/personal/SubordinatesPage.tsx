@@ -56,6 +56,12 @@ const EMPTY_INVITE: InviteForm = {
   role: "subordinate",
 };
 
+/** Shape of one role entry from GET /team/roles. */
+interface RoleDetails {
+  label?: string;
+  permissions?: string[];
+}
+
 function memberRoleVariant(role: string): "accent" | "warn" | "default" {
   const r = role?.toLowerCase() ?? "";
   if (r === "owner" || r === "admin") return "accent";
@@ -89,7 +95,7 @@ export function SubordinatesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
   const [teamDashboard, setTeamDashboard] = useState<TeamDashboard | null>(null);
-  const [roles, setRoles] = useState<Record<string, unknown> | null>(null);
+  const [roles, setRoles] = useState<Record<string, RoleDetails> | null>(null);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -108,7 +114,9 @@ export function SubordinatesPage() {
       setLoadingRoles(true);
       try {
         const r = await api.team.getRoles();
-        setRoles(r);
+        // API wraps the map in an envelope: { roles: { admin: {...}, ... } }
+        const payload = (r as { roles?: Record<string, RoleDetails> }).roles ?? (r as Record<string, RoleDetails>);
+        setRoles(payload);
       } catch {
         // roles are non-critical
       } finally {
@@ -503,13 +511,11 @@ export function SubordinatesPage() {
                   <div className="sub__roles-list">
                     {Object.entries(roles).map(([role, details]) => (
                       <div key={role} className="sub__role-item">
-                        <Tag variant={memberRoleVariant(role)}>{role}</Tag>
+                        <Tag variant={memberRoleVariant(role)}>{details?.label ?? role}</Tag>
                         <span className="sub__role-desc">
-                          {typeof details === "object" && details !== null
-                            ? Object.entries(details as Record<string, unknown>)
-                                .map(([k, v]) => `${k}: ${String(v)}`)
-                                .join(" | ")
-                            : String(details ?? "")}
+                          {details?.permissions?.length
+                            ? details.permissions.join(" · ")
+                            : "No permissions — read-only access."}
                         </span>
                       </div>
                     ))}

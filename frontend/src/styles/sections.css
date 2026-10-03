@@ -1,0 +1,1352 @@
+/* ==================================================================
+   Shared section designs — Calendar / Notices / Invoices / Readiness
+   / Settings / Workspace Hub.
+   Same FBR pine/brass tokens as app.css; no new colours introduced.
+   ================================================================== */
+
+/* ── Calendar ────────────────────────────────────────────────────── */
+
+.cal-dashboard__grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-5);
+  align-items: start;
+}
+@media (max-width: 780px) {
+  .cal-dashboard__grid {
+    grid-template-columns: 1fr;
+  }
+}
+.cal-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-3);
+  background: var(--c-paper-2);
+}
+.cal-score__ring {
+  position: relative;
+  width: 132px;
+  height: 132px;
+}
+.cal-score__svg {
+  width: 100%;
+  height: 100%;
+}
+.cal-score__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+.cal-score__number {
+  font-family: var(--f-display);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.cal-score__grade {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.cal-score__label {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+.cal-dashboard__stats {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-3);
+  min-width: 0;
+}
+.cal-dashboard__message {
+  margin-top: var(--s-3);
+  font-size: 13px;
+  color: var(--c-text-muted);
+}
+
+/* Filters row */
+.cal-filters__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s-3);
+}
+.cal-filters__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+  padding-bottom: 10px;
+}
+
+/* Sections (Overdue / Upcoming / Completed) */
+.cal-section {
+  margin-bottom: var(--s-5);
+}
+.cal-section__head {
+  margin-bottom: var(--s-3);
+}
+.cal-section__title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-family: var(--f-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-ink);
+}
+
+/* Event rows */
+.cal-event {
+  display: flex;
+  gap: var(--s-4);
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--s-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-3);
+  background: var(--c-surface);
+  margin-bottom: var(--s-3);
+  transition: box-shadow 180ms var(--ease), border-color 180ms var(--ease);
+  animation: cal-item-in 460ms var(--ease-out-expo) both;
+}
+.cal-event:hover {
+  border-color: var(--c-line-strong);
+  box-shadow: 0 8px 20px rgba(8, 42, 33, 0.08);
+}
+.cal-event--overdue {
+  border-left: 3px solid var(--c-err);
+}
+.cal-event--completed {
+  opacity: 0.72;
+}
+.cal-event__left {
+  flex: 1;
+  min-width: 0;
+}
+.cal-event__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+.cal-event__title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--c-ink);
+}
+.cal-event__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--c-text-faint);
+}
+.cal-event__desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--c-text-muted);
+}
+.cal-event__penalty {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--c-err);
+  font-weight: 600;
+}
+.cal-event__right {
+  flex: 0 0 auto;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-2);
+}
+.cal-event__date-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+.cal-event__date-value {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--c-ink);
+  font-variant-numeric: tabular-nums;
+}
+.cal-event__days {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--c-primary-2);
+}
+.cal-event__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  justify-content: flex-end;
+}
+.cal-event__remind-form {
+  display: flex;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+.cal-event__remind-input {
+  flex: 1;
+  min-width: 180px;
+  padding: 7px 12px;
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--r-2);
+  font-size: 13px;
+  font-family: var(--f-body);
+  color: var(--c-text);
+  background: var(--c-surface);
+}
+.cal-event__remind-input:focus {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+
+/* Taxpayer chip */
+.cal-taxpayer-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 14px;
+  border: 1px solid var(--c-line);
+  border-radius: 999px;
+  background: var(--c-paper-2);
+}
+.cal-taxpayer-chip__label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+.cal-taxpayer-chip__value {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--c-primary);
+}
+
+/* Upcoming tasks */
+.cal-task {
+  padding: var(--s-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-3);
+  background: var(--c-surface);
+  margin-bottom: var(--s-3);
+}
+.cal-task__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.cal-task__title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--c-ink);
+}
+.cal-task__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  margin-top: 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--c-text-faint);
+}
+.cal-task__urgency {
+  margin-top: var(--s-2);
+}
+.cal-task__action {
+  margin: var(--s-2) 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--c-text-muted);
+}
+.cal-task__date {
+  margin-top: var(--s-2);
+  font-size: 12px;
+  color: var(--c-text-faint);
+}
+
+/* Recommendations */
+.cal-recommendations {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.cal-recommendations__item {
+  position: relative;
+  padding: var(--s-2) var(--s-4) var(--s-2) var(--s-6);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: var(--c-paper-2);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--c-text-muted);
+}
+.cal-recommendations__item::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c-gold);
+}
+
+/* ── Notices ─────────────────────────────────────────────────────── */
+
+.notice-input__textarea,
+.inv-reconcile__textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: var(--s-3);
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--r-3);
+  font-family: var(--f-body);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--c-text);
+  background: var(--c-surface);
+  resize: vertical;
+}
+.notice-input__textarea:focus,
+.inv-reconcile__textarea:focus {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+.notice-input__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--c-text-faint);
+}
+.notice-input__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+
+/* Input form */
+.notice-input__file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  margin-bottom: var(--s-3);
+  border: 1px dashed var(--c-line-strong);
+  border-radius: var(--r-2);
+  background: var(--c-paper-2);
+}
+.notice-input__file-hint {
+  font-size: 12px;
+  color: var(--c-text-faint);
+}
+.notice-input__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+.notice-result__summary {
+  margin: 0 0 var(--s-3);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--c-text);
+}
+.notice-result__analysis-id {
+  margin-top: var(--s-2);
+  font-size: 11px;
+  color: var(--c-text-faint);
+  font-family: var(--f-mono);
+}
+
+/* Deadline strip */
+.notice-deadline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--c-gold);
+  border-radius: var(--r-3);
+  background: var(--c-gold-soft);
+}
+.notice-deadline__label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-primary-2);
+}
+.notice-deadline__value {
+  font-family: var(--f-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--c-ink);
+}
+
+/* Action plan steps */
+.notice-plan__summary {
+  margin: 0 0 var(--s-3);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--c-text-muted);
+}
+.notice-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: notice-step;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.notice-step {
+  position: relative;
+  padding: var(--s-3) var(--s-4);
+  padding-left: var(--s-8);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-3);
+  background: var(--c-paper-2);
+}
+.notice-step::before {
+  counter-increment: notice-step;
+  content: counter(notice-step);
+  position: absolute;
+  left: 12px;
+  top: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--fbr-green) 0%, var(--c-primary-3) 100%);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.notice-step__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+.notice-step__title {
+  font-size: 13.5px;
+  color: var(--c-ink);
+}
+.notice-step__badges {
+  display: inline-flex;
+  gap: 6px;
+}
+.notice-step__desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--c-text-muted);
+}
+.notice-step__docs {
+  margin-top: var(--s-2);
+}
+.notice-step__docs-label {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+  margin-bottom: 4px;
+}
+.notice-plan__tips {
+  margin-top: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border: 1px dashed var(--c-line-strong);
+  border-radius: var(--r-3);
+  background: var(--c-paper-2);
+}
+.notice-plan__tips-title {
+  margin: 0 0 var(--s-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+
+/* Collapse (raw notice text) */
+.notice-collapse__toggle {
+  width: 100%;
+  text-align: left;
+}
+.notice-collapse__body {
+  margin-top: var(--s-3);
+}
+.notice-collapse__text {
+  margin: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: var(--c-paper-2);
+  font-family: var(--f-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--c-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+}
+
+/* Appeal guide */
+.notice-appeal__section {
+  margin-bottom: var(--s-4);
+}
+.notice-appeal__section-title {
+  margin: 0 0 var(--s-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+.notice-appeal__list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--c-text);
+}
+
+/* Notice types reference */
+.notice-types-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--c-text-muted);
+}
+.notice-types-list__item {
+  padding: 5px 10px;
+  border-left: 2px solid var(--c-gold);
+  background: var(--c-paper-2);
+  border-radius: 0 var(--r-1) var(--r-1) 0;
+}
+
+/* History */
+.notice-history__item {
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: var(--c-surface);
+  margin-bottom: var(--s-2);
+}
+.notice-history__item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+.notice-history__item-date {
+  font-size: 11px;
+  color: var(--c-text-faint);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.notice-history__item-preview {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--c-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notice-history__item-ts {
+  font-size: 10.5px;
+  color: var(--c-text-faint);
+  font-family: var(--f-mono);
+}
+
+/* ── Invoices ────────────────────────────────────────────────────── */
+
+.inv-dashboard {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+.inv-dashboard__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--s-4) var(--s-2);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-3);
+  background: var(--c-paper-2);
+  text-align: center;
+  transition: transform 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+.inv-dashboard__stat:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(8, 42, 33, 0.08);
+}
+.inv-dashboard__stat-value {
+  font-family: var(--f-display);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--c-ink);
+  font-variant-numeric: tabular-nums;
+}
+.inv-dashboard__stat-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+@media (max-width: 720px) {
+  .inv-dashboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.inv-process__actions,
+.inv-reconcile__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+.inv-reconcile__fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s-3);
+}
+@media (min-width: 720px) {
+  .inv-reconcile__fields {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.inv-reconcile__report {
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px dashed var(--c-line);
+}
+.inv-reconcile__report-title {
+  margin: 0 0 var(--s-3);
+  font-family: var(--f-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--c-ink);
+}
+.inv-reconcile__recommendations {
+  margin-top: var(--s-3);
+}
+
+/* Validation score bar */
+.inv-validation__score-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+.inv-validation__score-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+.inv-validation__score-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--c-paper-2);
+  border: 1px solid var(--c-line);
+  overflow: hidden;
+}
+.inv-validation__score-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--fbr-green) 0%, var(--c-primary-3) 100%);
+  transition: width 600ms var(--ease);
+}
+.inv-validation__score-number {
+  font-family: var(--f-display);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--c-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Issues groups */
+.inv-issues {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.inv-issues__group-head {
+  margin-bottom: var(--s-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+.inv-issues__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.inv-issues__item {
+  display: grid;
+  grid-template-columns: minmax(90px, auto) minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: baseline;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: var(--c-paper-2);
+  font-size: 13px;
+}
+.inv-issues__item--error {
+  border-left: 3px solid var(--c-err);
+}
+.inv-issues__item--warning {
+  border-left: 3px solid var(--c-gold);
+}
+.inv-issues__item--info {
+  border-left: 3px solid var(--c-info);
+}
+.inv-issues__field {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--c-ink);
+}
+.inv-issues__message {
+  color: var(--c-text-muted);
+  line-height: 1.5;
+}
+.inv-issues-empty {
+  padding: var(--s-5);
+  text-align: center;
+  font-size: 13px;
+  color: var(--c-text-faint);
+}
+
+/* Result + summary */
+.inv-result__status {
+  margin-bottom: var(--s-3);
+}
+.inv-result__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.inv-summary__text {
+  margin: 0 0 var(--s-2);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--c-text);
+}
+.inv-summary__meta {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: 11px;
+}
+
+/* ── Readiness ───────────────────────────────────────────────────── */
+
+.readiness-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.readiness-checkboxes {
+  padding: var(--s-4) var(--s-5) var(--s-5);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-3);
+  background: var(--c-paper-2);
+  margin: 0;
+}
+/* legend floats back into normal flow (Chrome pins fieldset legends to
+   the border zone, which overlapped the first checkbox card) */
+.readiness-checkboxes__legend {
+  float: left;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 2px;
+  margin: 0 0 var(--s-3);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+.readiness-checkboxes__grid {
+  clear: left;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--s-2) var(--s-3);
+}
+.readiness-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--r-2);
+  background: var(--c-surface);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--c-text);
+  cursor: pointer;
+  transition: border-color 180ms var(--ease), background 180ms var(--ease),
+    box-shadow 180ms var(--ease);
+}
+.readiness-checkbox:hover {
+  border-color: var(--c-primary);
+  box-shadow: 0 4px 12px rgba(8, 42, 33, 0.08);
+}
+.readiness-checkbox:has(input:checked) {
+  border-color: var(--fbr-green);
+  background: var(--c-accent-soft);
+}
+.readiness-checkbox:has(input:focus-visible) {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+.readiness-checkbox input {
+  accent-color: var(--fbr-green);
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin: 3px 0 0;
+}
+
+.readiness-meter__ring {
+  position: relative;
+  width: 140px;
+  height: 140px;
+}
+.readiness-meter__svg {
+  width: 100%;
+  height: 100%;
+}
+.readiness-meter__inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.readiness-meter__score {
+  font-family: var(--f-display);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.readiness-meter__score--ok { color: var(--c-ok); }
+.readiness-meter__score--warn { color: var(--c-gold-2); }
+.readiness-meter__score--err { color: var(--c-err); }
+.readiness-meter__unit {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text-faint);
+}
+
+.checklist-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: var(--c-surface);
+  margin-bottom: var(--s-2);
+  font-size: 13.5px;
+}
+.checklist-row--pass {
+  border-left: 3px solid var(--c-ok);
+}
+.checklist-row--fail {
+  border-left: 3px solid var(--c-err);
+}
+.checklist-row__icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--c-ok);
+}
+.checklist-row--fail .checklist-row__icon {
+  color: var(--c-err);
+}
+.checklist-row__label {
+  font-weight: 650;
+  color: var(--c-ink);
+}
+.checklist-row__detail {
+  margin-left: auto;
+  text-align: right;
+}
+
+.action-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.action-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--c-gold);
+  border-radius: var(--r-2);
+  background: var(--c-gold-soft);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--c-ink);
+}
+.action-item__icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--c-primary-2);
+  margin-top: 1px;
+}
+
+.issue-row,
+.rec-row {
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: var(--c-paper-2);
+  margin-bottom: var(--s-2);
+}
+.issue-row__header,
+.rec-row__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: 4px;
+}
+.issue-row__code {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--c-ink);
+}
+.rec-row__deadline,
+.rec-row__reason,
+.issue-row__detail {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--c-text-muted);
+}
+.rec-row__action {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--c-text);
+}
+
+/* ── Settings ────────────────────────────────────────────────────── */
+
+.settings-form__actions {
+  display: flex;
+  gap: var(--s-2);
+}
+.settings-form__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: var(--c-paper-2);
+  font-size: 13.5px;
+  color: var(--c-text);
+  cursor: pointer;
+  transition: border-color 180ms var(--ease), background 180ms var(--ease);
+}
+.settings-form__checkbox:hover {
+  border-color: var(--c-line-strong);
+}
+.settings-form__checkbox input {
+  accent-color: var(--fbr-green);
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+/* ── Workspace Hub ───────────────────────────────────────────────── */
+
+.hub__content {
+  margin-top: var(--s-4);
+}
+
+@keyframes cal-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cal-event {
+    animation: none;
+  }
+}
+
+
+/* ==================================================================
+   Migrated from page-level inline <style> blocks (single source of
+   truth now lives here). Selectors already designed above are omitted.
+   ================================================================== */
+
+/* from CalendarPage.tsx */
+/* Calendar page layout */
+        .cal-dashboard-loading,
+        .cal-events-loading {
+          padding: var(--s-6);
+          text-align: center;
+        }
+
+/* from CalendarPage.tsx */
+/* Loading boxes: soft dashed outline instead of heavy solid card. */
+        .cal-dashboard-loading .state,
+        .cal-events-loading .state {
+          border: 1.5px dashed var(--c-line-strong);
+          border-left: 1.5px dashed var(--c-line-strong);
+          border-radius: 12px;
+          background: var(--c-surface);
+          box-shadow: none;
+          padding: var(--s-4) var(--s-6);
+          justify-content: center;
+        }
+
+/* from CalendarPage.tsx */
+.cal-dashboard .cal-dashboard__grid {
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr);
+          gap: var(--s-5) var(--s-6);
+          align-items: center;
+        }
+        .cal-dashboard__grid .cal-dashboard__message {
+          grid-column: 1 / -1;
+        }
+        .cal-dashboard__grid .cal-dashboard__stats {
+          grid-column: 2;
+          min-width: 0;
+        }
+        .cal-dashboard__grid .cal-dashboard__stats .kv__row {
+          grid-template-columns: 150px minmax(0, 1fr);
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+/* from CalendarPage.tsx */
+/* Filters — compact white toolbar */
+        .cal-filters {
+          background: var(--c-surface);
+          border: 1px solid var(--c-line);
+          border-radius: 12px;
+          padding: var(--s-3) var(--s-4);
+          box-shadow: var(--sh-sm);
+        }
+
+/* from CalendarPage.tsx */
+.cal-filters__row .field {
+          margin-bottom: 0;
+          flex: 0 1 auto;
+        }
+
+/* from CalendarPage.tsx */
+.cal-filters__row .field__label {
+          font-size: 10px;
+          letter-spacing: 0.08em;
+          margin-bottom: 3px;
+        }
+
+/* from CalendarPage.tsx */
+.cal-filters__row .cselect {
+          flex: 0 1 auto;
+          min-width: 170px;
+          max-width: 220px;
+        }
+
+/* from CalendarPage.tsx */
+.cal-filters__row .cselect__trigger {
+          padding: 8px 12px 8px 14px;
+          font-size: 13.5px;
+          border-radius: 10px;
+        }
+
+/* from CalendarPage.tsx */
+.cal-section__meta {
+          font-size: 12px;
+          color: var(--c-text-muted);
+        }
+
+/* from CalendarPage.tsx */
+/* Event list */
+        .cal-event-list {
+          display: flex;
+          flex-direction: column;
+          gap: var(--s-3);
+        }
+
+/* from CalendarPage.tsx */
+.cal-event__dot {
+          color: var(--c-text-faint);
+        }
+
+/* from CalendarPage.tsx */
+.cal-event__date {
+          text-align: right;
+        }
+
+/* from CalendarPage.tsx */
+/* Task grid */
+        .cal-task-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: var(--s-4);
+        }
+
+/* from CalendarPage.tsx */
+/* Page header actions — taxpayer chip + refresh */
+        .page__header-actions {
+          display: flex;
+          align-items: flex-end;
+          gap: var(--s-3);
+        }
+
+/* from CalendarPage.tsx */
+.page__header-actions .btn--ghost {
+          border: 1.5px solid var(--c-line-strong);
+          border-radius: 10px;
+          background: var(--c-surface);
+        }
+
+/* from InvoicesPage.tsx */
+/* Dashboard */
+        .inv-dashboard-loading {
+          padding: var(--s-6);
+          text-align: center;
+        }
+
+/* from InvoicesPage.tsx */
+.inv-dashboard__stat--highlight {
+          background: var(--c-accent-soft);
+          border: 1px solid rgba(13, 107, 79, 0.2);
+        }
+
+/* from InvoicesPage.tsx */
+.inv-dashboard__breakdown {
+          border-top: 1px dashed var(--c-line);
+          padding-top: var(--s-4);
+        }
+
+/* from InvoicesPage.tsx */
+/* Tabs */
+        .inv-tabs {
+          display: flex;
+          gap: 0;
+          border-bottom: 2px solid var(--c-line);
+          margin-bottom: var(--s-5);
+        }
+
+/* from InvoicesPage.tsx */
+.inv-tabs__tab {
+          padding: var(--s-3) var(--s-5);
+          background: transparent;
+          border: 0;
+          border-bottom: 2px solid transparent;
+          margin-bottom: -2px;
+          font-size: 14px;
+          font-weight: 500;
+          color: var(--c-text-muted);
+          cursor: pointer;
+          transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+        }
+
+/* from InvoicesPage.tsx */
+.inv-tabs__tab--active {
+          color: var(--c-accent);
+          border-bottom-color: var(--c-accent);
+        }
+
+/* from InvoicesPage.tsx */
+/* Process form */
+        .inv-process__id-input {
+          width: 100%;
+          padding: 8px 12px;
+          border: 1px solid var(--c-line-strong);
+          border-radius: var(--r-2);
+          background: #fffaf0;
+          font-size: 14px;
+        }
+
+/* from InvoicesPage.tsx */
+.inv-process__textarea {
+          width: 100%;
+          padding: var(--s-4);
+          border: 1px solid var(--c-line-strong);
+          border-radius: var(--r-2);
+          background: #fffaf0;
+          font-family: var(--f-body);
+          font-size: 14px;
+          line-height: 1.6;
+          resize: vertical;
+          min-height: 180px;
+        }
+
+/* from InvoicesPage.tsx */
+.inv-process__meta {
+          margin-top: var(--s-2);
+          text-align: right;
+        }
+
+/* from InvoicesPage.tsx */
+/* Result */
+        .inv-result {
+          display: flex;
+          flex-direction: column;
+          gap: var(--s-5);
+        }
+
+/* from InvoicesPage.tsx */
+/* Reconcile */
+        .inv-reconcile {
+          display: flex;
+          flex-direction: column;
+          gap: var(--s-4);
+        }
+
+/* from InvoicesPage.tsx */
+.inv-reconcile__report-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: var(--s-4);
+        }
+
+/* from InvoicesPage.tsx */
+.inv-reconcile__rec-title {
+          font-size: 13px;
+          font-weight: 700;
+          margin-bottom: var(--s-2);
+        }
+
+/* from InvoicesPage.tsx */
+/* Export */
+        .inv-export {
+          margin-left: auto;
+          display: flex;
+          gap: var(--s-2);
+        }
+
+/* from NoticesPage.tsx */
+/* Result */
+        .notice-result {
+          display: flex;
+          flex-direction: column;
+          gap: var(--s-5);
+        }
+
+/* from NoticesPage.tsx */
+.notice-result__badges {
+          display: flex;
+          align-items: center;
+          gap: var(--s-2);
+          flex-wrap: wrap;
+        }
+
+/* from NoticesPage.tsx */
+.notice-deadline__date {
+          display: flex;
+          flex-direction: column;
+        }
+
+/* from NoticesPage.tsx */
+.notice-deadline__urgency {
+          font-size: 14px;
+          font-weight: 700;
+        }
+
+/* from NoticesPage.tsx */
+/* Collapsible */
+        .notice-collapse {
+          background: #fffaf0;
+          border: 1px solid var(--c-line);
+          border-radius: var(--r-2);
+          overflow: hidden;
+        }
+
+/* from NoticesPage.tsx */
+/* History */
+        .notice-history {
+          display: flex;
+          flex-direction: column;
+          gap: var(--s-4);
+        }
