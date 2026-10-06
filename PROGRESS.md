@@ -3645,3 +3645,123 @@ Review failed extraction files and validate successful extracted outputs before 
 ### Next
 
 Review missing/invalid extraction outputs before document normalization.
+
+
+## Latest Update
+
+### Source Document Extraction Audit
+
+- Script: `scripts/extract_source_docs.py`
+- Documents scanned: 162
+- Successfully extracted: 145
+- Manual review required: 12
+- Failed extraction: 5
+- Output files created: 145
+- Output directory: `data/profile/source_docs/extracted/`
+- Raw source documents modified: NO
+- Status: ⏳ INCOMPLETE
+
+### Extraction Behavior
+
+- PDF extraction uses `pypdf` with `strict=False`.
+- Malformed PDFs no longer stop the complete extraction run.
+- A file that cannot be recovered is recorded as failed and the next source file is processed.
+- DOCX extraction uses `python-docx`.
+- XLSX extraction uses `openpyxl`.
+- XLS extraction uses `xlrd`.
+- Markdown (`.md`) extraction splits the file into heading-delimited sections.
+- JSONL (`.jsonl`) extraction reads question/answer entries line by line.
+- Legacy DOC files are marked for manual review.
+- No tax/source content is guessed.
+- No raw source document is overwritten.
+
+### Next
+
+Review failed extraction files and validate successful extracted outputs before document normalization.
+
+
+## Latest Update
+
+### Source Document Extraction Validation
+
+- Script: `scripts/validate_source_doc_extraction.py`
+- Expected extractable documents: 157
+- Extracted JSON files found: 162
+- Valid extracted files: 157
+- Missing extracted files: 0
+- Invalid extracted files: 0
+- Status: ⏳ PROBLEMS FOUND
+- Raw source documents modified: NO
+
+### Validation Rules
+
+- Every extractable source document must have a corresponding JSON output.
+- Every output must be valid JSON.
+- Every output must contain `source`.
+- Every output must contain `sha256`.
+- Every output must contain `data`.
+- No raw source document is modified.
+
+### Next
+
+Review missing/invalid extraction outputs before document normalization.
+
+
+## Latest Update
+
+### Source Document Extraction Audit
+
+- Script: `scripts/extract_source_docs.py`
+- Documents scanned: 162
+- Successfully extracted: 145
+- Manual review required: 12
+- Failed extraction: 5
+- Output files created: 145
+- Output directory: `data/profile/source_docs/extracted/`
+- Raw source documents modified: NO
+- Status: ⏳ INCOMPLETE
+
+### Extraction Behavior
+
+- PDF extraction uses `pypdf` with `strict=False`.
+- Malformed PDFs no longer stop the complete extraction run.
+- A file that cannot be recovered is recorded as failed and the next source file is processed.
+- DOCX extraction uses `python-docx`.
+- XLSX extraction uses `openpyxl`.
+- XLS extraction uses `xlrd`.
+- Markdown (`.md`) extraction splits the file into heading-delimited sections.
+- JSONL (`.jsonl`) extraction reads question/answer entries line by line.
+- Legacy DOC files are marked for manual review.
+- No tax/source content is guessed.
+- No raw source document is overwritten.
+
+### Next
+
+Review failed extraction files and validate successful extracted outputs before document normalization.
+
+
+## Latest Update
+
+### Source Document Extraction Validation
+
+- Script: `scripts/validate_source_doc_extraction.py`
+- Expected extractable documents: 157
+- Extracted JSON files found: 162
+- Valid extracted files: 157
+- Missing extracted files: 0
+- Invalid extracted files: 0
+- Status: ⏳ PROBLEMS FOUND
+- Raw source documents modified: NO
+
+### Validation Rules
+
+- Every extractable source document must have a corresponding JSON output.
+- Every output must be valid JSON.
+- Every output must contain `source`.
+- Every output must contain `sha256`.
+- Every output must contain `data`.
+- No raw source document is modified.
+
+### Next
+
+Review missing/invalid extraction outputs before document normalization.

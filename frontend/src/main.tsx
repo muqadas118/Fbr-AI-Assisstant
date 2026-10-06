@@ -18,8 +18,11 @@ import "@/styles/gov-fbr.css";
 // so unauthenticated flows (and tests) keep working.
 setAuthTokenGetter(getAccessToken);
 setUnauthorizedHandler(() => {
-  // DEV ONLY: login temporarily removed — do not redirect to /login.
-  // End me login restore karte waqt ye handler wapis lagana.
+  // Session rejected/expired (401 from API) → send user to login.
+  // main.tsx lives outside <BrowserRouter>, so use a full navigation.
+  if (window.location.pathname !== "/login") {
+    window.location.href = "/login";
+  }
 });
 
 // Restore session + subscribe to auth changes (supabase auto-persist).

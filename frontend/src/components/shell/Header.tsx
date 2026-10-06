@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { findSectionByPath as findPersonalSection } from "@/state/personalNav";
 import { findBusinessSectionByPath as findBusinessSection } from "@/state/businessNav";
 import { WORKSPACES, useWorkspace } from "@/state/workspace";
+import { useAuth } from "@/state/auth";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 interface HeaderProps {
@@ -12,6 +13,14 @@ export function Header({ onToggleSidebar }: HeaderProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const activeWs = useWorkspace((s) => s.active);
+  const signOut = useAuth((s) => s.signOut);
+  const user = useAuth((s) => s.user);
+  const email = user?.email ?? "";
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/login", { replace: true });
+  };
   const isBusiness = location.pathname.startsWith("/business");
   const current = isBusiness
     ? findBusinessSection(location.pathname)
@@ -47,6 +56,15 @@ export function Header({ onToggleSidebar }: HeaderProps) {
           onClick={() => navigate(isBusiness ? "/business/workspace?tab=inbox" : "/personal/workspace?tab=inbox")}
         >
           Notifications
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost btn--sm app-header__user"
+          onClick={handleSignOut}
+          title={email}
+          data-testid="sign-out"
+        >
+          Sign out
         </button>
       </div>
     </header>

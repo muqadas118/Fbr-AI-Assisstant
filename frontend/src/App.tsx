@@ -1,11 +1,12 @@
 ﻿import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
+import { RequireAuth } from "@/components/shell/RequireAuth";
 import { Loading } from "@/components/shell/Loading";
 import { LandingPage } from "@/pages/LandingPage";
-// DEV ONLY (login temporarily removed): RequireAuth + Login/Signup/Callback
-// pages are bypassed below — routes redirect into the workspace.
-// End me login wapis lagana hai to ye patch revert karna.
+import { LoginPage } from "@/pages/auth/LoginPage";
+import { SignupPage } from "@/pages/auth/SignupPage";
+import { AuthCallbackPage } from "@/pages/auth/AuthCallbackPage";
 
 const OverviewPage = lazy(() => import("@/pages/personal/OverviewPage").then((m) => ({ default: m.OverviewPage })));
 const AssistantPage = lazy(() => import("@/pages/personal/AssistantPage").then((m) => ({ default: m.AssistantPage })));
@@ -51,11 +52,17 @@ export function App() {
       <Suspense fallback={<Loading label="Loading…" testId="route-loading" />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
-          {/* DEV ONLY: auth pages redirect into the app until login is restored. */}
-          <Route path="/login" element={<Navigate to="/personal/overview" replace />} />
-          <Route path="/signup" element={<Navigate to="/personal/overview" replace />} />
-          <Route path="/auth/callback" element={<Navigate to="/personal/overview" replace />} />
-          <Route path="/personal" element={<AppShell />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          <Route
+            path="/personal"
+            element={
+              <RequireAuth>
+                <AppShell />
+              </RequireAuth>
+            }
+          >
             <Route index element={<OverviewPage />} />
             <Route path="overview" element={<OverviewPage />} />
             <Route path="assistant" element={<AssistantPage />} />
@@ -77,7 +84,14 @@ export function App() {
             <Route path="subordinates" element={<Navigate to="/personal/workspace?tab=subordinates" replace />} />
             <Route path="workspaces" element={<Navigate to="/personal/workspace?tab=workspaces" replace />} />
           </Route>
-          <Route path="/business" element={<AppShell variant="business" />}>
+          <Route
+            path="/business"
+            element={
+              <RequireAuth>
+                <AppShell variant="business" />
+              </RequireAuth>
+            }
+          >
             <Route index element={<BusinessOverviewPage />} />
             <Route path="overview" element={<BusinessOverviewPage />} />
             <Route path="assistant" element={<BusinessAssistantPage />} />
