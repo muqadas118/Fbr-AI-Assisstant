@@ -626,6 +626,7 @@
 .qaction__link {
   margin-left: auto;
   flex-shrink: 0;
+  align-self: center;
 }
 
 /* Narrow screens: stack the quick-action button under its text. */
@@ -1614,6 +1615,49 @@
 
 /* ── Onboarding questionnaire ─────────────────────────────────────────── */
 
+/* Onboarding: full-width stage with the landing-style particle motion behind
+   the card (3D-ish depth via linked dots + pointer parallax). */
+.auth-wrap.onboarding {
+  position: relative;
+  overflow: hidden;
+  max-width: none;
+  min-height: calc(100vh - 140px);
+  padding: 56px 20px;
+}
+
+.auth-wrap.onboarding::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(900px 380px at 50% -8%, rgba(12, 59, 46, 0.1), transparent 70%),
+    radial-gradient(700px 300px at 85% 110%, rgba(198, 161, 91, 0.16), transparent 70%);
+  pointer-events: none;
+}
+
+.onboarding__particles {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.auth-wrap.onboarding .auth-card {
+  position: relative;
+  z-index: 1;
+  max-width: 640px;
+  margin: 0 auto;
+  box-shadow: 0 30px 70px rgba(8, 42, 33, 0.14);
+}
+
+/* Auth pages: centered, evenly spaced action rows. */
+.auth-wrap .form__actions {
+  justify-content: center;
+  gap: var(--s-3);
+  border-top: none;
+  padding-top: 0;
+}
+
 .onboarding__card {
   max-width: 560px;
   margin: 0 auto;
@@ -1704,6 +1748,8 @@
 
 .onboarding__actions {
   margin-top: var(--s-4);
+  justify-content: center;
+  gap: var(--s-3);
 }
 
 .onboarding__summary {

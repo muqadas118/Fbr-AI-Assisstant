@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { StatusBanner } from "@/components/ui/StatusBanner";
+import { ParticleField } from "@/components/landing/ParticleField";
 
 const WORKSPACE_CHOICES: Record<
   OnboardingOutcome,
@@ -79,6 +80,9 @@ export function OnboardingFlow() {
 
   return (
     <div className="auth-wrap onboarding" data-testid="onboarding-page">
+      <div className="onboarding__particles" aria-hidden="true">
+        <ParticleField density={90} testId="onboarding-particles" />
+      </div>
       <div className="auth-card onboarding__card">
         <div className="auth-crest" aria-hidden="true">FBR</div>
         <p className="page-eyebrow">Account setup</p>

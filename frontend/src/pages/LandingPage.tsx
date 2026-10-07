@@ -116,8 +116,8 @@ export function LandingPage() {
             backed by official FBR law, with calculators, notice analysis and compliance tracking.
           </p>
           <div className="landing-hero__ctas">
-             <Link to={session ? "/personal/overview" : "/login"} className="landing-btn landing-btn--gold" data-testid="landing-cta-app">
-               {session ? "Continue to workspace" : "Enter the assistant"}
+             <Link to={session ? "/personal/overview" : "/signup"} className="landing-btn landing-btn--gold" data-testid="landing-cta-app">
+               {session ? "Continue to workspace" : "Sign Up"}
             </Link>
              <Link to={session ? "/personal/settings" : "/login"} className="landing-btn landing-btn--outline" data-testid="landing-cta-login">
                {session ? "Account settings" : "Login"}
@@ -172,7 +172,7 @@ export function LandingPage() {
       <Reveal>
       <section className="landing-showcase" aria-label="Workspace preview">
          <div className="landing-wrap landing-showcase__layout">
-           <div className="landing-showcase__copy"><p className="landing-eyebrow">A clearer way to work</p><h2 className="landing-h2">Less searching.<br /><em>More certainty.</em></h2><p>Built around the rhythm of real tax work: understand the rule, calculate the impact, capture the evidence, and act before the deadline.</p><Link to={session ? "/personal/overview" : "/login"} className="landing-text-link">{session ? "Open your workspace" : "Create your workspace"} <span>→</span></Link></div>
+           <div className="landing-showcase__copy"><p className="landing-eyebrow">A clearer way to work</p><h2 className="landing-h2">Less searching.<br /><em>More certainty.</em></h2><p>Built around the rhythm of real tax work: understand the rule, calculate the impact, capture the evidence, and act before the deadline.</p><Link to={session ? "/personal/overview" : "/signup"} className="landing-text-link">{session ? "Open your workspace" : "Create your account"} <span>→</span></Link></div>
            <div className="landing-dashboard" aria-label="Illustration of the assistant workspace"><div className="landing-dashboard__top"><span className="landing-dashboard__dot"></span><span>FBR / COMPLIANCE DESK</span><span className="landing-dashboard__date">TY 2025</span></div><div className="landing-dashboard__body"><div className="landing-dashboard__rail"><i></i><i></i><i></i><i></i></div><div className="landing-dashboard__main"><div className="landing-dashboard__line landing-dashboard__line--short"></div><div className="landing-dashboard__line"></div><div className="landing-dashboard__metrics"><div><small>COMPLIANCE SCORE</small><strong>86<span>/100</span></strong></div><div><small>NEXT DEADLINE</small><strong>12 <span>days</span></strong></div></div><div className="landing-dashboard__chart"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div></div><div className="landing-dashboard__stamp">VERIFIED<br /><small>FBR SOURCE INDEX</small></div></div>
          </div>
        </section>

@@ -687,6 +687,19 @@ a.sidebar__brand:focus-visible { outline: 2px solid var(--c-primary); outline-of
   transform: translateY(-1px);
 }
 .field__input::placeholder, .field__textarea::placeholder { color: #9aa8a0; font-weight: 400; }
+/* Browser autofill: replace Chrome's pale-blue fill with the app's white field. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
+  -webkit-text-fill-color: var(--c-text);
+  caret-color: var(--c-text);
+  transition: background-color 99999999s ease-in-out 0s;
+}
 .field__input[type="number"] { font-variant-numeric: tabular-nums lining-nums; }
 .field__select {
   appearance: none;
@@ -1265,7 +1278,7 @@ table { border-collapse: collapse; }
 
 /* Utility */
 
-.form__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-4); padding-top: var(--s-3); border-top: 1px dashed var(--c-line); }
+.form__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-top: var(--s-4); padding-top: var(--s-3); border-top: 1px dashed var(--c-line); }
 
 /* Gov FBR pro — page shell aliases (reuse tokens, no new palette) -------- */
 
