@@ -13,7 +13,7 @@ function isValidEmail(value: string): boolean {
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const session = useAuth((s) => s.session);
+  const token = useAuth((s) => s.token);
   const authLoading = useAuth((s) => s.loading);
   const initialized = useAuth((s) => s.initialized);
   const signIn = useAuth((s) => s.signIn);
@@ -28,7 +28,7 @@ export function LoginPage() {
     return <div className="auth-wrap auth-wrap--loading" role="status">Restoring your secure session…</div>;
   }
 
-  if (session) {
+  if (token) {
     return <Navigate to="/personal/overview" replace />;
   }
 

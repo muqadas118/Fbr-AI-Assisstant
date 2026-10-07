@@ -1,35 +1,87 @@
 ﻿// ---------------------------------------------------------------------------
-// Auth store — Zustand wrapper around the Supabase singleton.
-// Session persistence is handled by supabase-js (auto-persist +
-// auto-refresh). Do NOT manually store raw JWT strings in localStorage.
+// Auth store — Zustand wrapper around the FBR backend's own auth system
+// (POST /auth/signup, /auth/login, /auth/logout; opaque bearer session
+// tokens persisted in localStorage). No external provider required.
 // ---------------------------------------------------------------------------
 
 import { create } from "zustand";
-import type { Session, User } from "@supabase/supabase-js";
-import { getSupabaseClient } from "@/lib/supabase";
+import { ApiError, authApi, isUnauthorized } from "@/lib/api";
+
+export interface BackendUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  organization?: string | null;
+  created_at?: string;
+}
 
 export interface AuthResult {
   error: string | null;
 }
 
 interface AuthState {
-  user: User | null;
-  session: Session | null;
+  user: BackendUser | null;
+  token: string | null;
   loading: boolean;
   initialized: boolean;
   error: string | null;
   signIn: (email: string, password: string) => Promise<AuthResult>;
-  signUp: (email: string, password: string) => Promise<AuthResult>;
+  signUp: (email: string, password: string, name?: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
   init: () => Promise<() => void>;
 }
 
-function friendlyAuthError(message: string): string {
-  if (/invalid login credentials/i.test(message)) {
-    return "Invalid email or password.";
+const TOKEN_KEY = "fbr_auth_token";
+const USER_KEY = "fbr_auth_user";
+
+function readStoredToken(): string | null {
+  try {
+    return window.localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
   }
-  if (/user already registered/i.test(message)) {
+}
+
+function readStoredUser(): BackendUser | null {
+  try {
+    const raw = window.localStorage.getItem(USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as BackendUser;
+    return parsed && typeof parsed.email === "string" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistSession(token: string, user: BackendUser): void {
+  try {
+    window.localStorage.setItem(TOKEN_KEY, token);
+    window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+  } catch {
+    // Private mode / storage full — session lives for the tab only.
+  }
+}
+
+function clearStoredSession(): void {
+  try {
+    window.localStorage.removeItem(TOKEN_KEY);
+    window.localStorage.removeItem(USER_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export function getStoredAuthToken(): string | null {
+  return readStoredToken();
+}
+
+function friendlyAuthError(message: string): string {
+  if (/already exists/i.test(message)) {
     return "An account with this email already exists. Try signing in.";
+  }
+  if (/invalid email or password/i.test(message)) {
+    return "Invalid email or password.";
   }
   if (/email not confirmed/i.test(message)) {
     return "Please confirm your email before signing in.";
@@ -38,124 +90,80 @@ function friendlyAuthError(message: string): string {
 }
 
 export const useAuth = create<AuthState>((set) => ({
-  user: null,
-  session: null,
-  loading: true,
-  initialized: false,
+  user: readStoredUser(),
+  token: readStoredToken(),
+  loading: false,
+  initialized: true,
   error: null,
 
-  init: async () => {
-    const client = getSupabaseClient();
-    if (!client) {
-      set({ user: null, session: null, loading: false, initialized: true });
-      return () => undefined;
-    }
-    set({ loading: true, error: null });
-    try {
-      const { data } = await client.auth.getSession();
-      set({
-        user: data.session?.user ?? null,
-        session: data.session,
-        loading: false,
-        initialized: true,
-      });
-    } catch (err) {
-      set({
-        user: null,
-        session: null,
-        loading: false,
-        initialized: true,
-        error: err instanceof Error ? err.message : "Failed to restore session.",
-      });
-    }
-    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
-      set({
-        user: session?.user ?? null,
-        session,
-        loading: false,
-        initialized: true,
-      });
-    });
-    return () => {
-      listener.subscription.unsubscribe();
-    };
-  },
-
   signIn: async (email, password) => {
-    const client = getSupabaseClient();
-    if (!client) {
-      return {
-        error:
-          "Auth is not configured (missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).",
-      };
-    }
     set({ loading: true, error: null });
     try {
-      const { data, error } = await client.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-      if (error) {
-        const friendly = friendlyAuthError(error.message);
-        set({ loading: false, error: friendly });
-        return { error: friendly };
-      }
-      set({
-        user: data.user,
-        session: data.session,
-        loading: false,
-        error: null,
-      });
+      const res = await authApi.login(email.trim(), password);
+      persistSession(res.token, res.user as BackendUser);
+      set({ user: res.user as BackendUser, token: res.token, loading: false, error: null });
       return { error: null };
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Sign-in failed.";
+      const message =
+        err instanceof ApiError
+          ? friendlyAuthError(err.detail)
+          : err instanceof Error
+            ? err.message
+            : "Sign-in failed.";
       set({ loading: false, error: message });
       return { error: message };
     }
   },
 
-  signUp: async (email, password) => {
-    const client = getSupabaseClient();
-    if (!client) {
-      return {
-        error:
-          "Auth is not configured (missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).",
-      };
-    }
+  signUp: async (email, password, name) => {
     set({ loading: true, error: null });
     try {
-      const { data, error } = await client.auth.signUp({
-        email: email.trim(),
-        password,
-      });
-      if (error) {
-        const friendly = friendlyAuthError(error.message);
-        set({ loading: false, error: friendly });
-        return { error: friendly };
-      }
-      set({
-        user: data.user,
-        session: data.session,
-        loading: false,
-        error: null,
-      });
+      const res = await authApi.signup(email.trim(), password, name);
+      persistSession(res.token, res.user as BackendUser);
+      set({ user: res.user as BackendUser, token: res.token, loading: false, error: null });
       return { error: null };
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Sign-up failed.";
+      const message =
+        err instanceof ApiError
+          ? friendlyAuthError(err.detail)
+          : err instanceof Error
+            ? err.message
+            : "Sign-up failed.";
       set({ loading: false, error: message });
       return { error: message };
     }
   },
 
   signOut: async () => {
-    const client = getSupabaseClient();
-    if (client) {
+    const token = readStoredToken();
+    clearStoredSession();
+    set({ user: null, token: null, loading: false, error: null });
+    if (token) {
       try {
-        await client.auth.signOut();
+        await authApi.logout(token);
       } catch {
-        // Non-fatal: still clear local auth state below.
+        // Non-fatal: local session is already cleared.
       }
     }
-    set({ user: null, session: null, loading: false, error: null });
+  },
+
+  init: async () => {
+    // Restore + validate any persisted session. If the token is expired or
+    // revoked the backend returns 401 and the session is dropped here.
+    const token = readStoredToken();
+    if (!token) {
+      set({ user: null, token: null, loading: false, initialized: true });
+      return () => undefined;
+    }
+    try {
+      const res = await authApi.me(token);
+      const user = (res.user ?? res) as BackendUser;
+      persistSession(token, user);
+      set({ user, token, loading: false, initialized: true });
+    } catch (err) {
+      if (isUnauthorized(err)) clearStoredSession();
+      set({ user: null, token: null, loading: false, initialized: true });
+    }
+    return () => undefined;
   },
 }));

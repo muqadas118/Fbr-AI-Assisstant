@@ -2,7 +2,7 @@
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import { setAuthTokenGetter, setUnauthorizedHandler } from "@/lib/api";
-import { getAccessToken } from "@/lib/supabase";
+import { getStoredAuthToken } from "@/state/auth";
 import { useAuth } from "@/state/auth";
 import "@/styles/tokens.css";
 import "@/styles/app.css";
@@ -13,10 +13,10 @@ import "@/styles/workspaces.css";
 import "@/styles/readiness.css";
 import "@/styles/gov-fbr.css";
 
-// Wire Supabase JWT -> API Bearer header once at startup.
-// getAccessToken() resolves to null when signed out / unconfigured,
-// so unauthenticated flows (and tests) keep working.
-setAuthTokenGetter(getAccessToken);
+// Wire the backend session token -> API Bearer header once at startup.
+// getStoredAuthToken() resolves to null when signed out, so
+// unauthenticated flows (and tests) keep working.
+setAuthTokenGetter(async () => getStoredAuthToken());
 setUnauthorizedHandler(() => {
   // Session rejected/expired (401 from API) → send user to login.
   // main.tsx lives outside <BrowserRouter>, so use a full navigation.
@@ -25,7 +25,7 @@ setUnauthorizedHandler(() => {
   }
 });
 
-// Restore session + subscribe to auth changes (supabase auto-persist).
+// Restore + validate the persisted session (drops it on 401).
 void useAuth.getState().init();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

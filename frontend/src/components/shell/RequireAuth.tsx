@@ -8,7 +8,7 @@ interface RequireAuthProps {
 }
 
 export function RequireAuth({ children }: RequireAuthProps) {
-  const session = useAuth((s) => s.session);
+  const token = useAuth((s) => s.token);
   const loading = useAuth((s) => s.loading);
   const initialized = useAuth((s) => s.initialized);
   const location = useLocation();
@@ -28,7 +28,7 @@ export function RequireAuth({ children }: RequireAuthProps) {
     );
   }
 
-  if (!session) {
+  if (!token) {
     return (
       <Navigate
         to="/login"

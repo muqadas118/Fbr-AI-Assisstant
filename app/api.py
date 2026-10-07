@@ -17,6 +17,7 @@ from app.calculations import get_tax_engine, TaxCalculationEngine
 from app.llm import LLMError
 from app.routers import (
     assistant_router,
+    auth_router,
     calendar_router,
     documents_router,
     invoices_router,
@@ -294,6 +295,7 @@ app = FastAPI(
 # invoice_intelligence, verification_center, fbr_monitor, multi_user)
 # as HTTP endpoints for the frontend.
 
+app.include_router(auth_router)
 app.include_router(calendar_router)
 app.include_router(tax_health_router)
 app.include_router(notices_router)

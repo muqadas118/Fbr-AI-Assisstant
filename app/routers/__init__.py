@@ -6,6 +6,7 @@ FastAPI routers that expose the hidden Python API modules as HTTP endpoints.
 """
 
 from app.routers.calendar import router as calendar_router
+from app.routers.auth import router as auth_router
 from app.routers.tax_health import router as tax_health_router
 from app.routers.notices import router as notices_router
 from app.routers.documents import router as documents_router
@@ -19,6 +20,7 @@ from app.routers.assistant import router as assistant_router
 from app.routers.vault import router as vault_router
 
 __all__ = [
+    "auth_router",
     "calendar_router",
     "tax_health_router",
     "notices_router",

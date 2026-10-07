@@ -3765,3 +3765,30 @@ Review failed extraction files and validate successful extracted outputs before 
 ### Next
 
 Review missing/invalid extraction outputs before document normalization.
+
+
+---
+
+## 2026-10-07 — Signup "Failed to fetch" fix: first-party backend auth end-to-end (append-only)
+
+### Root cause
+- Frontend Supabase wiring (4dde894) ke bawajood Supabase keys configured na theen — supabase-js `Failed to fetch` on signup. Fix: Supabase pe depend karna chhore kar existing first-party PBKDF2 multi-user auth ko primary auth banaya, aur uske aage /auth REST router + frontend wiring.
+
+### Backend
+- NEW `app/routers/auth.py`: POST /auth/signup (public, EmailStr + password>=6 + optional name/org, 409 on duplicate, 10/300s rate limit), POST /auth/login (public, 15/300s, returns {user, token, expires_at, token_type:"bearer"} — raw token `api.auth.list_sessions()[-1].token` se), POST /auth/logout, GET /auth/me, POST /auth/refresh (token rotate). Router app/api.py + app/routers/__init__.py mein mounted.
+- `app/supabase_auth.py`: `_user_from_session_token()` added; `get_current_user` ab dual-path hai — token without "." → backend session validate, else Supabase JWT. Dono paths chalte hain; supabase keys na hon to bhi frontend backend-se auth hota hai.
+- `requirements.txt`: email-validator==2.3.0 added (pydantic EmailStr). Installed in both interpreters.
+
+### Frontend
+- `frontend/src/state/auth.ts` — poora backend-auth Zustand store (same API shape): localStorage keys `fbr_auth_token` + `fbr_auth_user`, init() /auth/me se validate + 401 par clear, signIn/signUp(email,password,name?)/signOut. `getStoredAuthToken()` exported.
+- `frontend/src/lib/api.ts` — ApiClientConfig mein headers? merge + authApi.{signup,login,logout,me}.
+- SignupPage (Name field add), LoginPage, AuthCallbackPage (simple redirect — no Supabase), RequireAuth, LandingPage: `session` → `token`. main.tsx: setAuthTokenGetter(getStoredAuthToken).
+
+### Test/verify (2026-10-07)
+- Backend unittest: tests.test_multi_user 35 OK; tests.test_production_suite 25 PASS / 2 WARN / 0 FAIL (92.6%), Python310.
+- Backend curl: signup 200 (+ duplicate 409, bad login 401, /auth/me 200 with token). Backend launch (hermes venv): C:/Users/User/AppData/Local/hermes/hermes-agent/venv/Scripts/python.exe -m uvicorn app.api:app --host 127.0.0.1 --port 8000
+- Frontend: `npx tsc --noEmit` exit 0; `npm test` 8 files / 119 tests PASS.
+- Live browser E2E: signup (livetest@example.com) → 200 → /personal/overview; token localStorage persist; reload ke baad session qaim; Sign out → token cleared + /login; Sign in → dashboard. Network panel: preflight+POST /auth/signup 200, authed calendar/tax-health/verify calls 200 — user ka original "Failed to fetch" khatam.
+
+### Known constraint
+- `app/multi_user` in-memory singletons backend restart par reset hote hain (users re-signup karte hain) — dev-acceptable; production ke liye persistent store chahiye hoga.

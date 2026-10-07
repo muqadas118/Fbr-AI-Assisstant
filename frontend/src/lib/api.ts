@@ -601,6 +601,8 @@ function readEnvNumber(name: string, fallback: number): number {
 export interface ApiClientConfig {
   baseUrl: string;
   timeoutMs: number;
+  /** Optional explicit headers (merged over auth/defaults). Used by authApi. */
+  headers?: Record<string, string>;
 }
 
 export function getApiConfig(): ApiClientConfig {
@@ -661,6 +663,7 @@ async function request<T>(
         "Content-Type": "application/json",
         Accept: "application/json",
         ...auth,
+        ...config.headers,
       },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       signal: controller.signal,
@@ -705,6 +708,59 @@ async function request<T>(
 export function isUnauthorized(err: unknown): boolean {
   return err instanceof ApiError && err.status === 401;
 }
+
+// ---------------------------------------------------------------------------
+// First-party Auth (POST /auth/signup | /auth/login | /auth/logout | /auth/me)
+// Opaque bearer session tokens issued by the FastAPI backend itself.
+// ---------------------------------------------------------------------------
+
+export interface AuthUserPayload {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  organization?: string | null;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
+export interface AuthSessionResponse {
+  user: AuthUserPayload;
+  token: string;
+  expires_at?: string;
+  token_type?: string;
+}
+
+export interface AuthMeResponse {
+  user: AuthUserPayload;
+  source?: string;
+}
+
+export const authApi = {
+  signup(email: string, password: string, name?: string): Promise<AuthSessionResponse> {
+    return request("POST", "/auth/signup", {
+      body: { email, password, ...(name ? { name } : {}) },
+    });
+  },
+
+  login(email: string, password: string): Promise<AuthSessionResponse> {
+    return request("POST", "/auth/login", { body: { email, password } });
+  },
+
+  logout(token: string): Promise<{ success: boolean }> {
+    return request("POST", "/auth/logout", {}, {
+      ...getApiConfig(),
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  me(token: string): Promise<AuthMeResponse> {
+    return request("GET", "/auth/me", {}, {
+      ...getApiConfig(),
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+};
 
 // ============================================================================
 // File Upload (multipart) helper + types

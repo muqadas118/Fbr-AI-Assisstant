@@ -97,6 +97,32 @@ def _user_from_payload(payload: dict) -> dict:
     }
 
 
+def _user_from_session_token(token: str) -> dict:
+    """Resolve a first-party backend session token (POST /auth/login).
+
+    Returns the user dict the app uses, or raises HTTPException so the
+    caller can fall through to the Supabase path.
+    """
+    from app.multi_user import get_multi_user_api
+
+    api = get_multi_user_api()
+    session = api.auth.validate_token(token)
+    if session is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired session token")
+    user = api.users.get_user(session.user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="User account is disabled")
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.name,
+        "avatar_url": "",
+        "role": user.role.value,
+        "iss": "fbr-backend",
+        "exp": 0,
+    }
+
+
 # ─── FastAPI Dependencies ─────────────────────────────────────────────────────
 
 security = HTTPBearer(auto_error=False)
@@ -131,7 +157,15 @@ async def get_current_user(
             detail="Invalid Authorization header. Expected: Bearer <token>",
         )
 
-    return _user_from_payload(_jwt_claims(credentials.credentials))
+    token = credentials.credentials
+
+    # First-party backend session tokens (from POST /auth/login|signup) are
+    # opaque strings, not JWTs. Try them first, then fall back to Supabase
+    # JWT validation so both auth paths keep working.
+    if "." not in token:
+        return _user_from_session_token(token)
+
+    return _user_from_payload(_jwt_claims(token))
 
 
 async def get_optional_user(

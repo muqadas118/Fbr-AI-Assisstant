@@ -12,28 +12,29 @@ function isValidEmail(value: string): boolean {
 
 export function SignupPage() {
   const navigate = useNavigate();
-  const session = useAuth((s) => s.session);
+  const token = useAuth((s) => s.token);
   const signUp = useAuth((s) => s.signUp);
 
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
+    name?: string;
     email?: string;
     password?: string;
     confirm?: string;
   }>({});
 
-  if (session) {
+  if (token) {
     return <Navigate to="/personal/overview" replace />;
   }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const errs: { email?: string; password?: string; confirm?: string } = {};
+    const errs: { name?: string; email?: string; password?: string; confirm?: string } = {};
     if (!email.trim()) errs.email = "Email is required.";
     else if (!isValidEmail(email)) errs.email = "Enter a valid email address.";
     if (!password) errs.password = "Password is required.";
@@ -44,20 +45,14 @@ export function SignupPage() {
 
     setSubmitting(true);
     setError(null);
-    setNotice(null);
-    const { error: authError } = await signUp(email, password);
+    const { error: authError } = await signUp(email, password, name.trim() || undefined);
     setSubmitting(false);
     if (authError) {
       setError(authError);
       return;
     }
-    // Supabase may require email confirmation (no session yet) or auto-sign-in.
-    const currentSession = useAuth.getState().session;
-    if (currentSession) {
-      navigate("/personal/overview", { replace: true });
-    } else {
-      setNotice("Account created. Check your email to confirm, then sign in.");
-    }
+    // Backend signup returns a session token immediately — go straight in.
+    navigate("/personal/overview", { replace: true });
   };
 
   return (
@@ -71,12 +66,20 @@ export function SignupPage() {
       {error ? (
         <StatusBanner kind="err" title="Sign-up failed" description={error} testId="signup-error" />
       ) : null}
-      {notice ? (
-        <StatusBanner kind="ok" title="Check your email" description={notice} testId="signup-notice" />
-      ) : null}
 
       <Card title="New account" subtitle="Use a valid email address and a password of 6+ characters.">
         <form onSubmit={handleSubmit} noValidate data-testid="signup-form">
+          <Field label="Name" error={fieldErrors.name}>
+            <input
+              type="text"
+              className="field__input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your full name"
+              autoComplete="name"
+              data-testid="signup-name-input"
+            />
+          </Field>
           <Field label="Email *" error={fieldErrors.email}>
             <input
               type="email"

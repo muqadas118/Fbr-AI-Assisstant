@@ -80,7 +80,7 @@ const STEPS = [
 ];
 
 export function LandingPage() {
-  const session = useAuth((state) => state.session);
+  const session = useAuth((state) => state.token);
   return (
     <div className="landing" data-testid="landing-page">
       <nav className="landing-nav" aria-label="Main navigation">
