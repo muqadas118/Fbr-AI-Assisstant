@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import clsx from "clsx";
 import { api, ApiError, type CalendarDashboard, type UpcomingTask, type TaxHealthResponse, type VerificationResponse, type BusinessReportResponse } from "@/lib/api";
 import { renderRich } from "@/lib/richText";
@@ -108,9 +109,9 @@ function QuickActionCard({
         <p className="qaction__desc">{description}</p>
       </div>
       {href ? (
-        <a href={href} className="qaction__link btn btn--ghost btn--sm">
+        <Link to={href} className="qaction__link btn btn--ghost btn--sm">
           Open
-        </a>
+        </Link>
       ) : (
         <Button variant="ghost" size="sm" onClick={onClick}>
           Open
@@ -486,10 +487,10 @@ export function BusinessOverviewPage() {
         <section className="overview__actions" aria-label="Business report generation" data-testid="biz-report-section">
           <Card
             title="Report Generate"
-            subtitle="Dashboard data se structured compliance report (markdown) banayen."
+            subtitle="Build a structured compliance report from your live dashboard data — ready to download as Markdown."
             testId="biz-report-card"
           >
-            <div className="form__actions">
+            <div className="form__actions biz-report__actions">
               <Button
                 variant="primary"
                 loading={reportBusy}
@@ -510,6 +511,22 @@ export function BusinessOverviewPage() {
             ) : null}
             {report ? (
               <div className="biz-report" data-testid="biz-report-content">
+                <div className="biz-report__preview-actions">
+                  <Link
+                    to="/business/documents"
+                    className="btn btn--ghost btn--sm"
+                    data-testid="biz-report-back-documents"
+                  >
+                    ← Back to Documents
+                  </Link>
+                  <Link
+                    to="/business/assistant"
+                    className="btn btn--ghost btn--sm"
+                    data-testid="biz-report-new-query"
+                  >
+                    + New Query
+                  </Link>
+                </div>
                 <p className="muted">
                   Sections: {report.sections_available.join(", ") || "none"}
                   {report.sections_unavailable.length > 0
@@ -537,6 +554,7 @@ export function BusinessOverviewPage() {
                 }
                 title="Filing Calendar"
                 description="View company and sales tax deadlines, and track compliance events."
+                href="/business/calendar"
                 testId="biz-action-calendar"
               />
               <QuickActionCard
@@ -551,6 +569,7 @@ export function BusinessOverviewPage() {
                 }
                 title="Notices"
                 description="Analyze FBR notices, view action plans, and understand appeal options."
+                href="/business/notices"
                 testId="biz-action-notices"
               />
               <QuickActionCard
@@ -561,6 +580,7 @@ export function BusinessOverviewPage() {
                 }
                 title="Tax Health"
                 description="Deep-dive compliance signals, sales tax exposure, and risk analysis."
+                href="/business/health"
                 testId="biz-action-health"
               />
               <QuickActionCard
@@ -572,6 +592,7 @@ export function BusinessOverviewPage() {
                 }
                 title="Documents"
                 description="Upload and verify business tax documents, extract data, and parse forms."
+                href="/business/documents"
                 testId="biz-action-documents"
               />
             </div>

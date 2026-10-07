@@ -628,6 +628,31 @@
   flex-shrink: 0;
 }
 
+/* Narrow screens: stack the quick-action button under its text. */
+@media (max-width: 560px) {
+  .qaction {
+    flex-wrap: wrap;
+  }
+
+  .qaction__link {
+    margin-left: 0;
+  }
+}
+
+/* Report Generate: wrap action buttons + content-preview navigation bar. */
+.biz-report__actions {
+  flex-wrap: wrap;
+}
+
+.biz-report__preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px dashed var(--c-line);
+}
+
 .task-list {
   display: flex;
   flex-direction: column;

@@ -108,8 +108,12 @@
   z-index: 5;
   animation: app-header-in 480ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
-.app-header__title-block { animation: app-header-item-in 520ms cubic-bezier(0.22, 0.61, 0.36, 1) 60ms both; }
-.app-header__right { animation: app-header-item-in 520ms cubic-bezier(0.22, 0.61, 0.36, 1) 120ms both; }
+.app-header__title-block { min-width: 0; flex: 1 1 auto; animation: app-header-item-in 520ms cubic-bezier(0.22, 0.61, 0.36, 1) 60ms both; }
+.app-header__title,
+.app-header__subtitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-header__right { flex-shrink: 0; animation: app-header-item-in 520ms cubic-bezier(0.22, 0.61, 0.36, 1) 120ms both; }
+
+/* Responsive header: keep a single 58px row without horizontal overflow. */
 .app-header__menu, .app-header__right .btn { transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease; }
 .app-header__menu:hover, .app-header__right .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(8, 42, 33, 0.12); }
 @keyframes app-header-in {
@@ -179,6 +183,21 @@
 .app-header__right { display: flex; align-items: center; gap: var(--s-3); flex: 0 0 auto; }
 @media (max-width: 900px) {
   .app-header__subtitle { display: none; }
+}
+
+/* Responsive header: single 58px row, no horizontal overflow on phones. */
+@media (max-width: 700px) {
+  .app-header { gap: var(--s-3); padding: 0 var(--s-4); }
+  .app-header__workspace-pill { display: none; }
+  .app-header__right { gap: var(--s-2); }
+}
+
+@media (max-width: 600px) {
+  .app-header__btn-label { display: none; }
+  .app-header__notif { padding-inline: 8px; }
+  /* Keep the page title visible: give it a floor, let labels ellipsize. */
+  .app-header__title-block { flex: 1 1 60px; min-width: 60px; }
+  .app-header__right { flex-shrink: 1; min-width: 0; }
 }
 
 /* Sidebar — dense gov nav ----------------------------------------- */
@@ -1058,6 +1077,17 @@ table { border-collapse: collapse; }
 .ws-switch__lock { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.8; }
 .ws-switch__label { line-height: 1; }
 
+/* Phone: compact workspace switcher so the header keeps its title visible. */
+@media (max-width: 600px) {
+  .ws-switch__opt { padding: 4px 7px; gap: 4px; min-width: 0; }
+  .ws-switch__label {
+    max-width: 6ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 /* Calculator result ------------------------------------------------ */
 
 .calc-result { margin-top: var(--s-4); background: var(--c-surface); border: 1px solid var(--c-line); border-left: 3px solid var(--c-gold); border-radius: var(--r-2); padding: var(--s-4) var(--s-5); }
@@ -1235,7 +1265,7 @@ table { border-collapse: collapse; }
 
 /* Utility */
 
-.form__actions { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-4); padding-top: var(--s-3); border-top: 1px dashed var(--c-line); }
+.form__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-4); padding-top: var(--s-3); border-top: 1px dashed var(--c-line); }
 
 /* Gov FBR pro — page shell aliases (reuse tokens, no new palette) -------- */
 

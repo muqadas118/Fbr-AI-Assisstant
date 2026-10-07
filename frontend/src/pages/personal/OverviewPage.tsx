@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import clsx from "clsx";
 import { useProfile } from "@/state/profile";
 import { api, ApiError, type CalendarDashboard, type UpcomingTask, type TaxHealthResponse, type VerificationResponse } from "@/lib/api";
@@ -107,9 +108,9 @@ function QuickActionCard({
         <p className="qaction__desc">{description}</p>
       </div>
       {href ? (
-        <a href={href} className="qaction__link btn btn--ghost btn--sm">
+        <Link to={href} className="qaction__link btn btn--ghost btn--sm">
           Open
-        </a>
+        </Link>
       ) : (
         <Button variant="ghost" size="sm" onClick={onClick}>
           Open
@@ -455,6 +456,7 @@ export function OverviewPage() {
                 }
                 title="Calendar"
                 description="View upcoming deadlines, schedule reminders, and track compliance events."
+                href="/personal/calendar"
                 testId="overview-action-calendar"
               />
               <QuickActionCard
@@ -469,6 +471,7 @@ export function OverviewPage() {
                 }
                 title="Notices"
                 description="Analyze FBR notices, view action plans, and understand appeal options."
+                href="/personal/notices"
                 testId="overview-action-notices"
               />
               <QuickActionCard
@@ -479,6 +482,7 @@ export function OverviewPage() {
                 }
                 title="Tax Health"
                 description="Deep-dive compliance signals, penalties, and risk analysis."
+                href="/personal/health"
                 testId="overview-action-health"
               />
               <QuickActionCard
@@ -490,6 +494,7 @@ export function OverviewPage() {
                 }
                 title="Documents"
                 description="Upload and verify tax documents, extract data, and parse forms."
+                href="/personal/documents"
                 testId="overview-action-documents"
               />
             </div>
