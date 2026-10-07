@@ -83,6 +83,19 @@ def _jwt_claims(token: str) -> dict:
 
 def _user_from_payload(payload: dict) -> dict:
     """Map Supabase JWT claims onto the user dict the app uses."""
+    # Email confirmation gate: when Supabase confirmation is enabled the JWT
+    # carries no `email_confirmed_at` until the user clicks the link. Reject
+    # here so an unconfirmed account cannot authenticate. Opt out with
+    # SUPABASE_REQUIRE_EMAIL_CONFIRM=false for projects that disable email
+    # confirmation entirely.
+    require_confirm = os.environ.get("SUPABASE_REQUIRE_EMAIL_CONFIRM", "true").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+    if require_confirm and not payload.get("email_confirmed_at"):
+        raise HTTPException(
+            status_code=401,
+            detail="Email not confirmed. Please confirm your email before signing in.",
+        )
     # Supabase puts user metadata under "user_metadata"
     meta = payload.get("user_metadata") or {}
     return {
