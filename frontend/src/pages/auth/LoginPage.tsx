@@ -38,7 +38,7 @@ export function LoginPage() {
   const from =
     requestedFrom && requestedFrom.startsWith("/") && !requestedFrom.startsWith("//")
       ? requestedFrom
-      : "/personal/overview";
+      : null;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -57,7 +57,16 @@ export function LoginPage() {
       setError(authError);
       return;
     }
-    navigate(from, { replace: true });
+    // Allocated workspace pe bhejo; bina allocation ke onboarding par.
+    const preferred = useAuth.getState().user?.preferred_workspace;
+    const destination =
+      from ??
+      (preferred === "business"
+        ? "/business/overview"
+        : preferred === "personal"
+          ? "/personal/overview"
+          : "/onboarding");
+    navigate(destination, { replace: true });
   };
 
   return (

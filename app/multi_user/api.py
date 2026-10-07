@@ -30,6 +30,30 @@ class MultiUserAPI:
         self.auth = get_auth_manager()
         self.teams = get_team_manager()
 
+    # -------- Workspace Allocation --------
+
+    ALLOWED_WORKSPACES = ("personal", "business")
+
+    def set_preferred_workspace(self, user_id: str, preferred_workspace: str) -> User:
+        """Allocate the user's primary workspace (signup onboarding).
+
+        Raises ValueError for unknown user or unknown workspace id.
+        """
+        ws = (preferred_workspace or "").strip().lower()
+        if ws not in self.ALLOWED_WORKSPACES:
+            raise ValueError(
+                f"preferred_workspace must be one of: {', '.join(self.ALLOWED_WORKSPACES)}"
+            )
+        user = self.users.get_user(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+        updated = self.users.update_user(user_id, preferred_workspace=ws)
+        assert updated is not None  # user existence checked above
+        self.users._log_action(
+            user_id, "user.workspace_allocated", "user", user_id, {"workspace": ws}
+        )
+        return updated
+
     # -------- User Registration / Login --------
 
     def register_user(
@@ -240,6 +264,7 @@ class MultiUserAPI:
             "is_verified": user.is_verified,
             "ntn": user.ntn,
             "organization": user.organization,
+            "preferred_workspace": user.preferred_workspace,
             "created_at": user.created_at,
             "last_login_at": user.last_login_at,
         }

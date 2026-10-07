@@ -38,6 +38,16 @@ export function RequireAuth({ children }: RequireAuthProps) {
     );
   }
 
+  // Gating: allocated workspace ke ilawa doosri workspace "nazr na ayee" —
+  // direct URL access bhi apni primary workspace par redirect ho jata hai.
+  const preferred = useAuth((s) => s.user?.preferred_workspace);
+  if (preferred === "business" && location.pathname.startsWith("/personal")) {
+    return <Navigate to="/business/overview" replace />;
+  }
+  if (preferred === "personal" && location.pathname.startsWith("/business")) {
+    return <Navigate to="/personal/overview" replace />;
+  }
+
   if (children) return <>{children}</>;
   return <Outlet />;
 }

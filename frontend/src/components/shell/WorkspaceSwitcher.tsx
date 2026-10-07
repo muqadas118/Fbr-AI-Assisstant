@@ -5,6 +5,7 @@ import { WORKSPACES, useWorkspace, type WorkspaceId } from "@/state/workspace";
 
 export function WorkspaceSwitcher() {
   const active = useWorkspace((s) => s.active);
+  const allowed = useWorkspace((s) => s.allowed);
   const switchTo = useWorkspace((s) => s.switchTo);
   const notify = useNotification((s) => s.show);
   const navigate = useNavigate();
@@ -21,6 +22,14 @@ export function WorkspaceSwitcher() {
     navigate(`/${target}/overview`);
   };
 
+  // Gating: sirf allocated (ya sab, jab allocation na ho) workspace dikhe.
+  const visibleIds = (Object.keys(WORKSPACES) as WorkspaceId[]).filter(
+    (id) => allowed === null || allowed === id,
+  );
+  if (visibleIds.length === 0) {
+    return null;
+  }
+
   return (
     <div
       className="ws-switch"
@@ -28,7 +37,7 @@ export function WorkspaceSwitcher() {
       aria-label="Workspace selector"
       data-testid="workspace-switcher"
     >
-      {(Object.keys(WORKSPACES) as WorkspaceId[]).map((id) => {
+      {visibleIds.map((id) => {
         const ws = WORKSPACES[id];
         const isActive = id === active;
         return (
@@ -45,7 +54,6 @@ export function WorkspaceSwitcher() {
           >
             <span className="ws-switch__dot" />
             <span className="ws-switch__label">{ws.label}</span>
-            {!ws.available ? <span className="ws-switch__lock" aria-label="Locked">Locked</span> : null}
           </button>
         );
       })}

@@ -18,6 +18,7 @@ from app.llm import LLMError
 from app.routers import (
     assistant_router,
     auth_router,
+    business_reports_router,
     calendar_router,
     documents_router,
     invoices_router,
@@ -308,6 +309,7 @@ app.include_router(workspaces_router)
 app.include_router(uploads_router)
 app.include_router(assistant_router)
 app.include_router(vault_router)
+app.include_router(business_reports_router)
 
 # SECURITY NOTE - deferred auth hardening (owner decision):
 # The feature routers mounted above expose 51 endpoints with no Depends auth

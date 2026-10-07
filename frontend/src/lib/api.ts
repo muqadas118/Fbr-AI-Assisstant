@@ -3,6 +3,8 @@
 // One file, one fetch helper, one typed surface area.
 // ---------------------------------------------------------------------------
 
+import { getStoredAuthToken } from "@/state/auth";
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 // Full RAG pipeline (FAISS + embeddings + LLM) can take well over a minute:
 // cold-start model load plus one slow provider round-trip per routed domain.
@@ -583,6 +585,20 @@ export interface TeamDashboard {
 }
 
 // ============================================================================
+// Business Report Types
+// ============================================================================
+
+export interface BusinessReportResponse {
+  report_type: string;
+  format: string;
+  generated_at?: string | null;
+  content: string;
+  sections_available: string[];
+  sections_unavailable: string[];
+  errors: string[];
+}
+
+// ============================================================================
 // API Client Implementation
 // ============================================================================
 
@@ -758,6 +774,21 @@ export const authApi = {
     return request("GET", "/auth/me", {}, {
       ...getApiConfig(),
       headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  /** Persist the onboarding choice: the user's primary workspace. */
+  allocateWorkspace(
+    workspaceType: "personal" | "business",
+    token?: string,
+  ): Promise<{ user: AuthUserPayload; preferred_workspace: string }> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const explicit = token ?? getStoredAuthToken();
+    if (explicit) headers.Authorization = `Bearer ${explicit}`;
+    else return Promise.reject(new Error("Authentication required — please login."));
+    return request("POST", "/auth/workspace", { body: { workspace_type: workspaceType } }, {
+      ...getApiConfig(),
+      headers,
     });
   },
 };
@@ -1278,6 +1309,27 @@ export const api = {
 
     batch(requests: Array<{ type: string; value: string }>): Promise<VerificationResponse[]> {
       return request<VerificationResponse[]>("POST", "/verify/batch", { body: { requests } });
+    },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Business Reports (Report Generate — business workspace)
+  // ---------------------------------------------------------------------------
+  businessReports: {
+    getTypes(): Promise<{ report_types: string[]; default: string; formats: string[] }> {
+      return request("GET", "/business/reports/types");
+    },
+
+    generate(data: {
+      report_type?: string;
+      title: string;
+      taxpayer_type?: string;
+      ntn?: string;
+      tax_year?: number;
+      include_calendar?: boolean;
+      include_filer_status?: boolean;
+    }): Promise<BusinessReportResponse> {
+      return request<BusinessReportResponse>("POST", "/business/reports/generate", { body: data });
     },
   },
 

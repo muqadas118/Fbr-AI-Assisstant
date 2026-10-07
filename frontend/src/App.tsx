@@ -7,6 +7,7 @@ import { LandingPage } from "@/pages/LandingPage";
 import { LoginPage } from "@/pages/auth/LoginPage";
 import { SignupPage } from "@/pages/auth/SignupPage";
 import { AuthCallbackPage } from "@/pages/auth/AuthCallbackPage";
+import { OnboardingFlow } from "@/components/auth/OnboardingFlow";
 
 const OverviewPage = lazy(() => import("@/pages/personal/OverviewPage").then((m) => ({ default: m.OverviewPage })));
 const AssistantPage = lazy(() => import("@/pages/personal/AssistantPage").then((m) => ({ default: m.AssistantPage })));
@@ -55,6 +56,14 @@ export function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          <Route
+            path="/onboarding"
+            element={
+              <RequireAuth>
+                <OnboardingFlow />
+              </RequireAuth>
+            }
+          />
           <Route
             path="/personal"
             element={

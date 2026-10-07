@@ -1,6 +1,7 @@
 ﻿import { useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/state/auth";
+import { useOnboarding } from "@/state/onboarding";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -29,7 +30,7 @@ export function SignupPage() {
   }>({});
 
   if (token) {
-    return <Navigate to="/personal/overview" replace />;
+    return <Navigate to="/onboarding" replace />;
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -51,8 +52,9 @@ export function SignupPage() {
       setError(authError);
       return;
     }
-    // Backend signup returns a session token immediately — go straight in.
-    navigate("/personal/overview", { replace: true });
+    // Backend signup returns a session token immediately — start onboarding.
+    useOnboarding.getState().reset();
+    navigate("/onboarding", { replace: true });
   };
 
   return (

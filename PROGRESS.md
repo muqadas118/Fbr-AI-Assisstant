@@ -3792,3 +3792,47 @@ Review missing/invalid extraction outputs before document normalization.
 
 ### Known constraint
 - `app/multi_user` in-memory singletons backend restart par reset hote hain (users re-signup karte hain) — dev-acceptable; production ke liye persistent store chahiye hoga.
+
+
+---
+
+## 2026-10-07 — Onboarding questionnaire + workspace allocation + gating + Business Report Generate (append-only)
+
+### 1. Landing/login CTAs
+- LandingPage CTAs: "Login"/"Enter the assistant" -> /login; signup via /login "Create one" -> /signup (signup page se dono flows linked).
+
+### 2. Onboarding questionnaire (normal-websites jaisa)
+- NEW `frontend/src/state/onboarding.ts`: 3-sawal questionnaire store (persist `fbr-onboarding-v1`) — answers -> `recommendWorkspace()` -> `commitAllocation()` -> POST /auth/workspace + `chooseWorkspace()` (workspace store `setAllowed` + auth-store `updateUser` sync).
+- NEW `frontend/src/components/auth/OnboardingFlow.tsx`: pretty stepper (progress dots, radio cards, live "Recommended for you" preview, StatusBanner errors) — data-testids onboarding-*.
+- NEW route /onboarding (RequireAuth-wrapped) in App.tsx; SignupPage ab signup ke foran baad /onboarding par bhejta hai (reset() included).
+- `frontend/src/state/auth.ts`: BackendUser gains preferred_workspace; new updateUser(patch) merges state + localStorage mirror.
+- `frontend/src/main.tsx`: init() ke baad user.preferred_workspace se workspace gating restore.
+
+### 3. Workspace gating ("dusri workspace nazr na ayee")
+- `frontend/src/state/workspace.ts`: `allowed` state + `setAllowed()` + `isAllowed()`; switchTo gating enforce karta hai.
+- `frontend/src/components/shell/WorkspaceSwitcher.tsx`: sirf allowed (ya sab, pre-allocation) options render — doosri option hide.
+- `frontend/src/components/shell/RequireAuth.tsx`: cross-workspace direct URL access apni primary workspace par redirect (business-user /personal -> /business/overview aur vice versa).
+- LoginPage: allocation ke mutabiq redirect (personal/business/overview, warna /onboarding).
+
+### 4. Backend workspace allocation
+- `app/multi_user/models.py`: User.preferred_workspace field (nullable).
+- `app/multi_user/api.py`: `set_preferred_workspace()` + audit log + _user_to_dict me field.
+- `app/routers/auth.py`: SignupRequest gains profile_type|org_name (info-only); NEW POST /auth/workspace (authed, 422 on invalid workspace, supabase-only identity par 400).
+- `.env`: FBR_AUTH_REQUIRED=false -> **true** (auth ab enforce; /health "required" report karta hai).
+
+### 5. Business Report Generate (jaldi se report)
+- NEW `app/routers/business_reports.py`: GET /business/reports/types + POST /business/reports/generate (authed, 20/300s rate limit) — dashboard data (calendar dashboard summary + filer score) ko registered report_generator tool se markdown me render karta hai; sections best-effort (failures `sections_unavailable` me, report fail nahi hota).
+- `app/tools/output_tools.py`: REPORT_TYPES me "overview" added (generic key/value renderer).
+- Mounted in app/api.py + app/routers/__init__.py.
+- `frontend/src/lib/api.ts`: BusinessReportResponse + api.businessReports.{getTypes,generate}; authApi.allocateWorkspace.
+- `frontend/src/pages/business/BusinessOverviewPage.tsx`: "Report Generate" card — Generate Report button, sections line, renderRich markdown, Download .md.
+
+### 6. Verify (2026-10-07)
+- Backend: py_compile PASS; tests.test_multi_user 35 OK; curl — signup(profile_type) 200, /auth/workspace allocate 200 (invalid 422), unauth /business/reports/generate + /calendar 401, report generate 200 with sections (calendar+filer), RAG /answer income_tax domain grounded=True 5 sources (calculation domain fail is an LLM-key limitation, documented), /calculate (11 types listed; salary_tax/business_tax yearkless OK — TaxYear enum fixed years; 2025/2026 rejected), calendar/tax-health/verify/notices/invoices/documents/monitor/team/workspaces all 200 with sane data.
+- Frontend: tsc --noEmit exit 0; vitest 119/119 PASS (WorkspaceSwitcher aria-disabled assertion restore kiya gaya).
+- Browser E2E: personal signup -> onboarding 3 sawal -> allocate -> /personal/overview, switcher sirf [Personal], /business URL -> /personal redirect; business signup -> recommendation live "Business Workspace" -> /business/overview, switcher sirf [Business], Report Generate click -> 200 -> markdown rendered + Download button.
+
+### Known limitations
+- RAG "calculation" domain jab LLM keys kaam na karein refuse karta hai (income_tax/sales_tax domain grounded answers theek dete hain) — GROQ/OPENROUTER key par depend karta hai.
+- /calculate TaxYear enum fixed years accept karta hai (2026/2025 enum me nahi) — engine-supported years ke liye GET /calculate/types dekhen.
+- Onboarding answers frontend sirf recommend karte hain; backend sirf final workspace persist karta hai (answers persistence a possible future enhancement).

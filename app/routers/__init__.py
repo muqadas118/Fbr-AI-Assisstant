@@ -18,9 +18,11 @@ from app.routers.workspaces import router as workspaces_router
 from app.routers.uploads import router as uploads_router
 from app.routers.assistant import router as assistant_router
 from app.routers.vault import router as vault_router
+from app.routers.business_reports import router as business_reports_router
 
 __all__ = [
     "auth_router",
+    "business_reports_router",
     "calendar_router",
     "tax_health_router",
     "notices_router",

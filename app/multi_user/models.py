@@ -38,6 +38,11 @@ class User:
     cnic: Optional[str] = None
     organization: Optional[str] = None
     phone: Optional[str] = None
+    # Workspace allocated at signup onboarding ("personal" | "business").
+    # None until the questionnaire completes; get_effective_workspace falls
+    # back to "personal" so pre-onboarding rows need no data migration.
+    # Verify the onboarding contract in tests/test_workspace_allocation.py.
+    preferred_workspace: Optional[str] = None
     created_at: str = ""
     last_login_at: Optional[str] = None
 

@@ -42,6 +42,7 @@ REPORT_TYPES = (
     "notices",
     "research",
     "daily_update",
+    "overview",
 )
 
 _ALLOWED_EVENT_TYPES = (

@@ -7,11 +7,13 @@ backend's own identity system (PBKDF2 password hashing + opaque session
 tokens from app.multi_user). No external auth provider required.
 
 Endpoints (all public — the caller has no token yet, except /me):
-    POST /auth/signup   {email, password, name?}     -> user + session token
+    POST /auth/signup   {email, password, name?, profile_type?, org_name?}
+                                                     -> user + session token
     POST /auth/login    {email, password}            -> user + session token
     POST /auth/logout   (Bearer token)               -> invalidate session
     GET  /auth/me       (Bearer token)               -> current user
     POST /auth/refresh  (Bearer token)               -> new token, same user
+    POST /auth/workspace (Bearer token)              -> allocate primary workspace
 
 Tokens are opaque strings stored in the AuthManager's session registry.
 Clients send them as `Authorization: Bearer <token>`; require_user
@@ -53,6 +55,11 @@ class SignupRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=128)
     name: str = Field("", max_length=200)
     organization: Optional[str] = None
+    # Onboarding: personal | business — whom the account is for. Info-only at
+    # signup; the workspace itself is allocated after the questionnaire via
+    # POST /auth/workspace. Accepted values enforced in the endpoint.
+    profile_type: Optional[str] = None
+    org_name: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -72,6 +79,7 @@ def _user_brief(user) -> dict:
         "name": user.name,
         "role": user.role.value,
         "organization": user.organization,
+        "preferred_workspace": user.preferred_workspace,
         "created_at": user.created_at,
     }
 
@@ -103,6 +111,17 @@ async def signup(request: Request, payload: SignupRequest) -> dict:
     email = payload.email.strip().lower()
     name = payload.name.strip() or email.split("@", 1)[0]
 
+    profile_type = (payload.profile_type or "").strip().lower()
+    if profile_type and profile_type not in ("personal", "business"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="profile_type must be 'personal' or 'business'.",
+        )
+    if profile_type == "personal":
+        profile_type = None
+
+    organization = payload.organization or payload.org_name
+
     existing = api.users.get_user_by_email(email)
     if existing is not None:
         raise HTTPException(
@@ -115,7 +134,7 @@ async def signup(request: Request, payload: SignupRequest) -> dict:
             email=email,
             password=payload.password,
             name=name,
-            organization=payload.organization,
+            organization=organization,
         )
     except ValueError as exc:
         # UserManager raises ValueError("User with email ... already exists")
@@ -237,3 +256,54 @@ async def refresh_token(
             detail="Session expired or invalid. Please sign in again.",
         )
     return _auth_response(user, new_session)
+
+
+class WorkspaceAllocationRequest(BaseModel):
+    """Allocate the primary workspace after the signup questionnaire."""
+
+    workspace_type: str = Field(
+        "personal",
+        description="Which workspace becomes the user's primary: personal | business",
+    )
+
+
+@router.post("/workspace", dependencies=[Depends(require_user)])
+async def allocate_workspace(
+    request: Request,
+    payload: WorkspaceAllocationRequest,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Persist the signup questionnaire's workspace choice on the user row.
+
+    Called once by the frontend onboarding flow right after signup; safe to
+    call again (idempotent — the latest choice wins).
+    """
+    api = get_multi_user_api()
+
+    backend_user = None
+    if user.get("id"):
+        backend_user = api.users.get_user(user["id"])
+    if backend_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Workspace allocation requires a backend account "
+            "(supabase-only identities are not supported).",
+        )
+
+    try:
+        updated = api.set_preferred_workspace(
+            backend_user.id, payload.workspace_type
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    logger.info(
+        "Workspace allocated for %s: %s", backend_user.email, updated.preferred_workspace
+    )
+    return {
+        "user": _user_brief(updated),
+        "preferred_workspace": updated.preferred_workspace,
+    }

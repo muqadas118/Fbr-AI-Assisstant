@@ -13,6 +13,8 @@ export interface BackendUser {
   name: string;
   role: string;
   organization?: string | null;
+  /** Workspace allocated by the signup onboarding (POST /auth/workspace). */
+  preferred_workspace?: string | null;
   created_at?: string;
 }
 
@@ -30,6 +32,8 @@ interface AuthState {
   signUp: (email: string, password: string, name?: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
   init: () => Promise<() => void>;
+  /** Merge fields into the current user (and localStorage mirror). */
+  updateUser: (patch: Partial<BackendUser>) => void;
 }
 
 const TOKEN_KEY = "fbr_auth_token";
@@ -145,6 +149,19 @@ export const useAuth = create<AuthState>((set) => ({
         // Non-fatal: local session is already cleared.
       }
     }
+  },
+
+  updateUser: (patch) => {
+    set((s) => {
+      if (!s.user) return s;
+      const merged = { ...s.user, ...patch } as BackendUser;
+      try {
+        window.localStorage.setItem(USER_KEY, JSON.stringify(merged));
+      } catch {
+        // Non-fatal: state still updated for this session.
+      }
+      return { user: merged };
+    });
   },
 
   init: async () => {

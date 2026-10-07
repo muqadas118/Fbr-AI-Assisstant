@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import clsx from "clsx";
-import { api, ApiError, type CalendarDashboard, type UpcomingTask, type TaxHealthResponse, type VerificationResponse } from "@/lib/api";
+import { api, ApiError, type CalendarDashboard, type UpcomingTask, type TaxHealthResponse, type VerificationResponse, type BusinessReportResponse } from "@/lib/api";
+import { renderRich } from "@/lib/richText";
 import { Loading } from "@/components/shell/Loading";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
 import { Card } from "@/components/ui/Card";
@@ -176,6 +177,42 @@ export function BusinessOverviewPage() {
     noticeTypes: [],
   });
   const { show: notify } = useNotification();
+
+  // Report Generate (business workspace)
+  const [reportBusy, setReportBusy] = useState(false);
+  const [report, setReport] = useState<BusinessReportResponse | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  const handleGenerateReport = useCallback(async () => {
+    setReportBusy(true);
+    setReportError(null);
+    try {
+      const res = await api.businessReports.generate({
+        report_type: "overview",
+        title: `Business Compliance Report — TY ${new Date().getFullYear()}`,
+        taxpayer_type: "business",
+        ntn: (ntn || localStorage.getItem("fbr_ntn") || "").trim(),
+        tax_year: new Date().getFullYear(),
+      });
+      setReport(res);
+      notify("ok", "Report generated");
+    } catch (e) {
+      setReportError(e instanceof ApiError ? e.detail : "Network error — report could not be generated.");
+    } finally {
+      setReportBusy(false);
+    }
+  }, [ntn, notify]);
+
+  const handleDownloadReport = useCallback(() => {
+    if (!report) return;
+    const blob = new Blob([report.content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `business-report-${report.report_type}-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [report]);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -444,6 +481,46 @@ export function BusinessOverviewPage() {
             </Card>
           </section>
         ) : null}
+
+        {/* ── Report Generate ── */}
+        <section className="overview__actions" aria-label="Business report generation" data-testid="biz-report-section">
+          <Card
+            title="Report Generate"
+            subtitle="Dashboard data se structured compliance report (markdown) banayen."
+            testId="biz-report-card"
+          >
+            <div className="form__actions">
+              <Button
+                variant="primary"
+                loading={reportBusy}
+                disabled={reportBusy}
+                onClick={handleGenerateReport}
+                data-testid="biz-report-generate"
+              >
+                {reportBusy ? "Generating…" : "Generate Report"}
+              </Button>
+              {report ? (
+                <Button variant="ghost" size="sm" onClick={handleDownloadReport} data-testid="biz-report-download">
+                  Download .md
+                </Button>
+              ) : null}
+            </div>
+            {reportError ? (
+              <StatusBanner kind="err" title="Report failed" description={reportError} testId="biz-report-error" />
+            ) : null}
+            {report ? (
+              <div className="biz-report" data-testid="biz-report-content">
+                <p className="muted">
+                  Sections: {report.sections_available.join(", ") || "none"}
+                  {report.sections_unavailable.length > 0
+                    ? ` · unavailable: ${report.sections_unavailable.join(", ")}`
+                    : ""}
+                </p>
+                {renderRich(report.content)}
+              </div>
+            ) : null}
+          </Card>
+        </section>
 
         {/* ── Quick Actions ── */}
         <section className="overview__actions" aria-label="Business quick actions" data-testid="biz-actions">
