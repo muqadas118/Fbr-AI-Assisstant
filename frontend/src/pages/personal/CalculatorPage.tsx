@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { ApiError, NetworkError, api, type SourceItem, type VerificationResult } from "@/lib/api";
+import { deterministicVerification, parseEngineSummary, type EngineSummary } from "@/lib/calcSummary";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { SourceList } from "@/components/ui/SourceCitation";
@@ -24,71 +25,7 @@ interface CalculatorResult {
   grounded: boolean;
 }
 
-/** Verification payload shown while only the deterministic engine has run —
- * the deterministic path bypasses the RAG verification layer, so we present
- * an honest "deterministic engine" verification instead of a fake pass. */
-function deterministicVerification(): VerificationResult {
-  return {
-    passed: true,
-    checks: {
-      answer_size: { passed: true, reason: "deterministic engine" },
-      section_consistency: { passed: true, reason: "deterministic engine" },
-      grounding: { passed: true, reason: "deterministic engine" },
-      speculation: { passed: true, reason: "deterministic engine" },
-    },
-    failed_checks: [],
-    reason: "deterministic calculation engine",
-  };
-}
-
-interface EngineSummary {
-  title: string;
-  fields: { label: string; value: string; strong?: boolean }[];
-  slabs: { range: string; rate: string; taxable: string; tax: string }[];
-}
-
-/** Parse the deterministic engine's `=== Title ===` / `Key: Value` /
- * slab-list text into a structured card. Amounts may contain spaces
- * between PKR and digits (engine pads them: `PKR       0.00`).
- * Returns null when the text does not follow the expected shape. */
-function parseEngineSummary(text: string): EngineSummary | null {
-  const titleMatch = text.match(/===\s*(.+?)\s*===/);
-  if (!titleMatch) return null;
-  const body = text.slice(text.indexOf(titleMatch[0]) + titleMatch[0].length);
-  const fields: EngineSummary["fields"] = [];
-  const slabs: EngineSummary["slabs"] = [];
-
-  const amt = "PKR\\s*[\\d,]+(?:\\.\\d+)?";
-  const slabPattern =
-    /(\d+)\.\s*(PKR\s*[\d,]+(?:\.\d+)?)\s*-\s*(PKR\s*[\d,]+(?:\.\d+)?)\s*@\s*([\d.]+)%:\s*Taxable=(PKR\s*[\d,]+(?:\.\d+)?)\s*->\s*Tax=(PKR\s*[\d,]+(?:\.\d+)?)/g;
-  let m: RegExpExecArray | null;
-  const norm = (s: string) => s.replace(/\s+/g, " ").trim();
-  while ((m = slabPattern.exec(body)) !== null) {
-    slabs.push({
-      range: `${norm(m[2])} – ${norm(m[3])}`,
-      rate: `${m[4]}%`,
-      taxable: norm(m[5]),
-      tax: norm(m[6]),
-    });
-  }
-
-  const fieldText = body.replace(slabPattern, "");
-  const fieldPattern = new RegExp(
-    "([A-Z][A-Za-z \\-,()]+?):\\s*(" + amt + "|[\\d.]+%)",
-    "g",
-  );
-  while ((m = fieldPattern.exec(fieldText)) !== null) {
-    const label = m[1].trim();
-    const value = m[2].replace(/\s+/g, " ").trim();
-    fields.push({
-      label,
-      value,
-      strong: /Tax Payable|Taxable Income|Gross Income/i.test(label),
-    });
-  }
-  if (fields.length === 0 && slabs.length === 0) return null;
-  return { title: titleMatch[1], fields, slabs };
-}
+/** Verification payload is now shared: @/lib/calcSummary */
 
 /** Engine-side hard cap: IncomeTaxCalculator rejects gross income above
  * PKR 1 trillion. Kept in sync with app/calculations/income_tax.py. */

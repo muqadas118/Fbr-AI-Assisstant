@@ -8,9 +8,13 @@ interface RequireAuthProps {
 }
 
 export function RequireAuth({ children }: RequireAuthProps) {
+  // NOTE: every hook must run unconditionally BEFORE any early return —
+  // React crashes with "Rendered fewer hooks than expected" otherwise,
+  // which used to break the login flow mid-transition (token null -> set).
   const token = useAuth((s) => s.token);
   const loading = useAuth((s) => s.loading);
   const initialized = useAuth((s) => s.initialized);
+  const preferred = useAuth((s) => s.user?.preferred_workspace);
   const location = useLocation();
 
   if (!initialized || loading) {
@@ -40,7 +44,6 @@ export function RequireAuth({ children }: RequireAuthProps) {
 
   // Gating: allocated workspace ke ilawa doosri workspace "nazr na ayee" —
   // direct URL access bhi apni primary workspace par redirect ho jata hai.
-  const preferred = useAuth((s) => s.user?.preferred_workspace);
   if (preferred === "business" && location.pathname.startsWith("/personal")) {
     return <Navigate to="/business/overview" replace />;
   }

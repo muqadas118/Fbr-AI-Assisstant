@@ -1,4 +1,4 @@
-﻿import { useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/state/auth";
 import { useOnboarding } from "@/state/onboarding";
@@ -47,12 +47,15 @@ export function SignupPage() {
     setSubmitting(true);
     setError(null);
     const { error: authError } = await signUp(email, password, name.trim() || undefined);
-    setSubmitting(false);
     if (authError) {
+      setSubmitting(false);
       setError(authError);
       return;
     }
+
+    setSubmitting(false);
     // Backend signup returns a session token immediately — start onboarding.
+    // (Supabase confirmation-email flow intentionally disabled for now.)
     useOnboarding.getState().reset();
     navigate("/onboarding", { replace: true });
   };

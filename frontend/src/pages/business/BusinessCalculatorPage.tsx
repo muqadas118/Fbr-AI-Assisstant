@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { ApiError, NetworkError, api, type SourceItem, type VerificationResult } from "@/lib/api";
+import { deterministicVerification, parseEngineSummary, type EngineSummary } from "@/lib/calcSummary";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { SourceList } from "@/components/ui/SourceCitation";
@@ -12,6 +13,8 @@ import { VerificationPanel } from "@/components/ui/VerificationPanel";
 
 interface CalculatorResult {
   answer: string;
+  /** Structured engine summary when the deterministic output parses cleanly. */
+  summary: EngineSummary | null;
   /** True when the engine produced this result (not the RAG pipeline). */
   deterministic: boolean;
   sources: SourceItem[];
@@ -20,22 +23,6 @@ interface CalculatorResult {
   grounded: boolean;
 }
 
-/** Verification payload shown while only the deterministic engine has run —
- * the deterministic path bypasses the RAG verification layer, so we present
- * an honest "deterministic engine" verification instead of a fake pass. */
-function deterministicVerification(): VerificationResult {
-  return {
-    passed: true,
-    checks: {
-      answer_size: { passed: true, reason: "deterministic engine" },
-      section_consistency: { passed: true, reason: "deterministic engine" },
-      grounding: { passed: true, reason: "deterministic engine" },
-      speculation: { passed: true, reason: "deterministic engine" },
-    },
-    failed_checks: [],
-    reason: "deterministic calculation engine",
-  };
-}
 
 interface CalculatorFormValues {
   calculationType: string;
@@ -152,6 +139,7 @@ export function BusinessCalculatorPage() {
       // below is a bonus that streams in later when it is ready.
       setResult({
         answer: deterministic,
+        summary: parseEngineSummary(deterministic),
         deterministic: true,
         sources: [],
         verification: deterministicVerification(),
@@ -164,7 +152,7 @@ export function BusinessCalculatorPage() {
           prev
             ? {
                 ...prev,
-                answer: `${prev.answer}\n\n---\n\n${resp.answer}`,
+                answer: resp.answer,
                 deterministic: false,
                 sources: resp.sources,
                 verification: resp.verification,
@@ -401,9 +389,57 @@ export function BusinessCalculatorPage() {
             <div className="calculator-result">
               <div className="calc-result">
                 <h3 className="calc-result__label">Calculated Business Tax</h3>
-                <p className="calc-result__amount" data-testid="biz-result-amount">
-                  {result.answer}
-                </p>
+                {result.summary ? (
+                  <div className="calc-structured" data-testid="biz-calc-structured">
+                    <h4 className="calc-structured__title">{result.summary.title}</h4>
+                    <table className="rt__table calc-structured__table">
+                      <tbody>
+                        {result.summary.fields.map((f) => (
+                          <tr key={f.label} className={f.strong ? "calc-structured__strong" : undefined}>
+                            <th scope="row">{f.label}</th>
+                            <td>{f.value}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {result.summary.slabs.length > 0 ? (
+                      <>
+                        <h5 className="calc-structured__sub">Tax Slab Breakdown</h5>
+                        <div className="rt__table-wrap">
+                          <table className="rt__table" data-testid="biz-calc-slabs">
+                            <thead>
+                              <tr>
+                                <th>Slab</th>
+                                <th>Rate</th>
+                                <th>Taxable</th>
+                                <th>Tax</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {result.summary.slabs.map((s, i) => (
+                                <tr key={i}>
+                                  <td>{s.range}</td>
+                                  <td>{s.rate}</td>
+                                  <td>{s.taxable}</td>
+                                  <td>{s.tax}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="calc-result__amount" data-testid="biz-result-amount">
+                    {result.answer}
+                  </p>
+                )}
+                {!result.deterministic && result.answer ? (
+                  <div className="calc-result__explanation" data-testid="biz-calc-explanation">
+                    {result.answer}
+                  </div>
+                ) : null}
               </div>
 
               <VerificationPanel

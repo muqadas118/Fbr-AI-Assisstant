@@ -327,7 +327,7 @@ describe("TaxReducerPage — loading, errors, and legal safety", () => {
 
     const banner = await screen.findByTestId("tax-reducer-error");
     expect(banner).toHaveTextContent(
-      "Tax analysis is temporarily unavailable. Please try again.",
+      "Tax analysis is temporarily unavailable.",
     );
     expect(banner.textContent).not.toContain("network down");
   });

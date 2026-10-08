@@ -332,6 +332,8 @@ if not _origins:
     _origins = [
         "http://localhost:5173",  # Local dev
         "http://127.0.0.1:5173",  # Local dev (IPv4 loopback)
+        "http://localhost:5174",  # Local dev (fallback port when 5173 is taken)
+        "http://127.0.0.1:5174",  # Local dev (IPv4 loopback, fallback port)
         "http://localhost:3000",  # Alternative local dev
         "http://127.0.0.1:3000",  # Alternative local dev (IPv4 loopback)
         # Add your production frontend URL here

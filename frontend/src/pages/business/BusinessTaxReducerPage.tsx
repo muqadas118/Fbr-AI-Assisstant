@@ -581,7 +581,7 @@ export function BusinessTaxReducerPage() {
           {unavailable ? (
             <StatusBanner
               kind="err"
-              title="Business tax analysis is temporarily unavailable. Please try again."
+              title="Business tax analysis is temporarily unavailable."
               testId="biz-reducer-error"
             />
           ) : null}

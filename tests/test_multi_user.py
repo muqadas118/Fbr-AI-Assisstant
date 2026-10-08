@@ -4,6 +4,7 @@ Test Suite for Multi-User Foundation
 """
 
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -24,7 +25,12 @@ class TestUserModels(unittest.TestCase):
 
     def setUp(self):
         from app.multi_user.models import UserManager
-        self.um = UserManager()
+        # Isolated temp store — the default store now persists to disk
+        # (data/auth_users.json) and must not be touched by tests.
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.um = UserManager(store_path=Path(self._tmp.name) / "auth_users.json")
+        self.addCleanup(self.um.users.clear)
 
     def test_create_user(self):
         user = self.um.create_user(
@@ -257,8 +263,11 @@ class TestMultiUserAPI(unittest.TestCase):
         from app.multi_user.team import TeamManager
         from app.multi_user.api import MultiUserAPI
         self.api = MultiUserAPI()
-        # Reset singletons
-        self.api.users = UserManager()
+        # Reset singletons with isolated temp stores (JSON persistence must
+        # never hit the real data/auth_users.json from tests).
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.api.users = UserManager(store_path=Path(self._tmp.name) / "auth_users.json")
         self.api.auth = AuthManager()
         self.api.teams = TeamManager()
 

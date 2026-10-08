@@ -6,6 +6,7 @@
 
 import { create } from "zustand";
 import { ApiError, authApi, isUnauthorized } from "@/lib/api";
+import { useWorkspace, type WorkspaceId } from "@/state/workspace";
 
 export interface BackendUser {
   id: string;
@@ -93,6 +94,20 @@ function friendlyAuthError(message: string): string {
   return message;
 }
 
+/**
+ * Apply the account's allocated workspace to the shell gating right after a
+ * credential flow (login/signup). Without this the switcher showed BOTH
+ * workspaces after login — the allocation was only read at app boot or
+ * during onboarding. null resets gating for pre-onboarding accounts.
+ */
+function applyWorkspaceGate(preferred: string | null | undefined): void {
+  useWorkspace.getState().setAllowed(
+    preferred === "personal" || preferred === "business"
+      ? (preferred as WorkspaceId)
+      : null,
+  );
+}
+
 export const useAuth = create<AuthState>((set) => ({
   user: readStoredUser(),
   token: readStoredToken(),
@@ -106,6 +121,7 @@ export const useAuth = create<AuthState>((set) => ({
       const res = await authApi.login(email.trim(), password);
       persistSession(res.token, res.user as BackendUser);
       set({ user: res.user as BackendUser, token: res.token, loading: false, error: null });
+      applyWorkspaceGate((res.user as BackendUser).preferred_workspace);
       return { error: null };
     } catch (err) {
       const message =
@@ -142,6 +158,8 @@ export const useAuth = create<AuthState>((set) => ({
     const token = readStoredToken();
     clearStoredSession();
     set({ user: null, token: null, loading: false, error: null });
+    // Reset workspace gating so the next login starts clean.
+    applyWorkspaceGate(null);
     if (token) {
       try {
         await authApi.logout(token);

@@ -19,7 +19,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate("/login", { replace: true });
+    navigate("/", { replace: true });
   };
   const isBusiness = location.pathname.startsWith("/business");
   const current = isBusiness

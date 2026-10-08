@@ -34,6 +34,13 @@ from app.supabase_auth import require_user
 def _build_app() -> FastAPI:
     app = FastAPI()
     app.include_router(uploads_router)
+    # These tests exercise upload/extraction logic, not auth. The router now
+    # declares FULL-AUTH Depends(require_user); override it so the suite
+    # tests what it was written to test.
+    app.dependency_overrides[require_user] = lambda: {
+        "id": "test-user",
+        "email": "test@example.com",
+    }
     return app
 
 

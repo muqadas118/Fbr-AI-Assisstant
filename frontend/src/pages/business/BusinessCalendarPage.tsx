@@ -295,6 +295,7 @@ export function BusinessCalendarPage() {
   const priorities = ["critical", "high", "medium", "low"];
 
   const fetchDashboard = useCallback(async () => {
+    setLoadingDashboard(true);
     try {
       const data = await api.calendar.getDashboard(taxpayerType);
       setDashboard(data);
@@ -304,6 +305,8 @@ export function BusinessCalendarPage() {
       } else if (err instanceof ApiError) {
         notify("err", `Failed to load dashboard: ${err.detail}`);
       }
+    } finally {
+      setLoadingDashboard(false);
     }
   }, [taxpayerType, notify]);
 

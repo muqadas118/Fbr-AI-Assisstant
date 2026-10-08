@@ -1131,7 +1131,7 @@ table { border-collapse: collapse; }
 
 .taxreducer__intro-text { margin-bottom: var(--s-3); line-height: 1.65; }
 .taxreducer__estimate-note { font-size: 12px; color: var(--c-text-muted); margin-bottom: var(--s-4); }
-.taxreducer__analysis { white-space: pre-line; line-height: 1.7; font-size: 13.5px; }
+.taxreducer__analysis { white-space: pre-line; line-height: 1.7; font-size: 0.875rem; }
 .taxreducer-result { display: flex; flex-direction: column; gap: var(--s-4); }
 .taxreducer__scenarios { display: flex; flex-direction: column; gap: var(--s-4); }
 .taxreducer__scenario { border-left: 2px solid var(--c-line); padding-left: var(--s-4); }

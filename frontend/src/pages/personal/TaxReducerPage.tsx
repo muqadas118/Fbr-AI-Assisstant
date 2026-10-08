@@ -553,7 +553,7 @@ export function TaxReducerPage() {
           {unavailable ? (
             <StatusBanner
               kind="err"
-              title="Tax analysis is temporarily unavailable. Please try again."
+              title="Tax analysis is temporarily unavailable."
               testId="tax-reducer-error"
             />
           ) : null}
