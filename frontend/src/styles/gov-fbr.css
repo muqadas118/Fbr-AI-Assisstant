@@ -923,6 +923,33 @@
 
 .chat__verification {
   margin-top: var(--s-3);
+  /* Keep the data, drop the visual weight: quiet badge + flat rows. */
+  font-size: 11.5px;
+}
+.chat__verification .vbadge {
+  padding: 1px 8px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+.chat__verification .verification__reason {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--c-text-faint);
+}
+.chat__verification .verification__checks {
+  margin: 6px 0 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.chat__verification .verification__check-row {
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  font-size: 11.5px;
+}
+.chat__verification .verification__check-row + .verification__check-row {
+  border-top: 1px dashed var(--c-line);
 }
 
 /* ── Chat experience: typing caret, copy, source chips, entrance ────── */
@@ -2141,6 +2168,66 @@
   .page--assistant .chat {
     flex: 1 1 auto;
     height: auto;
-    min-height: 420px;
+    min-height: 0;
   }
 }
+
+/* ── No boxed layout: chat runs edge-to-edge like ChatGPT ────────────── */
+
+/* Remove the card frame at every width and let the chat use the full
+   viewport area; the message column and composer share one centred width. */
+.app-main:has(.page--assistant) { padding: 0; }
+.app-main:has(.page--assistant) .app-main__inner { max-width: none; }
+.page--assistant .chat {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.page--assistant .chat__messages {
+  padding: var(--s-5) var(--s-4) var(--s-6);
+  gap: var(--s-6);
+}
+.page--assistant .chat__messages > *,
+.page--assistant .chat__empty {
+  width: min(48rem, 100%);
+  margin-inline: auto;
+}
+.page--assistant .chat__composer-area {
+  width: min(48rem, 100%);
+  margin-inline: auto;
+  border-top: 0;
+  background: transparent;
+  padding: var(--s-3) var(--s-4) var(--s-4);
+}
+
+/* ── Markdown code blocks inside answers ─────────────────────────────── */
+
+.rt__code-block {
+  margin: 0 0 var(--s-3);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: var(--c-paper-2);
+  overflow: hidden;
+}
+.rt__code-lang {
+  padding: 5px 12px 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+.rt__pre {
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  overflow-x: auto;
+  white-space: pre;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--c-text);
+}
+.rt__pre-code { font-family: inherit; }
+/* Code stays LTR even inside an RTL (Urdu) answer. */
+.chat__bubble--rtl .rt__pre { direction: ltr; text-align: left; }

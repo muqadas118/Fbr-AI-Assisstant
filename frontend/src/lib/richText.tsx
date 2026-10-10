@@ -82,6 +82,10 @@ export function renderBlocks(text: string): ReactNode[] {
   let para: string[] = [];
   let bullets: { text: string; num: number | null }[] = [];
   let tableLines: string[] = [];
+  let inCode = false;
+  let fenceChar = "";
+  let codeLang = "";
+  let codeLines: string[] = [];
   let k = 0;
 
   const flushPara = () => {
@@ -146,12 +150,43 @@ export function renderBlocks(text: string): ReactNode[] {
       tableLines = [];
     }
   };
+  const flushCode = () => {
+    if (codeLines.length === 0) return;
+    out.push(
+      <div key={`cb-${k++}`} className="rt__code-block">
+        {codeLang ? <div className="rt__code-lang">{codeLang}</div> : null}
+        <pre className="rt__pre">
+          <code className="rt__pre-code">{codeLines.join("\n")}</code>
+        </pre>
+      </div>,
+    );
+    codeLines = [];
+    codeLang = "";
+  };
 
   for (const rawLine of lines) {
     const line = rawLine.trimEnd();
     const bullet = line.match(/^\s*[-•*]\s+(.*)$/);
     const numbered = line.match(/^\s*(\d{1,2})[.)]\s+(.*)$/);
-    if (/^\s*\|.*\|?\s*$/.test(line) && line.includes("|")) {
+    const fence = line.match(/^\s*(`{3,}|~{3,})\s*([A-Za-z0-9_+.-]*)\s*$/);
+    if (inCode) {
+      // Inside a fenced block: keep the raw line, end on a matching fence
+      // (same fence character) so mid-stream partial code still renders.
+      if (fence && fence[1][0] === fenceChar) {
+        flushCode();
+        inCode = false;
+        fenceChar = "";
+      } else {
+        codeLines.push(rawLine);
+      }
+    } else if (fence) {
+      flushPara();
+      flushBullets();
+      flushTable();
+      inCode = true;
+      fenceChar = fence[1][0];
+      codeLang = fence[2] ?? "";
+    } else if (/^\s*\|.*\|?\s*$/.test(line) && line.includes("|")) {
       flushPara();
       flushBullets();
       tableLines.push(line);
@@ -185,6 +220,7 @@ export function renderBlocks(text: string): ReactNode[] {
   flushPara();
   flushBullets();
   flushTable();
+  flushCode();
   return out;
 }
 
