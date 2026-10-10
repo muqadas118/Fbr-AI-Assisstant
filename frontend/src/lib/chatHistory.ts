@@ -56,6 +56,8 @@ export function loadChatHistory(variant: string): ChatMessage[] {
         role: mm.role,
         text: mm.text,
         payload: sanitizePayload(mm.payload),
+        // Kept so 👍/👎 feedback still targets the same answer after a reload.
+        messageId: typeof mm.messageId === "string" ? mm.messageId : undefined,
         kind: mm.kind === "greeting" || mm.kind === "hint" ? mm.kind : undefined,
         errorKind:
           mm.errorKind === "api" || mm.errorKind === "network" || mm.errorKind === "unexpected"
@@ -80,6 +82,7 @@ export function saveChatHistory(variant: string, messages: ChatMessage[]): void 
       role: m.role,
       text: m.text,
       payload: m.payload,
+      messageId: m.messageId,
       kind: m.kind,
       errorKind: m.errorKind,
       errorText: m.errorText,

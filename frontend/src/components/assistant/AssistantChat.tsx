@@ -3,8 +3,12 @@ import clsx from "clsx";
 import {
   ApiError,
   NetworkError,
+  api,
+  type AnswerLanguage,
   type AnswerResponse,
   type AssistantAskResponse,
+  type QuotaSnapshot,
+  type Recommendation,
   type SourceItem,
   type VerificationResult,
 } from "@/lib/api";
@@ -13,7 +17,8 @@ import { renderBlocks } from "@/lib/richText";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { VerificationPanel } from "@/components/ui/VerificationPanel";
 import { SourceList } from "@/components/ui/SourceCitation";
-import { Button } from "@/components/ui/Button";
+import { useChatActive } from "@/state/chatActive";
+import { useNotification } from "@/state/notifications";
 
 /**
  * Shared chat experience for the personal + business assistant pages.
@@ -47,6 +52,14 @@ export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   payload?: AnswerPayload;
+  /** Stable id sent with feedback so the backend can score this answer. */
+  messageId?: string;
+  /** Language the assistant wrote this answer in (drives direction + chip). */
+  answerLanguage?: AnswerLanguage;
+  /** Recommendations derived from this account's history (latest answer). */
+  recommendations?: Recommendation[];
+  /** Personalization is off — no strip, no feedback, just an honest note. */
+  personalizationOff?: boolean;
   /** Local replies (greetings, hints) — rendered without the error banner. */
   kind?: "greeting" | "hint";
   errorKind?: "api" | "network" | "unexpected";
@@ -67,6 +80,73 @@ const IDS: Record<
   business: { shell: "biz-assistant", bubble: "biz-chat", banner: "biz-message" },
 };
 
+/** Chat history mid-stream writes: at most one localStorage write per 500ms. */
+const SAVE_THROTTLE_MS = 500;
+
+/* ------------------------------------------------------------------ */
+/* Per-message answer language (drives RTL + chip on assistant bubbles) */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Per-message answer languages. chatHistory.ts only persists a whitelist of
+ * ChatMessage fields (and is outside this change's edit scope), so the
+ * messageId → language map is kept alongside it here so a reloaded
+ * conversation still renders RTL answers correctly.
+ */
+const ANSWER_LANGUAGE_PREFIX = "fbr.assistant.answer_language.";
+
+/** Only the three contract languages are honoured — anything else is dropped. */
+function normalizeAnswerLanguage(value: unknown): AnswerLanguage | undefined {
+  return value === "en" || value === "roman_ur" || value === "ur" ? value : undefined;
+}
+
+function loadAnswerLanguages(variant: string): Record<string, AnswerLanguage> {
+  try {
+    const raw = window.localStorage.getItem(`${ANSWER_LANGUAGE_PREFIX}${variant}`);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    const out: Record<string, AnswerLanguage> = {};
+    for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+      const lang = normalizeAnswerLanguage(value);
+      if (lang) out[id] = lang;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function saveAnswerLanguages(variant: string, messages: ChatMessage[]): void {
+  try {
+    const map: Record<string, AnswerLanguage> = {};
+    for (const m of messages) {
+      if (m.messageId && m.answerLanguage) map[m.messageId] = m.answerLanguage;
+    }
+    window.localStorage.setItem(`${ANSWER_LANGUAGE_PREFIX}${variant}`, JSON.stringify(map));
+  } catch {
+    /* best-effort persistence */
+  }
+}
+
+function clearAnswerLanguages(variant: string): void {
+  try {
+    window.localStorage.removeItem(`${ANSWER_LANGUAGE_PREFIX}${variant}`);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Highest numeric suffix across restored ids — keeps new ids collision-free. */
+function maxIdSuffix(messages: ChatMessage[]): number {
+  let max = 0;
+  for (const m of messages) {
+    const match = /-(\d+)$/.exec(m.id);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return max;
+}
+
 /* ------------------------------------------------------------------ */
 /* Small talk — answered locally, never sent to the RAG pipeline       */
 /* ------------------------------------------------------------------ */
@@ -84,7 +164,7 @@ const BYE_RE =
   /^(bye|goodbye|khuda hafiz|allah hafiz|see you|see ya|alvida)[\s!,.?]*$/i;
 
 /** Greeting-classified only when there is no real question attached. */
-export function classifySmallTalk(raw: string): "greeting" | "thanks" | "howareyou" | "bye" | null {
+function classifySmallTalk(raw: string): "greeting" | "thanks" | "howareyou" | "bye" | null {
   const text = raw.trim().replace(/\s+/g, " ");
   if (!text || text.includes("?")) return null;
   if (GREETING_RE.test(text)) return "greeting";
@@ -145,16 +225,17 @@ function useNoMotion(): boolean {
 /* ChatGPT-style thinking indicator (no box, bare dots)                */
 /* ------------------------------------------------------------------ */
 
+const THINKING_WORDS = ["Thinking", "Analysing", "Searching", "Reading", "Composing"];
+
 function ThinkingIndicator({ testId }: { testId: string }) {
-  const words = ["Thinking", "Analysing", "Searching", "Reading", "Composing"];
   const [idx, setIdx] = useState(0);
   useEffect(() => {
-    const id = window.setInterval(() => setIdx((v) => (v + 1) % words.length), 1600);
+    const id = window.setInterval(() => setIdx((v) => (v + 1) % THINKING_WORDS.length), 1600);
     return () => window.clearInterval(id);
   }, []);
   return (
     <div className="chat__thinking" role="status" aria-live="polite" data-testid={testId}>
-      <span className="chat__thinking-word">{words[idx]}…</span>
+      <span className="chat__thinking-word">{THINKING_WORDS[idx]}…</span>
       <span className="chat__thinking-dots" aria-hidden>
         <span className="chat__thinking-dot" />
         <span className="chat__thinking-dot" />
@@ -405,13 +486,23 @@ function MessageBubble({
   const sources = payload?.sources ?? [];
   const isLocal = message.kind === "greeting" || message.kind === "hint";
   const showPipeline = !isLocal && payload != null && "primary_domain" in payload;
+  // Urdu answers read right-to-left; anything missing/unknown stays LTR.
+  const answerLanguage = normalizeAnswerLanguage(message.answerLanguage);
+  const rtl = answerLanguage === "ur";
 
   return (
     <div
       className={clsx("chat__msg", "chat__msg--assistant", isLocal && "chat__msg--local")}
       data-testid={`${b}-assistant`}
     >
-      <div className="chat__bubble chat__bubble--assistant">
+      <div
+        className={clsx(
+          "chat__bubble",
+          "chat__bubble--assistant",
+          rtl && "chat__bubble--rtl",
+        )}
+        dir={rtl ? "rtl" : "ltr"}
+      >
         {message.text ? (
           <CopyButton text={message.text} testId={`${b}-copy`} />
         ) : null}
@@ -492,6 +583,17 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Human-readable local reset time for the quota tooltip/banner. */
+function formatResetAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  try {
+    return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return d.toLocaleString();
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Speech recognition (Web Speech API)                                 */
 /* ------------------------------------------------------------------ */
@@ -539,6 +641,7 @@ export interface AssistantChatProps {
    * Ask the backend. `file` carries PDFs / images / any non-text
    * attachment so the backend upload pipeline (text extraction + OCR)
    * can read it; text attachments are already inlined in `question`.
+   * Reply language is always auto-detected backend-side (no selector).
    */
   ask: (question: string, file?: File | null) => Promise<AssistantAskResponse | AnswerResponse>;
   /** Optional streaming transport (SSE) — enables live token-by-token answers. */
@@ -553,7 +656,6 @@ export interface AssistantChatProps {
   loggedIn?: boolean;
   inputLabel: string;
   inputPlaceholder: string;
-  emptyTitle: string;
   emptyDescription: string;
   suggestions?: string[];
 }
@@ -564,16 +666,28 @@ export function AssistantChat({
   askStream,
   inputLabel,
   inputPlaceholder,
-  emptyTitle,
   emptyDescription,
   suggestions,
 }: AssistantChatProps) {
   const ids = IDS[variant];
   const s = ids.shell;
   const reduced = useNoMotion();
+  const { show: notify } = useNotification();
 
   // Conversation persists across navigation and reloads (per workspace).
-  const [messages, setMessages] = useState<ChatMessage[]>(() => loadChatHistory(variant));
+  // Per-message answer languages are re-attached from their own map (see
+  // ANSWER_LANGUAGE_PREFIX) so restored answers keep the right direction.
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const restored = loadChatHistory(variant);
+    const langs = loadAnswerLanguages(variant);
+    return restored.map((m) =>
+      m.messageId && langs[m.messageId] ? { ...m, answerLanguage: langs[m.messageId] } : m,
+    );
+  });
+  // Reply language is detected backend-side from the query itself; the chat
+  // never pins an override. Hide the page header once a conversation starts,
+  // so the chat fills the viewport exactly like ChatGPT.
+  const setChatActive = useChatActive((st) => st.setActive);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [attached, setAttached] = useState<{ name: string; size: number; excerpt: string } | null>(
@@ -581,9 +695,13 @@ export function AssistantChat({
   );
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [listening, setListening] = useState(false);
+  // Today's daily quota (messages + uploads). null / enabled:false → no limits.
+  const [quota, setQuota] = useState<QuotaSnapshot | null>(null);
   const voiceBaseRef = useRef("");
   const [composerNotice, setComposerNotice] = useState<string | null>(null);
-  const idCounter = useRef(0);
+  // Start after any restored ids so new messages never reuse a messageId
+  // (feedback targets + answer-language mapping key off it).
+  const idCounter = useRef(maxIdSuffix(messages));
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -594,6 +712,14 @@ export function AssistantChat({
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, loading]);
+
+  // The surrounding page hides its big header while a conversation exists —
+  // the conversation restores from localStorage on mount, so the very first
+  // render already reflects the right mode (no header flash).
+  useEffect(() => {
+    setChatActive(messages.length > 0);
+    return () => setChatActive(false);
+  }, [messages.length, setChatActive]);
 
   useEffect(
     () => () => {
@@ -608,6 +734,34 @@ export function AssistantChat({
     if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
     noticeTimer.current = window.setTimeout(() => setComposerNotice(null), 5000);
   }, []);
+
+  /**
+   * Refresh the daily quota. Degrades silently: a failed read leaves the last
+   * known snapshot (or null) in place and never blocks the composer.
+   */
+  const refreshQuota = useCallback(async () => {
+    try {
+      setQuota(await api.quota.get());
+    } catch {
+      // Quota is an advisory metering feature — never break the chat over it.
+    }
+  }, []);
+
+  // Fetch once on mount; per-answer responses carry their own snapshot so no
+  // additional polling is needed while chatting.
+  useEffect(() => {
+    void refreshQuota();
+  }, [refreshQuota]);
+
+  /** Prefer the quota echoed by the answer; only re-read when it is absent. */
+  const applyQuota = useCallback(
+    (resp: AssistantAskResponse | AnswerResponse) => {
+      const snapshot = (resp as { quota?: QuotaSnapshot }).quota;
+      if (snapshot) setQuota(snapshot);
+      else void refreshQuota();
+    },
+    [refreshQuota],
+  );
 
   const autoGrow = useCallback(() => {
     const el = textareaRef.current;
@@ -674,7 +828,7 @@ export function AssistantChat({
           const streamId = `a-${idCounter.current}`;
           setMessages((m) => [
             ...m,
-            { id: streamId, role: "assistant", text: "", payload: undefined },
+            { id: streamId, messageId: streamId, role: "assistant", text: "", payload: undefined },
           ]);
           const updateStream = (patch: Partial<ChatMessage>) =>
             setMessages((m) =>
@@ -682,34 +836,56 @@ export function AssistantChat({
             );
           try {
             updateStream({ streaming: true });
-            resp = await askStream(fullQuery, {
-              onDelta: (chunk) =>
-                setMessages((m) =>
-                  m.map((msg) =>
-                    msg.id === streamId ? { ...msg, text: msg.text + chunk } : msg,
+            resp = await askStream(
+              fullQuery,
+              {
+                onDelta: (chunk) =>
+                  setMessages((m) =>
+                    m.map((msg) =>
+                      msg.id === streamId ? { ...msg, text: msg.text + chunk } : msg,
+                    ),
                   ),
-                ),
+            },
+            );
+            updateStream({
+              text: resp.answer,
+              payload: resp,
+              streaming: false,
+              answerLanguage: normalizeAnswerLanguage(
+                (resp as AssistantAskResponse).answer_language,
+              ),
             });
-            updateStream({ text: resp.answer, payload: resp, streaming: false });
           } catch (streamErr) {
-            // Stream died mid-flight — drop the empty placeholder and rethrow
-            // to the shared error handler (unless partial text already arrived).
-            setMessages((m) => m.filter((msg) => !(msg.id === streamId && !msg.text)));
+            // Stream died mid-flight — drop the empty placeholder, clear the
+            // streaming flag on any partial bubble (so the caret stops and
+            // the history can settle), then rethrow to the shared handler.
+            setMessages((m) =>
+              m
+                .filter((msg) => !(msg.id === streamId && !msg.text))
+                .map((msg) => (msg.id === streamId ? { ...msg, streaming: false } : msg)),
+            );
             throw streamErr;
           }
         } else {
           resp = await ask(fullQuery, fileForAsk);
           idCounter.current += 1;
+          const assistantId = `a-${idCounter.current}`;
           setMessages((m) => [
             ...m,
             {
-              id: `a-${idCounter.current}`,
+              id: assistantId,
+              messageId: assistantId,
               role: "assistant",
               text: resp.answer,
               payload: resp,
+              answerLanguage: normalizeAnswerLanguage(
+                (resp as AssistantAskResponse).answer_language,
+              ),
             },
           ]);
         }
+        // Apply the quota echoed with the answer (refresh only if absent).
+        applyQuota(resp);
       } catch (err) {
         const detail =
           err instanceof ApiError
@@ -717,6 +893,14 @@ export function AssistantChat({
             : err instanceof Error
               ? err.message
               : "";
+
+        // Daily limit hit — surface the server's localized message and re-read
+        // the quota so the composer/indicator reflect the exhausted budget.
+        if (err instanceof ApiError && err.status === 429) {
+          notify("warn", detail || "Daily limit reached.");
+          void refreshQuota();
+          return;
+        }
 
         // "Question is too short" from the API → friendly nudge, not an error.
         if (/too short/i.test(detail)) {
@@ -752,7 +936,18 @@ export function AssistantChat({
         setLoading(false);
       }
     },
-    [ask, askStream, attached, attachedFile, input, loading, pushLocal],
+    [
+      ask,
+      askStream,
+      attached,
+      attachedFile,
+      input,
+      loading,
+      pushLocal,
+      applyQuota,
+      notify,
+      refreshQuota,
+    ],
   );
 
   const clear = useCallback(() => {
@@ -761,13 +956,22 @@ export function AssistantChat({
     setAttached(null);
     setAttachedFile(null);
     clearChatHistory(variant);
+    clearAnswerLanguages(variant);
   }, [variant]);
 
-  // Persist on every settled change (mid-stream saves are wasteful but
-  // harmless; the final save after `streaming: false` is what matters).
+  // Persist on every settled change. Mid-stream saves are throttled to at
+  // most one write per 500ms (an SSE delta must not hammer localStorage);
+  // once nothing is streaming the save always runs, so completion is always
+  // written exactly once.
+  const lastSaveRef = useRef(0);
   useEffect(() => {
     if (messages.length === 0) return; // clear() already wiped storage
+    const streaming = messages.some((m) => m.streaming);
+    const now = Date.now();
+    if (streaming && now - lastSaveRef.current < SAVE_THROTTLE_MS) return;
+    lastSaveRef.current = now;
     saveChatHistory(variant, messages);
+    saveAnswerLanguages(variant, messages);
   }, [messages, variant]);
 
   const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -887,30 +1091,43 @@ export function AssistantChat({
     }
   }, [listening, input, showNotice, stopListening]);
 
-  const sendDisabled = loading || (!input.trim() && !attached && !attachedFile);
+  // Quota gates the composer only when the backend says quotas are enabled;
+  // a missing/failed snapshot leaves both controls usable.
+  const quotaEnabled = quota?.enabled === true;
+  const messagesExhausted = quotaEnabled && (quota?.messages.remaining ?? 0) <= 0;
+  const uploadsExhausted = quotaEnabled && (quota?.uploads.remaining ?? 0) <= 0;
+  const resetLabel = quota ? formatResetAt(quota.reset_at) : "";
+  const sendDisabled =
+    loading || messagesExhausted || (!input.trim() && !attached && !attachedFile);
+  const attachDisabled = loading || uploadsExhausted;
+  const attachTitle = uploadsExhausted
+    ? `You've used all your file uploads today — resets at ${resetLabel}`
+    : "Attach a file (text, PDF, or image) — the AI reads it for you";
+  const sendTitle = messagesExhausted
+    ? `You've used all your messages today — resets at ${resetLabel}`
+    : "Send message";
 
   return (
     <div className="chat" data-testid={`${s}-chat`}>
       {messages.length > 0 ? (
-        <div className="chat__head">
-          <span className="chat__head-label">
-            Conversation · {messages.length} {messages.length === 1 ? "message" : "messages"}
-          </span>
-          <Button variant="ghost" size="sm" onClick={clear} data-testid={`${s}-clear`}>
-            Clear conversation
-          </Button>
-        </div>
+        <button
+          type="button"
+          className="chat__clear-side"
+          onClick={clear}
+          title="Clear conversation"
+          aria-label="Clear conversation"
+          data-testid={`${s}-clear`}
+        >
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+          </svg>
+        </button>
       ) : null}
 
       <div className="chat__messages" data-testid={`${s}-messages`} ref={scrollRef}>
         {messages.length === 0 ? (
           <div className="chat__empty" data-testid={`${s}-empty`}>
-            <div className="chat__empty-icon" aria-hidden>
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden>
-                <path d="M12 2.6l2.6 6 6.5.5-4.9 4.2 1.5 6.3L12 16.2 6.3 19.6l1.5-6.3L2.9 9.1l6.5-.5 2.6-6z" />
-              </svg>
-            </div>
-            <h3 className="chat__empty-title">{emptyTitle}</h3>
+            <h1 className="chat__empty-title">FBR AI Assistant</h1>
             <p className="chat__empty-text">{emptyDescription}</p>
             {suggestions && suggestions.length > 0 ? (
               <div className="chat__suggestions" data-testid={`${s}-suggestions`}>
@@ -957,6 +1174,31 @@ export function AssistantChat({
             {composerNotice}
           </p>
         ) : null}
+        {messagesExhausted ? (
+          <p className="chat__quota-banner" role="status" data-testid={`${s}-quota-banner`}>
+            Daily message limit reached — resets at {resetLabel}.
+          </p>
+        ) : uploadsExhausted ? (
+          <p className="chat__quota-banner" role="status" data-testid={`${s}-quota-banner`}>
+            Daily file upload limit reached — resets at {resetLabel}.
+          </p>
+        ) : null}
+        {/* ChatGPT-style nudge: only appears when the daily budget is nearly
+            spent — no permanent counter sits in the header. */}
+        {quotaEnabled && !messagesExhausted && !uploadsExhausted && quota ? (
+          quota.messages.remaining <= 2 || quota.uploads.remaining <= 1 ? (
+            <p className="chat__quota-hint" data-testid={`${s}-quota-hint`}>
+              {quota.messages.remaining <= 2
+                ? `You have ${quota.messages.remaining} ${
+                    quota.messages.remaining === 1 ? "message" : "messages"
+                  } left today`
+                : `You have ${quota.uploads.remaining} ${
+                    quota.uploads.remaining === 1 ? "upload" : "uploads"
+                  } left today`}
+              <span className="chat__quota-hint-reset"> · resets at {resetLabel}</span>
+            </p>
+          ) : null
+        ) : null}
 
         <form
           className="chat__composer"
@@ -983,9 +1225,9 @@ export function AssistantChat({
             type="button"
             className="chat__composer-btn"
             onClick={() => fileInputRef.current?.click()}
-            title="Attach a file (text, PDF, or image) — the AI reads it for you"
+            title={attachTitle}
             aria-label="Attach a file"
-            disabled={loading}
+            disabled={attachDisabled}
             data-testid={`${s}-attach`}
           >
             <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1036,6 +1278,7 @@ export function AssistantChat({
             type="submit"
             className="chat__composer-send"
             disabled={sendDisabled}
+            title={sendTitle}
             aria-label="Send message"
             data-testid={`${s}-submit`}
           >

@@ -8,18 +8,22 @@ Combines classification, extraction, and parsing into one workflow.
 import logging
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
 from app.document_intelligence.classifier import (
-    DocumentClassifier, DocumentType, DocumentCategory, ClassificationResult,
+    DocumentClassifier, DocumentType, ClassificationResult,
 )
 from app.document_intelligence.extractor import DocumentExtractor, ExtractedDocument
-from app.document_intelligence.ocr import OCREngine, OCRResult
+from app.document_intelligence.ocr import OCREngine
 from app.document_intelligence.parser import FormParser, ParsedForm, FormType
 
 logger = logging.getLogger("document_intelligence")
+
+# Audit log is capped so the long-lived analyzer singleton cannot grow forever
+AUDIT_LOG_MAX_ENTRIES = 1000
 
 
 @dataclass
@@ -71,7 +75,7 @@ class DocumentAnalyzer:
         self.extractor = DocumentExtractor()
         self.ocr_engine = OCREngine()
         self.form_parser = FormParser()
-        self.audit_log: list[dict] = []
+        self.audit_log: deque[dict] = deque(maxlen=AUDIT_LOG_MAX_ENTRIES)
 
     def analyze(
         self,
@@ -100,7 +104,9 @@ class DocumentAnalyzer:
             form_type_map = {
                 DocumentType.FORM_16A: FormType.FORM_16A,
                 DocumentType.FORM_16B: FormType.FORM_16B,
-                DocumentType.SALARY_CERTIFICATE: FormType.FORM_16A,
+                # A salary certificate is not a Form 16A: parsing it as one
+                # invents 16A-only fields and inflates fields_extracted.
+                DocumentType.SALARY_CERTIFICATE: FormType.GENERIC,
             }
             parsed_form = self.form_parser.parse(
                 text,
@@ -154,17 +160,17 @@ class DocumentAnalyzer:
         )
 
     def analyze_from_pdf(self, pdf_data: bytes, filename: str = "document.pdf") -> DocumentAnalysis:
-        """Analyze PDF document."""
-        # In production: extract text from PDF first
-        # For now: simulated OCR (flags ocr_simulated downstream)
+        """Analyze PDF document (text layer, then OCR when an engine is installed)."""
         ocr_result = self.ocr_engine.extract_from_pdf(pdf_data)
         analysis = self.analyze(
             ocr_result.full_text,
             filename=filename,
             is_image=False,
         )
-        analysis.ocr_simulated = True
+        # Report the real OCR outcome, never an assumed one.
+        analysis.ocr_simulated = ocr_result.ocr_simulated
         analysis.ocr_warning = ocr_result.warning
+        analysis.needs_ocr = analysis.needs_ocr or not ocr_result.full_text.strip()
         return analysis
 
     def analyze_from_image(self, image_data: bytes, filename: str = "image.jpg") -> DocumentAnalysis:
@@ -175,8 +181,10 @@ class DocumentAnalyzer:
             filename=filename,
             is_image=True,
         )
-        analysis.ocr_simulated = True
+        # Report the real OCR outcome, never an assumed one.
+        analysis.ocr_simulated = ocr_result.ocr_simulated
         analysis.ocr_warning = ocr_result.warning
+        analysis.needs_ocr = analysis.needs_ocr or not ocr_result.full_text.strip()
         return analysis
 
     def _calculate_quality(

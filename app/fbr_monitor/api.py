@@ -1,22 +1,24 @@
 """
-FBR Monitor API - Production-Grade
-==================================
+FBR Monitor API
+===============
 
 High-level API for FBR monitoring operations.
+
+Backed by the in-memory monitor engine and webhook manager, so state does not
+survive a restart. Webhook delivery is real HTTP unless
+FBR_MONITOR_SIMULATE_DELIVERY=1 is set.
 """
 
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from typing import Optional
 
 from app.fbr_monitor.monitor_engine import (
-    FBRMonitor, FBRMonitorEvent, FBRMonitorConfig,
+    FBRMonitorConfig,
     EventType, EventSeverity, EventStatus,
     get_fbr_monitor,
 )
 from app.fbr_monitor.webhook import (
-    WebhookManager, WebhookEndpoint, WebhookEvent,
     get_webhook_manager,
 )
 
@@ -26,6 +28,7 @@ logger = logging.getLogger("fbr_monitor")
 @dataclass
 class MonitorSubscription:
     """Subscription info."""
+    sub_id: str
     user_id: str
     ntn: str
     is_active: bool
@@ -75,16 +78,32 @@ class FBRMonitorAPI:
             notification_email=notification_email,
             notification_webhook=notification_webhook,
         )
-        self.monitor.subscribe(config)
+        sub_id = self.monitor.subscribe(config)
 
         return MonitorSubscription(
+            sub_id=sub_id,
             user_id=user_id,
             ntn=ntn,
             is_active=True,
             event_types=[e.value for e in EventType],
             check_interval_minutes=check_interval_minutes,
-            subscribed_at=datetime.utcnow().isoformat(),
+            subscribed_at=config.subscribed_at,
         )
+
+    def get_subscriptions(self, user_id: str) -> list[MonitorSubscription]:
+        """List a user's subscriptions (a user can hold several)."""
+        return [
+            MonitorSubscription(
+                sub_id=config.sub_id,
+                user_id=config.user_id,
+                ntn=config.ntn,
+                is_active=True,
+                event_types=[e.value for e in EventType],
+                check_interval_minutes=config.check_interval_minutes,
+                subscribed_at=config.subscribed_at,
+            )
+            for config in self.monitor.get_subscriptions(user_id)
+        ]
 
     def unsubscribe_user(self, user_id: str) -> bool:
         """Unsubscribe user."""
@@ -93,7 +112,6 @@ class FBRMonitorAPI:
     def get_user_dashboard(self, user_id: str) -> dict:
         """Get user dashboard."""
         events = self.monitor.get_events(user_id=user_id, limit=100)
-        unread = self.monitor.get_unread(user_id)
         critical = self.monitor.get_critical(user_id)
         stats = self.monitor.get_statistics(user_id=user_id)
 
@@ -175,7 +193,11 @@ class FBRMonitorAPI:
         description: str,
         action_deadline: Optional[str] = None,
     ) -> Optional[dict]:
-        """Simulate a new FBR notice event (for testing)."""
+        """Simulate a new FBR notice event (for testing).
+
+        The event is tagged {'source': 'simulated'} so a test notice is never
+        mistaken for one the IRIS portal actually produced.
+        """
         event = self.monitor.detect_event(
             ntn=ntn,
             event_type=EventType.NEW_NOTICE,
@@ -185,7 +207,7 @@ class FBRMonitorAPI:
             reference_number=notice_number,
             requires_action=bool(action_deadline),
             action_deadline=action_deadline,
-            metadata={"source": "fbr_iris"},
+            metadata={"source": "simulated", "notice_number": notice_number},
         )
         if event:
             return self.get_event_details(event.id)
@@ -214,6 +236,28 @@ class FBRMonitorAPI:
             "is_active": endpoint.is_active,
             "event_types": endpoint.event_types,
         }
+
+    def list_webhooks(self, user_id: str) -> list[dict]:
+        """List the webhook endpoints a user owns (never their secrets)."""
+        return [
+            {
+                "id": endpoint.id,
+                "name": endpoint.name,
+                "url": endpoint.url,
+                "is_active": endpoint.is_active,
+                "event_types": endpoint.event_types,
+                "created_at": endpoint.created_at,
+                "has_secret": bool(endpoint.secret),
+            }
+            for endpoint in self.webhook_manager.list_endpoints(user_id)
+        ]
+
+    def unregister_webhook(self, endpoint_id: str, user_id: str) -> bool:
+        """Unregister a webhook endpoint, but only one the user owns."""
+        endpoint = self.webhook_manager.endpoints.get(endpoint_id)
+        if endpoint is None or endpoint.user_id != user_id:
+            return False
+        return self.webhook_manager.unregister(endpoint_id)
 
     def get_webhook_stats(self) -> dict:
         """Get webhook delivery statistics."""

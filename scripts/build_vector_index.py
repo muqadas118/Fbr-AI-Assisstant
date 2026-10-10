@@ -40,7 +40,7 @@ def main():
     print("=" * 60)
 
     if not CHUNKS_FILE.exists():
-        print(f"ERROR: Chunks file not found:")
+        print("ERROR: Chunks file not found:")
         print(CHUNKS_FILE)
         sys.exit(1)
 

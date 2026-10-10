@@ -29,7 +29,6 @@ from typing import Optional
 class ExtractedInfo:
     """All extracted notice information."""
     notice_id: Optional[str] = None
-    reference_number: Optional[str] = None
     issue_date: Optional[str] = None
     deadline: Optional[str] = None
     deadline_days: Optional[int] = None
@@ -38,17 +37,12 @@ class ExtractedInfo:
     taxpayer_ntn: Optional[str] = None
     taxpayer_cnic: Optional[str] = None
 
-    fbr_office: Optional[str] = None
-    commissioner_name: Optional[str] = None
-
     tax_years: list[str] = field(default_factory=list)
     sections_cited: list[str] = field(default_factory=list)
 
     tax_amount: Optional[float] = None
     penalty_amount: Optional[float] = None
     total_demanded: Optional[float] = None
-
-    bank_account: Optional[str] = None
 
     raw_text: str = ""
     extraction_quality: float = 0.0  # 0-1
@@ -73,14 +67,22 @@ class NoticeExtractor:
             r"(\d{5}-\d{7}-\d)",
         ],
         "notice_id": [
-            r"Notice No[.:]*\s*([A-Z0-9/-]+)",
-            r"Reference No[.:]*\s*([A-Z0-9/-]+)",
-            r"Letter No[.:]*\s*([A-Z0-9/-]+)",
+            # At least one digit is required: "Notice not served" must not
+            # yield a notice id of "t".
+            r"Notice No[.:]*\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)",
+            r"Reference No[.:]*\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)",
+            r"Letter No[.:]*\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)",
         ],
         "date": [
             r"(?:dated|dated:|date of issue)[:\s]*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})",
             r"(\d{1,2}[-/]\d{1,2}[-/]\d{4})",
             r"(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})",
+        ],
+        "taxpayer_name": [
+            r"Taxpayer\s+Name\s*[:\-]\s*([^\n]{2,80})",
+            r"Name\s+of\s+Taxpayer\s*[:\-]\s*([^\n]{2,80})",
+            r"(?:^|\n)\s*Name\s*[:\-]\s*([^\n]{2,80})",
+            r"M/s\.?\s+([^\n]{2,80})",
         ],
         "section": [
             r"Section\s+(\d+\w?(?:\(\d+\))?(?:\(\w+\))?)",
@@ -103,6 +105,23 @@ class NoticeExtractor:
         "may": 5, "june": 6, "july": 7, "august": 8,
         "september": 9, "october": 10, "november": 11, "december": 12,
     }
+
+    # A response deadline is only accepted when it is LABELED. A bare date
+    # elsewhere in the notice is the issue/tax-year/hearing date, not a
+    # deadline - treating it as one fabricates a deadline.
+    DEADLINE_DATE_PATTERNS = [
+        r"(?:respond|reply|submit|file|comply)\s+(?:by|before|on\s+or\s+before)\s*[:\-]?\s*"
+        r"(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})",
+        r"(?:respond|reply|submit|file|comply)\s+(?:by|before|on\s+or\s+before)\s*[:\-]?\s*"
+        r"(\d{1,2}\s+\w+\s+\d{4})",
+        r"(?:deadline|due\s+date|last\s+date|closing\s+date)\s*(?:is|:)\s*"
+        r"(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})",
+        r"\b(?:by|on\s+or\s+before)\s+(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})",
+    ]
+    DEADLINE_DAYS_PATTERNS = [
+        r"within\s+(\d{1,3})\s+days\s+(?:of|from|after)",
+        r"(?:within|no\s+later\s+than)\s+(\d{1,3})\s+days",
+    ]
 
     @staticmethod
     def _parse_date(date_str: str) -> Optional[datetime]:
@@ -141,6 +160,40 @@ class NoticeExtractor:
             return None
 
     @staticmethod
+    def _extract_deadline(
+        text: str, issue_date: Optional[datetime]
+    ) -> tuple[Optional[str], Optional[int]]:
+        """Extract the response deadline LABELED in the notice.
+
+        Returns (deadline_date, deadline_days). Both stay None when the
+        notice does not state a deadline - no response period is invented.
+        """
+        # Explicit labeled date
+        for pattern in NoticeExtractor.DEADLINE_DATE_PATTERNS:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                parsed = NoticeExtractor._parse_date(match.group(1))
+                if parsed:
+                    days = (
+                        (parsed.date() - issue_date.date()).days if issue_date else None
+                    )
+                    return parsed.strftime("%Y-%m-%d"), days
+
+        # Relative period stated in the notice ("within 14 days of ...")
+        for pattern in NoticeExtractor.DEADLINE_DAYS_PATTERNS:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                days = int(match.group(1))
+                if days <= 0:
+                    continue
+                if issue_date:
+                    deadline = issue_date + timedelta(days=days)
+                    return deadline.strftime("%Y-%m-%d"), days
+                return None, days
+
+        return None, None
+
+    @staticmethod
     def _extract_pattern(text: str, patterns: list[str]) -> Optional[str]:
         """Extract using multiple patterns."""
         for pattern in patterns:
@@ -168,7 +221,8 @@ class NoticeExtractor:
         info = ExtractedInfo(raw_text=text[:2000])  # Keep first 2000 chars
         notes = []
         fields_found = 0
-        total_fields = 10  # Track how many fields we found
+        total_fields = 9  # ntn, cnic, notice_id, issue date, deadline,
+                          # taxpayer name, tax years, sections, amounts
 
         # NTN
         ntn = NoticeExtractor._extract_pattern(text, NoticeExtractor.PATTERNS["ntn"])
@@ -186,22 +240,45 @@ class NoticeExtractor:
         notice_id = NoticeExtractor._extract_pattern(text, NoticeExtractor.PATTERNS["notice_id"])
         if notice_id:
             info.notice_id = notice_id
-            info.reference_number = notice_id
             fields_found += 1
 
         # Issue date
         date_str = NoticeExtractor._extract_pattern(text, NoticeExtractor.PATTERNS["date"])
-        if date_str:
-            parsed = NoticeExtractor._parse_date(date_str)
-            if parsed:
-                info.issue_date = parsed.strftime("%Y-%m-%d")
+        parsed_date = NoticeExtractor._parse_date(date_str) if date_str else None
+        if parsed_date:
+            info.issue_date = parsed_date.strftime("%Y-%m-%d")
+            fields_found += 1
+        elif date_str:
+            # A date was found but could not be parsed - still record it
+            info.issue_date = date_str
+            fields_found += 1
+            notes.append(f"Date found but unparseable: {date_str}")
+
+        # Taxpayer name (labeled cues only - never guessed)
+        name = NoticeExtractor._extract_pattern(text, NoticeExtractor.PATTERNS["taxpayer_name"])
+        if name:
+            name = name.strip().rstrip(".,;:-").strip()
+            if name and re.search(r"[A-Za-z]", name):
+                info.taxpayer_name = name
                 fields_found += 1
-                # Calculate default deadline (30 days from issue)
-                deadline = parsed + timedelta(days=30)
-                info.deadline = deadline.strftime("%Y-%m-%d")
-                info.deadline_days = 30
+
+        # Response deadline - only from a labeled date/period in the notice
+        deadline_date, deadline_days = NoticeExtractor._extract_deadline(text, parsed_date)
+        if deadline_date or deadline_days is not None:
+            info.deadline = deadline_date
+            info.deadline_days = deadline_days
+            fields_found += 1
+            if deadline_date:
+                notes.append(f"Response deadline stated in notice: {deadline_date}")
             else:
-                info.issue_date = date_str
+                notes.append(
+                    f"Response period stated in notice: {deadline_days} days "
+                    "(no issue date to anchor it)"
+                )
+        else:
+            notes.append(
+                "No response deadline stated in notice - deadline could not be determined"
+            )
 
         # Tax years
         tax_years = NoticeExtractor._extract_all_patterns(text, NoticeExtractor.PATTERNS["tax_year"])

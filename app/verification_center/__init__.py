@@ -2,18 +2,24 @@
 Verification Center - Production-Grade
 ======================================
 
-Verify all things FBR-related:
-- NTN verification (check if NTN is valid/active)
-- CNIC verification
-- STRN (Sales Tax Registration Number) verification
-- Filer status verification (filer vs non-filer)
-- Taxpayer status (active, blocked, suspended)
-- Business registration verification
-- Property verification
-- Vehicle verification
-- Vendor verification
-- Blacklist checks
-- Active taxpayers list (ATL) check
+Honest FBR verification surface. The public entry point is VerificationAPI
+(app/verification_center/api.py): every verify_* call returns either a
+format-level assessment or an explicit "unavailable" result, never a
+generated taxpayer name, filing history, or filer status.
+
+What actually exists here:
+- ntn_verifier: NTN format validation (7 or 9 digits) plus a simulated
+  lookup used only for local development (never wired into the API).
+- filer_status: simulated filer-status rules (last-digit deterministic),
+  also never wired into the API.
+- business_verifier: simulated SECP/NTN/PRA and vendor checks, likewise
+  never wired into the API.
+- api: VerificationAPI — the only component the routers use.
+
+NOT implemented: STRN, property, vehicle, blacklist/ATL lookups, and any
+real IRIS/PRAL integration. Those need an official source configured via
+FBR_VERIFICATION_MODE (see app/common/unavailable.py); until then the API
+reports "unavailable" instead of inventing data.
 """
 
 from app.verification_center.ntn_verifier import (

@@ -5,7 +5,7 @@ Risk Analyzer - Production-Grade
 Analyzes tax-related risk factors.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
@@ -40,7 +40,11 @@ class RiskAnalyzer:
         st_shortfall: float = 0.0,
         estimated_income: float = 0.0,
         declared_income: float = 0.0,
-        business_age_years: int = 5,
+        # Years the business has been operating. None (the default) means
+        # "unknown": RISK008 is only evaluated when an age is actually
+        # supplied. The previous default of 5 silently disabled the
+        # new-business risk, because no caller ever passed a real age.
+        business_age_years: Optional[int] = None,
     ) -> list[RiskFactor]:
         """Identify risk factors."""
         factors = []
@@ -116,8 +120,8 @@ class RiskAnalyzer:
                     mitigation="Reconcile income sources - may trigger FBR scrutiny",
                 ))
 
-        # New business risk (less history)
-        if business_age_years < 2:
+        # New business risk (less history) - only when an age was provided
+        if business_age_years is not None and business_age_years < 2:
             factors.append(RiskFactor(
                 code="RISK008",
                 description="New business - higher scrutiny from FBR",

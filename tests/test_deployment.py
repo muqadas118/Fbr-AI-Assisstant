@@ -15,7 +15,7 @@ class TestConfig(unittest.TestCase):
     """Test configuration management."""
 
     def setUp(self):
-        from app.deployment.config import Settings, Environment, LogLevel
+        from app.deployment.config import Settings, Environment
         self.Settings = Settings
         self.Environment = Environment
 

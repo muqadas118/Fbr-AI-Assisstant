@@ -15,8 +15,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-from app.document_intelligence.classifier import DocumentType
-
 
 class FormType(str, Enum):
     """Types of FBR forms."""

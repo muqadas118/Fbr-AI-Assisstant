@@ -67,13 +67,14 @@ class NTNVerifier:
         """
         ntn_clean = ntn.replace("-", "").strip()
 
-        # Validate format
-        if not ntn_clean.isdigit() or len(ntn_clean) not in (7, 8):
+        # Validate format — the documented contract (app/common/unavailable.py)
+        # is 7 or 9 digits; 8-digit NTNs are not valid.
+        if not ntn_clean.isdigit() or len(ntn_clean) not in (7, 9):
             return NTNVerificationResult(
                 ntn=ntn,
                 status=NTNStatus.INVALID_FORMAT,
                 is_valid=False,
-                error="NTN must be 7-8 digits",
+                error="NTN must be 7 or 9 digits",
             )
 
         # Check cache

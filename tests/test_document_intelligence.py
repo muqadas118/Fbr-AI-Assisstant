@@ -11,12 +11,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import unittest
 
 from app.document_intelligence import (
-    DocumentClassifier, DocumentType, DocumentCategory, ClassificationResult,
-    DocumentExtractor, ExtractedDocument,
-    OCREngine, OCREngineType, OCRResult, TextBlock,
-    FormParser, ParsedForm, FormType,
-    DocumentAnalyzer, get_document_analyzer,
-    DocumentStore, StoredDocument, get_document_store,
+    DocumentClassifier, DocumentType, DocumentExtractor, OCREngine, OCREngineType, OCRResult, FormParser, FormType,
+    get_document_analyzer,
 )
 
 

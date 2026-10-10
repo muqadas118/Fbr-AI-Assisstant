@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional, Any
 
-from app.document_intelligence.classifier import DocumentType, DocumentCategory
+from app.document_intelligence.classifier import DocumentType
 
 
 @dataclass
@@ -179,10 +179,19 @@ class DocumentExtractor:
     @staticmethod
     def _extract_invoice_fields(text: str, doc: ExtractedDocument, notes: list):
         """Extract invoice-specific fields."""
-        # GST rate - search for percentage near GST/sales tax keywords
-        gst_match = re.search(r"(?:GST|sales\s*tax)[^\d]{0,20}(\d+)\s*%", text, re.IGNORECASE)
+        # GST rate - search for percentage near GST/sales tax keywords.
+        # Tax context is required: a bare "10%" (e.g. a discount) is not a tax rate.
+        gst_match = re.search(
+            r"(?:GST|sales\s*tax)[^\d]{0,20}(\d+(?:\.\d+)?)\s*%",
+            text,
+            re.IGNORECASE,
+        )
         if not gst_match:
-            gst_match = re.search(r"(\d+)\s*%", text, re.IGNORECASE)
+            gst_match = re.search(
+                r"\b(?:tax|vat)\b[^\d]{0,20}(\d+(?:\.\d+)?)\s*%",
+                text,
+                re.IGNORECASE,
+            )
         if gst_match:
             doc.tax_rate = float(gst_match.group(1))
             notes.append(f"Tax rate: {doc.tax_rate}%")

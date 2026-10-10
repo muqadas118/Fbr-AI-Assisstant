@@ -103,6 +103,27 @@ class FBRRerankRetriever:
             return []
 
         # --------------------------------------------------
+        # STEP 1b: HYDRATION
+        # --------------------------------------------------
+
+        # FBRHybridRetriever.search() returns index/score records
+        # only (no text, no source). The cross-encoder and the
+        # section/legal-source heuristics below are text-driven, so
+        # hydrate every candidate through the canonical accessors
+        # first. Without this, term_coverage, section_match and the
+        # cross-encoder scores are computed over empty strings.
+        for result in candidates:
+
+            if not isinstance(result, dict):
+                continue
+
+            if not result.get("text"):
+                result["text"] = self.hybrid.get_result_text(result)
+
+            if not result.get("source"):
+                result["source"] = self.hybrid.get_result_source(result)
+
+        # --------------------------------------------------
         # STEP 2: SECTION-AWARE PRIORITIZATION
         # --------------------------------------------------
 

@@ -15,8 +15,6 @@ Tests:
 from __future__ import annotations
 
 import json
-import os
-import re
 import sys
 import traceback
 from pathlib import Path
@@ -164,7 +162,6 @@ def test_retrieval_quality() -> None:
                 )
 
         # Check provenance mapping (retriever returns index; chunk_id is in provenance)
-        from app.rag_engine import _map_to_provenance
         provenance_items = _map_to_provenance(engine.retriever, results)
         for j, p in enumerate(provenance_items[:3]):
             chunk_id = p.get("chunk_id", "")
@@ -318,7 +315,7 @@ def test_source_coverage() -> None:
     # Check that top sources have reasonable vector counts
     top_sources = sorted(source_vectors.items(), key=lambda x: -x[1])[:5]
     for source, count in top_sources:
-        _pass(f"coverage_top_source", f"{source[:50]}: {count} vectors")
+        _pass("coverage_top_source", f"{source[:50]}: {count} vectors")
 
 
 # ============================================================

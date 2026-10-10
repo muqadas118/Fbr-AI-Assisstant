@@ -11,18 +11,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
-from datetime import date, datetime, timedelta
+from unittest import mock
+from datetime import date
 
 from app.compliance_calendar import (
-    ComplianceEvent, EventType, EventCategory, EventPriority,
+    EventType, EventPriority,
     get_all_events, get_events_by_year, get_events_by_type,
-    CalendarEngine, CalendarConfig, calculate_compliance_score,
-    generate_calendar_year,
-    RecurrenceRule, RecurrenceType, expand_recurring_events,
+    CalendarEngine, CalendarConfig, RecurrenceRule, RecurrenceType, expand_recurring_events,
     NotificationManager, NotificationChannel, NotificationStatus,
-    NotificationRecord, get_notification_manager,
-    ComplianceCalendarAPI, get_compliance_calendar,
-    CalendarQuery, CalendarResponse, UpcomingTask,
+    get_compliance_calendar,
+    CalendarQuery, CalendarResponse,
 )
 
 
@@ -101,13 +99,52 @@ class TestCalendarEngine(unittest.TestCase):
         self.assertGreater(len(calendar), 0)
 
     def test_compliance_score(self):
+        # No completion data supplied: nothing can be claimed, so the score
+        # is None ("insufficient data") instead of a fabricated 0 or 100.
         score = self.engine.calculate_compliance_score()
-        self.assertGreaterEqual(score, 0)
-        self.assertLessEqual(score, 100)
+        self.assertIsNone(score)
+
+    def test_compliance_score_with_completion_data(self):
+        events = self.engine.get_personalized_events()
+        past_due = [e for e in events if e.due_date < date.today()]
+        self.assertGreater(
+            len(past_due), 0,
+            "test data must contain past-due events to score",
+        )
+        # Everything filed -> 100, nothing filed -> 0, part filed -> partial.
+        all_filed = self.engine.calculate_compliance_score(
+            completed_event_ids=[e.id for e in past_due],
+        )
+        self.assertEqual(all_filed, 100.0)
+        none_filed = self.engine.calculate_compliance_score(completed_event_ids=[])
+        self.assertEqual(none_filed, 0)
+        partial = self.engine.calculate_compliance_score(
+            completed_event_ids=[past_due[0].id],
+        )
+        self.assertEqual(partial, round(100 / len(past_due), 2))
 
     def test_compliance_grade(self):
+        # Without completion data there is no score, so the grade is
+        # "insufficient_data" (never the worst possible grade "F").
         grade = self.engine.get_compliance_grade()
-        self.assertIn(grade, ["A+", "A", "B", "C", "D", "F"])
+        self.assertEqual(grade, "insufficient_data")
+
+    def test_compliance_grade_with_completion_data(self):
+        past_due = [
+            e for e in self.engine.get_personalized_events()
+            if e.due_date < date.today()
+        ]
+        self.assertGreater(len(past_due), 0)
+        self.assertEqual(
+            self.engine.get_compliance_grade(
+                completed_event_ids=[e.id for e in past_due],
+            ),
+            "A+",
+        )
+        self.assertEqual(
+            self.engine.get_compliance_grade(completed_event_ids=[]),
+            "F",
+        )
 
     def test_get_upcoming(self):
         upcoming = self.engine.get_upcoming(days=30)
@@ -200,9 +237,42 @@ class TestNotificationManager(unittest.TestCase):
             recipient="test@example.com",
             channels=[NotificationChannel.EMAIL],
         )
+        # No SMTP provider is configured, so email is only logged: the honest
+        # result is False and the record is SIMULATED, never SENT.
+        success = self.manager.send_notification(records[0])
+        self.assertFalse(success)
+        self.assertEqual(records[0].status, NotificationStatus.SIMULATED)
+        self.assertTrue(records[0].simulated)
+
+    def test_send_notification_in_app(self):
+        records = self.manager.schedule_notification(
+            event_id="test-event",
+            event_title="Test Event",
+            due_date="2025-12-31",
+            days_remaining=7,
+            recipient="test@example.com",
+            channels=[NotificationChannel.IN_APP],
+        )
         success = self.manager.send_notification(records[0])
         self.assertTrue(success)
         self.assertEqual(records[0].status, NotificationStatus.SENT)
+        self.assertIn(records[0], self.manager.in_app_inbox)
+
+    def test_send_notification_with_working_transport(self):
+        records = self.manager.schedule_notification(
+            event_id="test-event",
+            event_title="Test Event",
+            due_date="2025-12-31",
+            days_remaining=7,
+            recipient="test@example.com",
+            channels=[NotificationChannel.EMAIL],
+        )
+        # A transport that actually delivers must be reported as delivered.
+        with mock.patch.object(self.manager, "_send_email", return_value=True):
+            success = self.manager.send_notification(records[0])
+        self.assertTrue(success)
+        self.assertEqual(records[0].status, NotificationStatus.SENT)
+        self.assertIn(records[0], self.manager.sent_history)
 
     def test_send_batch(self):
         records = self.manager.schedule_notification(
@@ -215,7 +285,26 @@ class TestNotificationManager(unittest.TestCase):
         )
         result = self.manager.send_batch(records)
         self.assertEqual(result["total"], 2)
+        # Neither channel has a provider: nothing is delivered.
+        self.assertEqual(result["sent"], 0)
+        self.assertEqual(result["simulated"], 2)
+        self.assertEqual(result["failed"], 0)
+
+    def test_send_batch_with_working_transport(self):
+        records = self.manager.schedule_notification(
+            event_id="test-event",
+            event_title="Test Event",
+            due_date="2025-12-31",
+            days_remaining=3,
+            recipient="test@example.com",
+            channels=[NotificationChannel.EMAIL, NotificationChannel.SMS],
+        )
+        with mock.patch.object(self.manager, "_send_email", return_value=True), \
+                mock.patch.object(self.manager, "_send_sms", return_value=True):
+            result = self.manager.send_batch(records)
+        self.assertEqual(result["total"], 2)
         self.assertEqual(result["sent"], 2)
+        self.assertEqual(result["simulated"], 0)
 
     def test_cancel_notification(self):
         records = self.manager.schedule_notification(

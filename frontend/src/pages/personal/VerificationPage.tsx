@@ -331,7 +331,7 @@ function BusinessTab() {
     <>
       <Card
         title="Verify Business Registration"
-        subtitle="Verify a business registration number (NTN, STRN, or GST) with FBR"
+        subtitle="Verify a business registration number (NTN, SECP company, or PRA registration) with FBR"
         testId="business-verify-card"
       >
         <form
@@ -355,7 +355,11 @@ function BusinessTab() {
                 onChange={setRegType}
                 testId="business-type-select"
                 ariaLabel="Registration type"
-                options={["ntn", "strn", "gst"]}
+                options={[
+                  { value: "ntn", label: "NTN" },
+                  { value: "secp_company", label: "SECP Company" },
+                  { value: "pra_registration", label: "PRA Registration" },
+                ]}
               />
             </Field>
           </div>

@@ -6,17 +6,25 @@ FBR compliance reminders ka notification system:
 - Email notifications (simulated)
 - SMS notifications (simulated)
 - Push notifications (simulated)
-- In-app notifications
+- In-app notifications (simulated)
 - Reminder scheduling (90/60/30/14/7/1 days before)
 - Notification history
 - Do Not Disturb settings
 - Batch notifications
+
+DELIVERY HONESTY
+----------------
+No channel is wired up to a real provider. Every `_send_*` below only logs, so
+they must NOT report success: simulated deliveries are marked SIMULATED (and
+`send_notification()` returns False for them), while the in-app channel, which
+really does append to the in-app inbox, is marked SENT and returns True. A
+record in `sent_history` therefore always means "actually delivered".
 """
 
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -36,6 +44,9 @@ class NotificationStatus(str, Enum):
     """Status of a notification."""
     PENDING = "pending"
     SENT = "sent"
+    # Recorded when a delivery path is simulated (logs only, no provider).
+    # Anything still SIMULATED was not actually delivered.
+    SIMULATED = "simulated"
     DELIVERED = "delivered"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -60,11 +71,14 @@ class NotificationRecord:
     message: str
     status: NotificationStatus = NotificationStatus.PENDING
     priority: NotificationPriority = NotificationPriority.NORMAL
-    scheduled_for: datetime = field(default_factory=datetime.utcnow)
+    scheduled_for: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     sent_at: Optional[datetime] = None
     delivered_at: Optional[datetime] = None
     error_message: Optional[str] = None
     retry_count: int = 0
+    # Set when a channel was only simulated, so callers can tell a real
+    # delivery from a log line.
+    simulated: bool = False
     metadata: dict = field(default_factory=dict)
 
 
@@ -77,12 +91,17 @@ class NotificationManager:
     - SMS gateway (e.g., Twilio, MSG91)
     - Firebase/APNs for push
     - WhatsApp Business API
+
+    Until those integrations exist, only IN_APP is a real delivery; the rest
+    are simulated and reported as such (see module docstring).
     """
 
     def __init__(self):
         self.queue: list[NotificationRecord] = []
         self.sent_history: list[NotificationRecord] = []
-        self._notification_id_counter = 0
+        # Real deliveries to the in-app inbox, the only channel that is
+        # actually delivered in this build.
+        self.in_app_inbox: list[NotificationRecord] = []
 
     def schedule_notification(
         self,
@@ -115,7 +134,7 @@ class NotificationManager:
                 subject=subject,
                 message=message,
                 priority=priority,
-                scheduled_for=datetime.utcnow(),
+                scheduled_for=datetime.now(timezone.utc),
                 metadata={
                     "days_remaining": days_remaining,
                     "urgency": self._get_urgency(days_remaining),
@@ -131,7 +150,12 @@ class NotificationManager:
         return records
 
     def send_notification(self, record: NotificationRecord) -> bool:
-        """Send a single notification (simulated)."""
+        """
+        Send a single notification.
+
+        Returns True only for a real delivery (IN_APP). Simulated channels are
+        marked SIMULATED and return False - a True/False here is never a guess.
+        """
         try:
             # Simulate sending based on channel
             if record.channel == NotificationChannel.EMAIL:
@@ -147,13 +171,21 @@ class NotificationManager:
 
             if success:
                 record.status = NotificationStatus.SENT
-                record.sent_at = datetime.utcnow()
+                record.sent_at = datetime.now(timezone.utc)
                 self.sent_history.append(record)
                 logger.info(f"Sent {record.channel.value} notification: {record.id}")
-            else:
-                record.status = NotificationStatus.FAILED
+            elif record.channel == NotificationChannel.IN_APP:
+                # In-app delivery failed (records itself as FAILED).
                 record.retry_count += 1
                 logger.error(f"Failed to send notification: {record.id}")
+            else:
+                # No provider integration for this channel: not sent, and said so.
+                record.status = NotificationStatus.SIMULATED
+                record.simulated = True
+                logger.info(
+                    f"SIMULATED (not delivered) {record.channel.value} "
+                    f"notification: {record.id} - no provider integration configured"
+                )
 
             return success
 
@@ -171,11 +203,16 @@ class NotificationManager:
             "sent": 0,
             "failed": 0,
             "failed_ids": [],
+            "simulated": 0,
+            "simulated_ids": [],
         }
 
         for record in records:
             if self.send_notification(record):
                 results["sent"] += 1
+            elif record.status == NotificationStatus.SIMULATED:
+                results["simulated"] += 1
+                results["simulated_ids"].append(record.id)
             else:
                 results["failed"] += 1
                 results["failed_ids"].append(record.id)
@@ -200,40 +237,42 @@ class NotificationManager:
         return self.sent_history[-limit:]
 
     def _send_email(self, record: NotificationRecord) -> bool:
-        """Simulate email sending."""
+        """Simulate email sending (no SMTP provider configured)."""
         # In production: integrate with SMTP/SendGrid/etc.
         logger.info(
             f"[EMAIL SIMULATED] To: {record.recipient}, "
             f"Subject: {record.subject[:50]}..."
         )
-        return True
+        return False
 
     def _send_sms(self, record: NotificationRecord) -> bool:
-        """Simulate SMS sending."""
+        """Simulate SMS sending (no SMS gateway configured)."""
         # In production: integrate with Twilio/MSG91/etc.
         logger.info(
             f"[SMS SIMULATED] To: {record.recipient}, "
             f"Message: {record.message[:50]}..."
         )
-        return True
+        return False
 
     def _send_push(self, record: NotificationRecord) -> bool:
-        """Simulate push notification."""
+        """Simulate push notification (no FCM/APNs provider configured)."""
         # In production: integrate with Firebase/APNs
         logger.info(f"[PUSH SIMULATED] Title: {record.subject[:30]}...")
-        return True
+        return False
 
     def _send_whatsapp(self, record: NotificationRecord) -> bool:
-        """Simulate WhatsApp message."""
+        """Simulate WhatsApp message (no WhatsApp Business API configured)."""
         logger.info(
             f"[WHATSAPP SIMULATED] To: {record.recipient}, "
             f"Message: {record.message[:50]}..."
         )
-        return True
+        return False
 
     def _send_in_app(self, record: NotificationRecord) -> bool:
-        """Simulate in-app notification."""
-        logger.info(f"[IN-APP SIMULATED] {record.subject}")
+        """Deliver an in-app notification (the one channel that really sends)."""
+        record.delivered_at = datetime.now(timezone.utc)
+        self.in_app_inbox.append(record)
+        logger.info(f"[IN-APP] To: {record.recipient}, Subject: {record.subject}")
         return True
 
     def _generate_subject(self, event_title: str, days_remaining: int) -> str:

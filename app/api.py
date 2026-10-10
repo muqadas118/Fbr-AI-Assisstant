@@ -9,11 +9,18 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.agents.orchestrator import AgentOrchestrator
-from app.calculations import get_tax_engine, TaxCalculationEngine
+from app.calculations import get_tax_engine
+from app.language import (
+    LANG_EN,
+    LANG_ROMAN_UR,
+    LANG_UR,
+    normalize_language,
+    resolve_language,
+)
 from app.llm import LLMError
 from app.routers import (
     assistant_router,
@@ -24,6 +31,8 @@ from app.routers import (
     invoices_router,
     monitor_router,
     notices_router,
+    personalization_router,
+    quota_router,
     tax_health_router,
     team_router,
     uploads_router,
@@ -310,19 +319,27 @@ app.include_router(uploads_router)
 app.include_router(assistant_router)
 app.include_router(vault_router)
 app.include_router(business_reports_router)
+# Self-learning / personalization (behavioural signals + per-user recommendations)
+app.include_router(personalization_router)
+# Per-user daily quotas (messages + chat file uploads, reset at local midnight)
+app.include_router(quota_router)
 
-# SECURITY NOTE - deferred auth hardening (owner decision):
-# The feature routers mounted above expose 51 endpoints with no Depends auth
-# yet (calendar, documents, invoices, monitor, notices, tax_health, team,
-# verify, workspaces). POST /answer and POST /calculate enforce JWT via
-# require_user, but router endpoints stay public until the final auth phase.
-# Do not add per-router auth here.
-# FULL-AUTH 2026-09-13: per-route Depends(require_user) added in all 9
-# routers (41 endpoints authed, 10 intentionally public: */types,
-# /tax/health/score-guide, /monitor/event-types, POST /monitor/webhook,
-# POST /team/register, POST /team/login, GET /team/roles,
-# GET /workspaces/health). Health + auth config/status stay public.
-# FBR_AUTH_REQUIRED=false bypass still honored by require_user.
+# SECURITY NOTE - auth state (FULL-AUTH, 2026-09-13):
+# Every feature router mounted above enforces Depends(require_user) on its
+# routes. Of the 80 routes registered on this app, 62 require a valid
+# bearer token (backend session token or Supabase JWT) and 18 are
+# intentionally public:
+#   - auth bootstrap: POST /auth/signup, POST /auth/login, POST /team/register,
+#     POST /team/login, GET /team/roles
+#   - static reference data: GET /notices/types, GET /documents/types,
+#     GET /calendar/types, GET /calculate/types, GET /calculate/health,
+#     GET /vault/health, GET /monitor/event-types,
+#     GET /tax/health/score-guide, GET /workspaces/health
+#   - health/diagnostics: GET /health, GET /api/auth/config,
+#     GET /api/auth/status (GET /api/auth/me takes the Supabase JWT path)
+# POST /answer and POST /calculate also enforce require_user directly here.
+# require_user honors the FBR_AUTH_REQUIRED=false dev bypass (fail-open) and
+# is the single gate for both token types — do not add per-router auth here.
 
 # CORS Middleware - Configure for production frontend origin
 # CORS_ORIGINS env (comma-separated) overrides the localhost defaults.
@@ -375,13 +392,14 @@ async def calculate(
     Supports all 11 tax calculator modules.
     Expects JSON body: {"calc_type": "...", "inputs": {...}}
     """
-    # Rate limiting - same in-memory limiter as POST /answer (10 req/60s).
+    # Rate limiting - dedicated 30 req/60s bucket for the deterministic
+    # local math endpoints (POST /answer keeps its own 10 req/60s bucket).
     rate_key = "calculate:user:" + str(user.get("id")) if user and user.get("id") else ("calculate:ip:" + str(request.client.host) if request.client else "calculate:ip:unknown")
-    allowed, remaining = _check_rate_limit(rate_key, CALC_RATE_LIMIT)
+    allowed, _remaining = _check_rate_limit(rate_key, CALC_RATE_LIMIT)
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Rate limit exceeded: max {RATE_LIMIT} requests per {RATE_WINDOW}s",
+            detail=f"Rate limit exceeded: max {CALC_RATE_LIMIT} requests per {RATE_WINDOW}s",
         )
 
     try:
@@ -447,6 +465,34 @@ async def calc_health() -> dict:
     }
 
 
+# Prometheus scrape target for monitoring/prometheus.yml (job "fbr-api").
+# Off by default: an unauthenticated endpoint that only returns an empty body
+# is not worth exposing, so deployments opt in with FBR_METRICS_ENABLED.
+# The collector itself is app/deployment/metrics.py (MetricsCollector), which
+# renders the Prometheus text exposition format verbatim.
+_METRICS_ENABLED = os.environ.get("FBR_METRICS_ENABLED", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+
+if _METRICS_ENABLED:
+    _PROCESS_START_TIME = time.time()
+
+    @app.get("/metrics", tags=["monitoring"])
+    async def metrics() -> PlainTextResponse:
+        """Export collected metrics in the Prometheus text format."""
+        from app.deployment.metrics import get_metrics_collector
+
+        collector = get_metrics_collector()
+        collector.inc_counter("fbr_metrics_scrapes_total")
+        collector.set_gauge(
+            "fbr_process_uptime_seconds", time.time() - _PROCESS_START_TIME
+        )
+        return PlainTextResponse(
+            collector.to_prometheus(),
+            media_type="text/plain; version=0.0.4",
+        )
+
+
 @app.get("/health", tags=["health"])
 async def health() -> dict[str, str]:
     return {
@@ -462,6 +508,150 @@ _TAX_REDUCER_REFUSALS = (
     "The retrieved evidence does not support a verified answer.",
 )
 
+# Localized prose for the deterministic Tax Reducer rendering built by
+# _augment_tax_reducer below. app.language.localize owns the answer-level
+# kinds (no_evidence | ambiguous_section | unverified | llm_unavailable |
+# placeholder); these are /answer Tax-Reducer rendering strings with no
+# matching kind, so their translations live here next to the code that emits
+# them (same pattern as app/routers/assistant.py _TOOL_STATUS_TEXT). The
+# LANG_EN entry of every key is the EXACT wording currently rendered, so
+# English users see a byte-identical report (same lines, same order, same
+# numbers). The opportunity titles / descriptions / estimated_impact /
+# required_evidence / legal_basis come from app.tools.tax_optimization and
+# are rendered as-is — they are the tool's own content, not translated here.
+_TAX_REDUCER_TEXT: dict[str, dict[str, str]] = {
+    "unlawful_refusal": {
+        LANG_EN: (
+            "This tool only supports lawful tax planning. It cannot help "
+            "conceal income, fabricate expenses, falsify records, or evade taxes."
+        ),
+        LANG_ROMAN_UR: (
+            "Ye tool sirf qanooni tax planning support karta hai. Ye income "
+            "chupane, kharcha ghalat ya fabricate karne, records jhooti "
+            "batane ya tax evasion mein madad nahi kar sakta."
+        ),
+        LANG_UR: (
+            "یہ ٹول صرف قانونی ٹیکس پلاننگ کی حمایت کرتا ہے۔ یہ آمدنی چھپانے، "
+            "جعلی اخراجات بنانے، ریکارڈ جھوٹے بتانے یا ٹیکس سے بچنے میں مدد "
+            "نہیں کر سکتا۔"
+        ),
+    },
+    "header": {
+        LANG_EN: "LAWFUL TAX-SAVING ANALYSIS (deterministic estimate)",
+        LANG_ROMAN_UR: "Qanooni tax bachne ka tajziya (deterministic andaza)",
+        LANG_UR: "قانونی ٹیکس بچانے کا تجزیہ (deterministic تخمینہ)",
+    },
+    "taxpayer": {
+        LANG_EN: "Taxpayer: ",
+        LANG_ROMAN_UR: "Taxpayer: ",
+        LANG_UR: "ٹیکس دہندہ: ",
+    },
+    "tax_type": {
+        LANG_EN: "Tax type: ",
+        LANG_ROMAN_UR: "Tax ki qism: ",
+        LANG_UR: "ٹیکس کی قسم: ",
+    },
+    "tax_year": {
+        LANG_EN: "Tax year: ",
+        LANG_ROMAN_UR: "Tax ka saal: ",
+        LANG_UR: "ٹیکس کا سال: ",
+    },
+    "baseline_income": {
+        LANG_EN: "Baseline taxable income: ",
+        LANG_ROMAN_UR: "Bunyadi taxable income: ",
+        LANG_UR: "بنیادی taxable income: ",
+    },
+    "baseline_tax": {
+        LANG_EN: "Baseline estimated tax: ",
+        LANG_ROMAN_UR: "Bunyadi estimated tax: ",
+        LANG_UR: "بنیادی تخمینہ شدہ ٹیکس: ",
+    },
+    "optimized_income": {
+        LANG_EN: "Optimized taxable income (after lawful deductions/incentives): ",
+        LANG_ROMAN_UR: "Optimized taxable income (qanooni deductions/incentives ke baad): ",
+        LANG_UR: "Optimized taxable income (قانونی deductions/incentives کے بعد): ",
+    },
+    "optimized_tax": {
+        LANG_EN: "Optimized estimated tax: ",
+        LANG_ROMAN_UR: "Optimized estimated tax: ",
+        LANG_UR: "Optimized estimated tax: ",
+    },
+    "savings": {
+        LANG_EN: "Estimated lawful savings: ",
+        LANG_ROMAN_UR: "Andaza qanooni bachat: ",
+        LANG_UR: "تخمینہ شدہ قانونی بچت: ",
+    },
+    "net_liability": {
+        LANG_EN: "Net liability after payments already made: ",
+        LANG_ROMAN_UR: "Jama kiye gaye payments ke baad net liability: ",
+        LANG_UR: "کی گئی ادائیگیوں کے بعد خالص ذمہ داری: ",
+    },
+    "opportunities_header": {
+        LANG_EN: "LAWFUL OPPORTUNITIES ({count}):",
+        LANG_ROMAN_UR: "Qanooni opportunities ({count}):",
+        LANG_UR: "قانونی مواقع ({count}):",
+    },
+    "no_opportunities": {
+        LANG_EN: (
+            "No specific lawful opportunities matched the provided profile; "
+            "the baseline vs optimized comparison above still applies "
+            "where deductions/incentives were provided."
+        ),
+        LANG_ROMAN_UR: (
+            "Diye gaye profile se koi khaas qanooni opportunity match nahi "
+            "hui; jahan deductions/incentives diye gaye hain wahan upar wala "
+            "baseline vs optimized comparison phir bhi mustanad hai."
+        ),
+        LANG_UR: (
+            "دیے گئے پروفائل سے کوئی خاص قانونی موقعہ مماثل نہیں ہوا؛ جہاں "
+            "deductions/incentives دیے گئے ہیں وہاں اوپر والا baseline vs "
+            "optimized موازنہ پھر بھی لاگو ہوتا ہے۔"
+        ),
+    },
+    "impact": {
+        LANG_EN: "Impact: ",
+        LANG_ROMAN_UR: "Asar: ",
+        LANG_UR: "اثر: ",
+    },
+    "evidence_needed": {
+        LANG_EN: "Evidence needed: ",
+        LANG_ROMAN_UR: "Zaroori dastavez: ",
+        LANG_UR: "درکار دستاویزات: ",
+    },
+    "legal_basis": {
+        LANG_EN: "Legal basis: ",
+        LANG_ROMAN_UR: "Qanooni bunyaad: ",
+        LANG_UR: "قانونی بنیاد: ",
+    },
+    "estimate_disclaimer": {
+        LANG_EN: (
+            "Baseline and optimized figures are estimates from a "
+            "documented slab table; final liability requires FBR "
+            "verification of eligibility and evidence."
+        ),
+        LANG_ROMAN_UR: (
+            "Baseline aur optimized figures ek documented slab table se liye "
+            "gaye andaze hain; final liability ke liye FBR verification aur "
+            "evidence ki zaroorat hai."
+        ),
+        LANG_UR: (
+            "Baseline اور optimized figures ایک documented slab table سے لیے "
+            "گئے اندازے ہیں؛ final liability کے لیے FBR verification اور "
+            "evidence کی ضرورت ہے۔"
+        ),
+    },
+}
+
+
+def _loc(kind: str, language: Optional[str]) -> str:
+    """Localized Tax Reducer text for ``kind``; English when unrecognized.
+
+    ``language`` accepts the canonical tags from ``app.language`` as well as
+    loose/None values, which normalize to English.
+    """
+    variants = _TAX_REDUCER_TEXT[kind]
+    return variants.get(normalize_language(language), variants[LANG_EN])
+
 
 def _augment_tax_reducer(query: str, result: dict) -> dict:
     """Deterministic Tax Reducer support for /answer.
@@ -473,7 +663,14 @@ def _augment_tax_reducer(query: str, result: dict) -> dict:
     concrete, lawful savings estimate with sources. The refusal text is
     replaced by a human-readable rendering of the tool's structured
     result; the raw structured data is attached additively.
+
+    Every rendered line follows the query language (resolve_language);
+    each figure, rate and section is quoted verbatim.
     """
+    # Resolved once, before any early return, so the refusal and the report
+    # below always speak the user's language.
+    language = resolve_language(query)
+
     lowered = (query or "").lower()
     if "lawful tax reduction analysis" not in lowered:
         return result
@@ -493,10 +690,7 @@ def _augment_tax_reducer(query: str, result: dict) -> dict:
         )
 
         if detect_unlawful_intent(query):
-            result["answer"] = (
-                "This tool only supports lawful tax planning. It cannot help "
-                "conceal income, fabricate expenses, falsify records, or evade taxes."
-            )
+            result["answer"] = _loc("unlawful_refusal", language)
             return result
 
         payload = extract_tax_reducer_payload(query)
@@ -518,24 +712,28 @@ def _augment_tax_reducer(query: str, result: dict) -> dict:
             except (TypeError, ValueError):
                 return str(v)
 
+        # Labels come from _TAX_REDUCER_TEXT; every value below (entity type,
+        # tax type, year) and every figure keeps its exact original form.
+        entity = str(data.get('entity_type', 'individual')).title()
+        tax_type_label = str(data.get('tax_type', 'income_tax')).replace('_', ' ').title()
         lines = [
-            "LAWFUL TAX-SAVING ANALYSIS (deterministic estimate)",
+            _loc("header", language),
             "",
-            f"Taxpayer: {str(data.get('entity_type', 'individual')).title()} — "
-            f"Tax type: {str(data.get('tax_type', 'income_tax')).replace('_', ' ').title()} — "
-            f"Tax year: {data.get('tax_year', '—')}",
+            f"{_loc('taxpayer', language)}{entity} — "
+            f"{_loc('tax_type', language)}{tax_type_label} — "
+            f"{_loc('tax_year', language)}{data.get('tax_year', '—')}",
             "",
-            f"Baseline taxable income: {_fmt(baseline.get('taxable_income', 0))}",
-            f"Baseline estimated tax: {_fmt(baseline.get('estimated_tax', 0))}",
-            f"Optimized taxable income (after lawful deductions/incentives): {_fmt(optimized.get('taxable_income', 0))}",
-            f"Optimized estimated tax: {_fmt(optimized.get('estimated_tax', 0))}",
-            f"Estimated lawful savings: {_fmt(data.get('estimated_savings', 0))}",
-            f"Net liability after payments already made: {_fmt(data.get('net_liability_after_payments', 0))}",
+            f"{_loc('baseline_income', language)}{_fmt(baseline.get('taxable_income', 0))}",
+            f"{_loc('baseline_tax', language)}{_fmt(baseline.get('estimated_tax', 0))}",
+            f"{_loc('optimized_income', language)}{_fmt(optimized.get('taxable_income', 0))}",
+            f"{_loc('optimized_tax', language)}{_fmt(optimized.get('estimated_tax', 0))}",
+            f"{_loc('savings', language)}{_fmt(data.get('estimated_savings', 0))}",
+            f"{_loc('net_liability', language)}{_fmt(data.get('net_liability_after_payments', 0))}",
             "",
         ]
-        opportunities = data.get("opportunities", []) or []
+        opportunities = data.get("opportunities") or []
         if opportunities:
-            lines.append(f"LAWFUL OPPORTUNITIES ({len(opportunities)}):")
+            lines.append(_loc("opportunities_header", language).format(count=len(opportunities)))
             for opp in opportunities:
                 if isinstance(opp, dict):
                     lines.append(
@@ -544,22 +742,22 @@ def _augment_tax_reducer(query: str, result: dict) -> dict:
                     )
                     impact = str(opp.get("estimated_impact", "") or "").strip()
                     if impact:
-                        lines.append(f"  Impact: {impact}")
-                    evidence = opp.get("required_evidence", []) or []
+                        lines.append(f"  {_loc('impact', language)}{impact}")
+                    evidence = opp.get("required_evidence") or []
                     if evidence:
-                        lines.append(f"  Evidence needed: {', '.join(str(x) for x in evidence)}")
-                    lines.append(f"  Legal basis: {opp.get('legal_basis', '—')}")
+                        lines.append(
+                            f"  {_loc('evidence_needed', language)}"
+                            f"{', '.join(str(x) for x in evidence)}"
+                        )
+                    lines.append(f"  {_loc('legal_basis', language)}{opp.get('legal_basis', '—')}")
                 else:
                     lines.append(f"- {opp}")
         else:
-            lines.append(
-                "No specific lawful opportunities matched the provided profile; "
-                "the baseline vs optimized comparison above still applies "
-                "where deductions/incentives were provided."
-            )
+            lines.append(_loc("no_opportunities", language))
         lines.extend([
             "",
-            str(data.get("estimate_disclaimer", "")),
+            # The tool's own disclaimer when present, otherwise the localized one.
+            str(data.get("estimate_disclaimer") or _loc("estimate_disclaimer", language)),
         ])
 
         result["answer"] = "\n".join(lines)
@@ -679,7 +877,7 @@ async def answer(
     rate_key = f"answer:user:{user['id']}" if user and user.get("id") else (
         f"answer:ip:{http_request.client.host}" if http_request.client else "answer:ip:unknown"
     )
-    allowed, remaining = _check_rate_limit(rate_key)
+    allowed, _remaining = _check_rate_limit(rate_key)
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -715,7 +913,7 @@ async def answer(
 
         return response
 
-    except LLMError as e:
+    except LLMError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="LLM unavailable",

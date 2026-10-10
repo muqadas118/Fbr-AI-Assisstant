@@ -12,11 +12,47 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
-from app.multi_user import MultiUserAPI, get_multi_user_api
+from app.multi_user import get_multi_user_api
 
 logger = logging.getLogger("fbr_api.workspaces")
 
 router = APIRouter(prefix="/workspaces", tags=["Workspaces"])
+
+WORKSPACE_TYPES = ("personal", "business")
+
+
+# =============================================================================
+# Authorization helpers
+# =============================================================================
+
+def _caller_id(user: Optional[dict] = Depends(require_user)) -> str:
+    """Resolve the authenticated caller's user id.
+
+    Mirrors app/routers/vault.py._user_id: a valid bearer token (Supabase JWT
+    or first-party backend session) names the caller. When auth is disabled
+    for local development (FBR_AUTH_REQUIRED=false, require_user returns
+    None) the shared 'dev-user' scope keeps the endpoints usable.
+    """
+    if isinstance(user, dict):
+        for key in ("id", "user_id", "sub"):
+            if user.get(key):
+                return str(user[key])
+    return "dev-user"
+
+
+def _authorized_id(claimed: Optional[str], caller_id: str) -> str:
+    """Resolve a client-supplied owner id against the authenticated caller.
+
+    The authenticated caller is the authority: an omitted id defaults to it,
+    and a body naming a different user is rejected with 403 instead of
+    silently creating/reading data under another account.
+    """
+    if claimed and str(claimed).strip() != caller_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to act on behalf of another user",
+        )
+    return caller_id
 
 
 # =============================================================================
@@ -25,7 +61,10 @@ router = APIRouter(prefix="/workspaces", tags=["Workspaces"])
 
 class WorkspaceCreateRequest(BaseModel):
     """Create a workspace."""
-    user_id: str
+    user_id: Optional[str] = Field(
+        default=None,
+        description="Must match the authenticated caller; falls back to it when omitted.",
+    )
     name: str = Field(..., min_length=1, max_length=200, description="Workspace name")
     workspace_type: str = Field(
         default="personal",
@@ -66,21 +105,24 @@ async def get_workspaces_health() -> dict:
 
 
 @router.get("/{user_id}", dependencies=[Depends(require_user)])
-async def get_workspaces(user_id: str) -> dict:
+async def get_workspaces(user_id: str, caller_id: str = Depends(_caller_id)) -> dict:
     """
     Get all workspaces for a user.
 
-    Returns personal and business workspaces.
+    Returns personal and business workspaces. A user can only list their own.
     """
+    target_user_id = _authorized_id(user_id, caller_id)
     try:
         api = get_multi_user_api()
         # Tolerant lookup: works for identities that own teams even when no
         # user row exists (e.g. demo ids provisioned via POST /workspaces/create).
         return {
-            "user_id": user_id,
-            "workspaces": api.get_user_workspaces(user_id),
+            "user_id": target_user_id,
+            "workspaces": api.get_user_workspaces(target_user_id),
         }
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
         logger.exception("Error getting workspaces")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -89,7 +131,10 @@ async def get_workspaces(user_id: str) -> dict:
 
 
 @router.post("/create", dependencies=[Depends(require_user)])
-async def create_workspace(request: WorkspaceCreateRequest) -> dict:
+async def create_workspace(
+    request: WorkspaceCreateRequest,
+    caller_id: str = Depends(_caller_id),
+) -> dict:
     """
     Create a new workspace.
 
@@ -97,13 +142,27 @@ async def create_workspace(request: WorkspaceCreateRequest) -> dict:
     Business workspaces are team/organization workspaces.
     """
     try:
+        workspace_type = (request.workspace_type or "personal").strip().lower()
+        if workspace_type not in WORKSPACE_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"workspace_type must be one of: {', '.join(WORKSPACE_TYPES)}",
+            )
+        if workspace_type == "business" and not request.ntn:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="ntn is required for business workspaces",
+            )
+
+        # The owner comes from the token, never from the body.
+        owner_id = _authorized_id(request.user_id, caller_id)
         api = get_multi_user_api()
 
         # For personal workspaces, use the user's personal team
         # For business, create a team
-        if request.workspace_type == "business":
+        if workspace_type == "business":
             team = api.create_team(
-                owner_id=request.user_id,
+                owner_id=owner_id,
                 name=request.name,
                 ntn=request.ntn,
             )
@@ -117,7 +176,7 @@ async def create_workspace(request: WorkspaceCreateRequest) -> dict:
         else:
             # Personal workspace is per-user, create a minimal team
             team = api.create_team(
-                owner_id=request.user_id,
+                owner_id=owner_id,
                 name=f"{request.name} - Personal",
                 ntn=None,
             )
@@ -127,7 +186,9 @@ async def create_workspace(request: WorkspaceCreateRequest) -> dict:
                 "type": "personal",
                 "created_at": team.created_at,
             }
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
         logger.exception("Error creating workspace")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

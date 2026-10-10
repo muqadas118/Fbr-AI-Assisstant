@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import clsx from "clsx";
+import { Link, useLocation } from "react-router-dom";
 import { api, ApiError, NetworkError } from "@/lib/api";
 import { Loading } from "@/components/shell/Loading";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
@@ -132,29 +133,34 @@ function WorkspaceCard({
 function QuickLinkCard({
   label,
   icon,
-  href,
+  to,
 }: {
   label: string;
   icon: React.ReactNode;
-  href?: string;
+  to: string;
 }) {
   return (
-    <div
+    <Link
       className="ws__quick-link"
+      to={to}
       data-testid={`ws-quicklink-${label.toLowerCase().replace(/\s+/g, "-")}`}
-      {...(href ? { onClick: () => window.open(href, "_blank") } : {})}
-      role={href ? "link" : undefined}
-      style={href ? { cursor: "pointer" } : undefined}
     >
       <div className="ws__quick-link-icon" aria-hidden>{icon}</div>
       <span className="ws__quick-link-label">{label}</span>
-    </div>
+    </Link>
   );
+}
+
+/** Route prefix for the workspace the hub is currently mounted in. */
+function useWorkspaceBasePath(): string {
+  const location = useLocation();
+  return location.pathname.startsWith("/business") ? "/business" : "/personal";
 }
 
 export function WorkspacesPage() {
   // session-derived id with manual override
   const sessionId = useAuth((s) => s.user?.id ?? "");
+  const basePath = useWorkspaceBasePath();
   const { show: notify } = useNotification();
   const [userId, setUserId] = useState("");
   const [userIdInput, setUserIdInput] = useState("");
@@ -176,6 +182,7 @@ export function WorkspacesPage() {
   const [createForm, setCreateForm] = useState<WorkspaceForm>(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof WorkspaceForm, string>>>({});
   const [creating, setCreating] = useState(false);
+  const [pendingInvitationCount, setPendingInvitationCount] = useState(0);
 
   const fetchWorkspaces = useCallback(async (uid: string) => {
     setLoading(true);
@@ -198,6 +205,14 @@ export function WorkspacesPage() {
       if (wsList.length > 0 && !activeWorkspaceId) {
         const active = wsList.find((w) => w.isActive) ?? wsList[0];
         setActiveWorkspaceId(active.id);
+      }
+      // Real pending-invitation count for this user (was a hard-coded 0).
+      try {
+        const dash = await api.team.getUserDashboard(uid.trim());
+        setPendingInvitationCount(dash.pending_invitations?.length ?? 0);
+      } catch {
+        // non-critical — the stat card degrades to 0
+        setPendingInvitationCount(0);
       }
     } catch (err) {
       if (err instanceof NetworkError) {
@@ -256,22 +271,24 @@ export function WorkspacesPage() {
   const handleCreate = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateCreateForm()) return;
+    if (!userId.trim()) {
+      notify("err", "Load your user ID above before creating a workspace.");
+      return;
+    }
     setCreating(true);
     try {
-      // Register a new user as a new workspace (personal workspace by default)
-      const email = `workspace-${Date.now()}@placeholder.local`;
-      await api.team.register({
-        email,
-        password: `temp-${Date.now()}`,
+      // Real workspace creation — POST /workspaces/create (a team under the hood).
+      const created = await api.workspaces.createWorkspace({
+        user_id: userId.trim(),
         name: createForm.name.trim(),
-        role: "owner",
+        workspace_type: createForm.type,
         ntn: createForm.ntn.trim() || undefined,
       });
-      notify("ok", `Workspace "${createForm.name}" created successfully.`);
+      notify("ok", `Workspace "${created.name}" created successfully.`);
       setCreateForm(EMPTY_FORM);
       setFormErrors({});
       setShowCreateForm(false);
-      if (userId) void fetchWorkspaces(userId);
+      void fetchWorkspaces(userId.trim());
     } catch (err) {
       if (err instanceof ApiError) {
         notify("err", `Failed to create workspace: ${err.detail}`);
@@ -286,7 +303,7 @@ export function WorkspacesPage() {
   }, [createForm, validateCreateForm, userId, fetchWorkspaces, notify]);
 
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
-  const pendingInvitations = workspaces.reduce((sum) => sum, 0); // placeholder
+  const pendingInvitations = pendingInvitationCount;
   const totalMembers = workspaces.reduce((sum, w) => sum + w.memberCount, 0);
 
   return (
@@ -518,6 +535,7 @@ export function WorkspacesPage() {
               <div className="ws__quick-links" data-testid="ws-quick-links">
                 <QuickLinkCard
                   label="Compliance Calendar"
+                  to={`${basePath}/calendar`}
                   icon={
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
@@ -526,6 +544,7 @@ export function WorkspacesPage() {
                 />
                 <QuickLinkCard
                   label="Tax Health"
+                  to={`${basePath}/health`}
                   icon={
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
@@ -534,14 +553,16 @@ export function WorkspacesPage() {
                 />
                 <QuickLinkCard
                   label="Notices"
+                  to={`${basePath}/notices`}
                   icon={
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0-2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
                     </svg>
                   }
                 />
                 <QuickLinkCard
                   label="Invoices"
+                  to={`${basePath}/invoices`}
                   icon={
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" />
@@ -550,14 +571,16 @@ export function WorkspacesPage() {
                 />
                 <QuickLinkCard
                   label="Documents"
+                  to={`${basePath}/documents`}
                   icon={
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><polyline points="13 2 13 9 20 9" />
+                      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0-2-2V9z" /><polyline points="13 2 13 9 20 9" />
                     </svg>
                   }
                 />
                 <QuickLinkCard
                   label="Inbox"
+                  to={`${basePath}/workspace?tab=inbox`}
                   icon={
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />

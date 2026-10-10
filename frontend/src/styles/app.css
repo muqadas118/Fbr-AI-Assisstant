@@ -1036,6 +1036,7 @@ table { border-collapse: collapse; }
 .chat {
   display: flex;
   flex-direction: column;
+  position: relative;
   height: calc(100vh - var(--w-crest) - var(--w-header) - 2 * var(--s-5));
   min-height: 520px;
   background: var(--c-surface);

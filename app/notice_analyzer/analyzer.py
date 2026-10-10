@@ -17,17 +17,21 @@ Workflow:
 import logging
 import uuid
 import time
-from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from collections import deque
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Optional
 
-from app.notice_analyzer.classifier import NoticeClassifier, NoticeType, ClassificationResult
+from app.notice_analyzer.classifier import NoticeClassifier, ClassificationResult
 from app.notice_analyzer.extractor import NoticeExtractor, ExtractedInfo
 from app.notice_analyzer.deadline import DeadlineCalculator, DeadlineInfo
 from app.notice_analyzer.action_plan import ActionPlanGenerator, ActionPlan
 from app.notice_analyzer.appeal_guide import AppealGuideGenerator, AppealGuide
 
 logger = logging.getLogger("notice_analyzer")
+
+# Audit log is capped so the long-lived analyzer singleton cannot grow forever
+AUDIT_LOG_MAX_ENTRIES = 1000
 
 
 @dataclass
@@ -72,7 +76,7 @@ class NoticeAnalyzer:
     """Production-grade unified notice analyzer."""
 
     def __init__(self):
-        self.audit_log: list[dict] = []
+        self.audit_log: deque[dict] = deque(maxlen=AUDIT_LOG_MAX_ENTRIES)
 
     def analyze(self, text: str) -> NoticeAnalysis:
         """
@@ -86,7 +90,7 @@ class NoticeAnalyzer:
         """
         start_time = time.time()
         analysis_id = str(uuid.uuid4())
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
 
         # Step 1: Classify
         classification = NoticeClassifier.classify(text)
@@ -100,9 +104,12 @@ class NoticeAnalyzer:
         extracted = NoticeExtractor.extract(text)
 
         # Step 3: Calculate deadline
+        # The deadline comes only from a response date the notice actually
+        # states; an unstated deadline is reported as unknown, never guessed.
         deadline_info = DeadlineCalculator.calculate(
             classification.notice_type,
-            extracted.issue_date
+            extracted.issue_date,
+            extracted.deadline,
         )
 
         # Step 4: Generate action plan
@@ -198,10 +205,14 @@ class NoticeAnalyzer:
                 parts.append(
                     f"Deadline: {deadline_info.deadline_date} ({deadline_info.days_remaining} days)"
                 )
+        else:
+            parts.append(
+                "Deadline: not stated in notice - deadline could not be determined"
+            )
 
         # Appealable
         if classification.is_appealable:
-            parts.append(f"✓ Appealable")
+            parts.append("✓ Appealable")
 
         return " | ".join(parts)
 
@@ -233,6 +244,8 @@ class NoticeAnalyzer:
             lines.append("")
 
         lines.append("--- Extracted Information ---")
+        if extracted.taxpayer_name:
+            lines.append(f"  Taxpayer Name: {extracted.taxpayer_name}")
         if extracted.taxpayer_ntn:
             lines.append(f"  NTN: {extracted.taxpayer_ntn}")
         if extracted.taxpayer_cnic:
@@ -256,15 +269,29 @@ class NoticeAnalyzer:
 
         lines.append("--- Deadline Information ---")
         lines.append(f"  Issue Date: {deadline_info.issue_date or 'Unknown'}")
-        lines.append(f"  Response Period: {deadline_info.days_given} days")
-        lines.append(f"  Deadline: {deadline_info.deadline_date or 'Cannot calculate'}")
+        lines.append(
+            f"  Response Period: {deadline_info.days_given} days"
+            if deadline_info.days_given is not None
+            else "  Response Period: Not stated in notice"
+        )
+        lines.append(
+            f"  Deadline: {deadline_info.deadline_date}"
+            if deadline_info.deadline_date
+            else "  Deadline: Unknown - not stated in notice"
+        )
         if deadline_info.days_remaining is not None:
             if deadline_info.is_overdue:
                 lines.append(f"  ⚠️  STATUS: OVERDUE (by {abs(deadline_info.days_remaining)} days)")
             else:
                 lines.append(f"  Days Remaining: {deadline_info.days_remaining}")
+        else:
+            lines.append("  Days Remaining: Unknown - no deadline stated in notice")
         lines.append(f"  Urgency: {deadline_info.urgency_level.upper()}")
         lines.append(f"  Next Action: {deadline_info.next_action}")
+        if deadline_info.notes:
+            lines.append("  Notes:")
+            for note in deadline_info.notes:
+                lines.append(f"    - {note}")
         lines.append("")
 
         lines.append("--- Action Plan Summary ---")

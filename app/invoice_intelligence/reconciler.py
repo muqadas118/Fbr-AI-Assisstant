@@ -12,9 +12,10 @@ Comprehensive reconciliation reporting:
 
 from dataclasses import dataclass, field
 from typing import Optional
-from datetime import date
+from datetime import date, datetime
 
 from app.invoice_intelligence.extractor import ExtractedInvoice
+from app.invoice_intelligence.matcher import InvoiceMatcher, MatchResult
 
 
 @dataclass
@@ -86,8 +87,33 @@ class InvoiceReconciler:
         end_date: Optional[date] = None,
     ) -> ReconciliationReport:
         """Generate reconciliation report."""
+        sales_invoices = list(sales_invoices)
+        purchase_invoices = list(purchase_invoices)
+        all_invoices = sales_invoices + purchase_invoices
+
         report = ReconciliationReport(
             total_invoices=len(purchase_invoices) + len(sales_invoices),
+            generated_at=datetime.utcnow().isoformat(),
+        )
+
+        # Period boundaries come from the invoices actually reconciled
+        parsed_dates = [
+            d for d in (
+                InvoiceReconciler._parse_date(inv.invoice_date)
+                for inv in all_invoices
+            ) if d is not None
+        ]
+        report.period_start = (
+            start_date or (min(parsed_dates) if parsed_dates else None)
+        )
+        report.period_start = (
+            report.period_start.isoformat() if report.period_start else None
+        )
+        report.period_end = (
+            end_date or (max(parsed_dates) if parsed_dates else None)
+        )
+        report.period_end = (
+            report.period_end.isoformat() if report.period_end else None
         )
 
         # Sales totals
@@ -119,35 +145,63 @@ class InvoiceReconciler:
 
         report.vendor_summaries = list(vendor_data.values())
 
+        # ITC matching: which purchases have a matching sales invoice
+        matched_purchases: list[ExtractedInvoice] = []
+        unmatched_purchases = 0
+        total_unclaimed_itc = 0.0
+
+        sales_only = [inv for inv in sales_invoices if inv.invoice_type == "sales"]
+        for purchase in purchase_invoices:
+            best_match: Optional[MatchResult] = None
+            best_confidence = 0.0
+            for sales in sales_only:
+                match = InvoiceMatcher.match_purchase_to_sales(purchase, sales)
+                if match.confidence > best_confidence:
+                    best_confidence = match.confidence
+                    best_match = match
+
+            if best_match is not None and best_match.is_match:
+                matched_purchases.append(purchase)
+            else:
+                unmatched_purchases += 1
+                total_unclaimed_itc += purchase.tax_amount
+
+        report.unmatched_purchases = unmatched_purchases
+        report.total_unclaimed_itc = round(total_unclaimed_itc, 2)
+
+        for v in report.vendor_summaries:
+            v.matched_count = sum(
+                1 for p in matched_purchases
+                if (p.seller_ntn or "unknown") == v.vendor_ntn
+            )
+            v.unmatched_count = v.invoice_count - v.matched_count
+
+        # Duplicate detection: each invoice that repeats an earlier record
+        duplicate_count = 0
+        seen: list[ExtractedInvoice] = []
+        for inv in all_invoices:
+            if InvoiceMatcher.find_duplicate(inv, seen):
+                duplicate_count += 1
+            seen.append(inv)
+        report.duplicate_count = duplicate_count
+
         # By month
         monthly_data: dict[tuple[int, int], MonthlySummary] = {}
-        for inv in sales_invoices + purchase_invoices:
-            if not inv.invoice_date:
+        for inv in all_invoices:
+            d = InvoiceReconciler._parse_date(inv.invoice_date)
+            if d is None:
                 continue
-            try:
-                from datetime import datetime
-                d = None
-                for fmt in ("%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d"):
-                    try:
-                        d = datetime.strptime(inv.invoice_date, fmt).date()
-                        break
-                    except ValueError:
-                        continue
-                if not d:
-                    continue
-                key = (d.year, d.month)
-                if key not in monthly_data:
-                    monthly_data[key] = MonthlySummary(year=d.year, month=d.month)
-                m = monthly_data[key]
-                m.invoice_count += 1
-                if inv.invoice_type == "purchase":
-                    m.total_purchases += inv.total
-                    m.input_tax += inv.tax_amount
-                else:
-                    m.total_sales += inv.total
-                    m.output_tax += inv.tax_amount
-            except (ValueError, AttributeError):
-                continue
+            key = (d.year, d.month)
+            if key not in monthly_data:
+                monthly_data[key] = MonthlySummary(year=d.year, month=d.month)
+            m = monthly_data[key]
+            m.invoice_count += 1
+            if inv.invoice_type == "purchase":
+                m.total_purchases += inv.total
+                m.input_tax += inv.tax_amount
+            else:
+                m.total_sales += inv.total
+                m.output_tax += inv.tax_amount
 
         # Net payable by month
         for m in monthly_data.values():
@@ -172,6 +226,18 @@ class InvoiceReconciler:
         report.recommendations = InvoiceReconciler._build_recommendations(report)
 
         return report
+
+    @staticmethod
+    def _parse_date(value: Optional[str]) -> Optional[date]:
+        """Parse an invoice date, returning None when it is missing or invalid."""
+        if not value:
+            return None
+        for fmt in ("%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, fmt).date()
+            except ValueError:
+                continue
+        return None
 
     @staticmethod
     def _build_recommendations(report: ReconciliationReport) -> list[str]:

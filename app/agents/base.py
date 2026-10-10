@@ -8,8 +8,13 @@ Every specialized agent:
 2. optionally applies deterministic domain-aware query expansion,
 3. calls the EXISTING Phase 7 FBRRAGEngine (retrieval + LLM +
    verification + safe fallback),
-4. returns the RAG response unchanged in substance, augmented
-   only with routing metadata (domain, retrieval_question).
+4. returns the canonical RAG response fields (answer, sources,
+   verification, grounded, context) augmented with routing
+   metadata (domain, retrieval_question, tools_selected) and,
+   for agents that run a deterministic tool, an additive block
+   appended to the answer text (e.g. a calculation basis or a
+   structured tool result). The verified RAG answer itself is
+   never replaced or re-worded.
 
 Agents NEVER:
 - search the raw corpus directly,

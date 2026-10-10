@@ -1,18 +1,18 @@
 """
 Notice Analyzer - Production-Grade
-===================================
+==================================
 
-FBR Notices/Show Cause/Orders ke liye dedicated analyzer:
-- PDF/Image upload
-- OCR extraction (text from image-based PDFs)
+FBR Notices/Show Cause/Orders ke liye dedicated analyzer (text input):
 - Notice type classification (Show Cause, Order, Demand, Intimation, etc.)
 - Key information extraction (date, amount, sections, deadline)
 - Action plan generation
 - Appeal guidance
-- Deadline tracking
+- Deadline tracking (only from a deadline stated in the notice)
 - Legal reference lookup
 
-Supports 30+ FBR notice types with full workflow.
+Supports the notice types listed in classifier.NoticeType; the types that
+actually have classification signals are reported by
+classifier.get_notice_type_catalog().
 """
 
 from app.notice_analyzer.classifier import NoticeClassifier, NoticeType

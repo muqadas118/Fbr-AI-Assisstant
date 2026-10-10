@@ -35,7 +35,8 @@ CRITICAL CONTRACT (see master prompt):
     not bypassed or perturbed.
 
 This module is reusable from the orchestrator or any future
-backend entry point. It is dependency-free (only stdlib `re`).
+backend entry point. It is dependency-free (stdlib `re` plus the
+dependency-free `app.language` detector).
 """
 
 from __future__ import annotations
@@ -43,6 +44,8 @@ from __future__ import annotations
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
+
+from app.language import LANG_EN, LANG_ROMAN_UR, LANG_UR, detect_language
 
 
 # ============================================================
@@ -53,13 +56,35 @@ class QueryReceiveError(ValueError):
     """Raised when the inbound query is invalid for the pipeline."""
 
 
+# Fallback used only when the canonical engine constant cannot be
+# imported (keeps this module importable in isolation).
+_FALLBACK_MAX_QUESTION_LENGTH = 1000
+
+
+def _max_question_length() -> int:
+    """Hard question-length cap shared with app.rag_engine.
+
+    Imported lazily so this module does not pull in the heavy
+    retrieval stack (FAISS / sentence-transformers) at import time;
+    the constant itself is the engine's MAX_QUESTION_LENGTH.
+    """
+
+    try:
+        from app.rag_engine import MAX_QUESTION_LENGTH
+    except ImportError:
+        return _FALLBACK_MAX_QUESTION_LENGTH
+
+    return MAX_QUESTION_LENGTH
+
+
 def receive_query(question: Any) -> str:
     """A. Receive Query.
 
     Accept a query (str or object convertible to str), validate it,
     and return the canonical raw string. Raises QueryReceiveError
     on invalid input. This stage does NOT modify the text content
-    beyond a single str() conversion and a hard length cap.
+    beyond a single str() conversion and a hard length cap
+    (app.rag_engine.MAX_QUESTION_LENGTH).
     """
 
     if question is None:
@@ -71,6 +96,13 @@ def receive_query(question: Any) -> str:
             raise QueryReceiveError(
                 f"query not coercible to str: {type(question).__name__}"
             ) from exc
+
+    max_length = _max_question_length()
+    if len(question) > max_length:
+        raise QueryReceiveError(
+            f"query exceeds maximum length of {max_length} characters"
+        )
+
     return question
 
 
@@ -106,7 +138,6 @@ _CONTROLLED_SPELLING: dict[str, str] = {
     "registrtaion": "registration",
     "registar": "register",
     "appele": "appeal",
-    "reciept": "receipt",
     "tution": "tuition",
     "wages": "wages",  # placeholder; intentional identity map
     "taxable": "taxable",
@@ -166,8 +197,10 @@ _ROMAN_URDU_TOKENS: tuple[str, ...] = (
     "hain",
     "hun",
     "mein",
-    "may",
-    "main",
+    # "may" / "main" deliberately excluded: both are common English
+    # words (modal / adjective) that would mis-flag plain English
+    # queries as Roman Urdu. "mein" above covers the Roman-Urdu
+    # first-person pronoun unambiguously.
     "se",
     "ko",
     "ke",
@@ -203,28 +236,32 @@ _ROMAN_URDU_TOKENS: tuple[str, ...] = (
 )
 
 
+# Canonical -> this module's legacy public vocabulary.
+_LEGACY_LANGUAGE_TAGS: dict[str, str] = {
+    LANG_ROMAN_UR: "roman_urdu",
+    LANG_UR: "urdu",
+    LANG_EN: "english",
+}
+
+
 def _detect_language(text: str) -> str:
-    """Return a best-effort language tag. The current pipeline
-    only consumes the 'lang' field for telemetry; downstream
-    retrieval stays language-agnostic and corpus-driven.
+    """Return a best-effort language tag for ``text``.
+
+    Delegates to the canonical :func:`app.language.detect_language` and maps
+    its values back to this module's existing public vocabulary
+    (``roman_ur -> "roman_urdu"``, ``ur -> "urdu"``, ``en -> "english"``);
+    empty / token-less input stays ``"unknown"``. This tag now also feeds
+    answer-language decisions downstream, not just telemetry.
     """
 
-    if not text:
+    if not text or not text.strip():
         return "unknown"
-    lowered = text.lower()
-    tokens = re.findall(r"[A-Za-z']+", lowered)
-    if not tokens:
+    legacy = _LEGACY_LANGUAGE_TAGS.get(detect_language(text), "unknown")
+    # The canonical detector sees no Latin tokens in punctuation/whitespace,
+    # so keep this module's historical "unknown" for that token-less case.
+    if legacy == "english" and not re.search(r"[A-Za-z]", text):
         return "unknown"
-    roman_urdu_hits = sum(1 for t in tokens if t in _ROMAN_URDU_TOKENS)
-    # Threshold is intentionally low so that short queries with a
-    # single Roman Urdu token are still recognized.
-    if roman_urdu_hits >= 1 and len(tokens) <= 12:
-        return "roman_urdu"
-    if roman_urdu_hits >= 2:
-        return "roman_urdu"
-    if any("\u0600" <= ch <= "\u06FF" for ch in text):
-        return "urdu"
-    return "english"
+    return legacy
 
 
 def preprocess_query(question: str) -> tuple[str, dict[str, Any]]:

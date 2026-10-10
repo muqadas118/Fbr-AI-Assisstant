@@ -7,13 +7,14 @@ Exposes InvoiceAPI as HTTP endpoints.
 """
 
 import logging
+from dataclasses import fields as dataclass_fields
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
-from app.invoice_intelligence import InvoiceAPI, get_invoice_api
+from app.invoice_intelligence import get_invoice_api
 
 logger = logging.getLogger("fbr_api.invoices")
 
@@ -160,7 +161,7 @@ async def process_invoice(request: InvoiceProcessRequest) -> InvoiceProcessRespo
             summary=result["summary"],
             duration_ms=result["duration_ms"],
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error processing invoice")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -234,13 +235,13 @@ async def reconcile_period(
             for key in string_fields:
                 if key in data and data[key] is not None and not isinstance(data[key], str):
                     data[key] = str(data[key])
-            unknown = set(data) - set(string_fields) - set(numeric_fields)
+            unknown = set(data) - {f.name for f in dataclass_fields(ExtractedInvoice)}
             if unknown:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Unknown invoice field(s): {sorted(unknown)}. "
                            f"Expected fields like invoice_number, date, "
-                           f"subtotal, tax_amount, total.",
+                           f"subtotal, tax_amount, total, notes, extraction_quality.",
                 )
             try:
                 return ExtractedInvoice(**data)
@@ -267,7 +268,7 @@ async def reconcile_period(
         return ReconciliationReportResponse(**result)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Error reconciling invoices")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -286,7 +287,7 @@ async def get_invoice_dashboard() -> InvoiceDashboardResponse:
         api = get_invoice_api()
         result = api.get_dashboard()
         return InvoiceDashboardResponse(**result)
-    except Exception as e:
+    except Exception:
         logger.exception("Error getting dashboard")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -308,7 +309,7 @@ async def export_invoices(
         return api.export_invoices(format)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception as e:
+    except Exception:
         logger.exception("Error exporting invoices")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

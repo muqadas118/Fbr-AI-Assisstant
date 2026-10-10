@@ -36,6 +36,7 @@ from __future__ import annotations
 import re
 
 from app.agents.base import SpecializedAgent
+from app.rag_engine import DEFAULT_TOP_K
 
 _SECTION_RE = re.compile(r"\bsection\s+\d+\b", re.IGNORECASE)
 
@@ -115,7 +116,7 @@ class IncomeTaxAgent(SpecializedAgent):
     def handle(
         self,
         question: object,
-        top_k: int = 5,
+        top_k: int = DEFAULT_TOP_K,
     ) -> dict:
         from app.rag_engine import _NO_EVIDENCE_ANSWER
         from app.tools import get_default_registry
@@ -134,6 +135,9 @@ class IncomeTaxAgent(SpecializedAgent):
         answer = result.get("answer", "")
         grounded = bool(result.get("grounded", False))
 
+        # PLACEHOLDER_ANSWER is harmless defence only: rag_engine
+        # substitutes _NO_EVIDENCE_ANSWER first, so this arm is
+        # unreachable today.
         is_safe_refusal = (
             not answer
             or answer == _NO_EVIDENCE_ANSWER

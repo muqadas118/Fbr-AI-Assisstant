@@ -231,7 +231,7 @@ function HealthCheckTab() {
       setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
     };
 
-  const validate = (): boolean => {
+  const validate = useCallback((): boolean => {
     const errs: Record<string, string> = {};
     if (!form.ntn.trim()) errs.ntn = "Business NTN is required";
     if (!form.taxYear.trim()) errs.taxYear = "Tax year is required";
@@ -239,7 +239,7 @@ function HealthCheckTab() {
     if (isNaN(yr) || yr < 2000 || yr > 2100) errs.taxYear = "Enter a valid tax year";
     setErrors(errs);
     return Object.keys(errs).length === 0;
-  };
+  }, [form]);
 
   const submit = useCallback(async () => {
     if (!validate()) return;
@@ -272,7 +272,7 @@ function HealthCheckTab() {
     } finally {
       setLoading(false);
     }
-  }, [form, notify]);
+  }, [validate, form, notify]);
 
   return (
     <div className="health-tab">
@@ -308,6 +308,7 @@ function HealthCheckTab() {
             <label className="field__checkbox-label">
               <input
                 type="checkbox"
+                aria-label="Business income tax return has been filed"
                 checked={form.returnFiled}
                 onChange={handleChange("returnFiled")}
                 data-testid="biz-health-return-filed-input"
@@ -536,7 +537,7 @@ function RiskAnalysisTab() {
           </div>
           <Field label="Business Return Filed" data-testid="biz-risk-return-filed" className="field--checkbox-row">
             <label className="field__checkbox-label">
-              <input type="checkbox" checked={form.returnFiled} onChange={handleChange("returnFiled")} data-testid="biz-risk-return-filed-input" />
+              <input type="checkbox" aria-label="Business income tax return has been filed" checked={form.returnFiled} onChange={handleChange("returnFiled")} data-testid="biz-risk-return-filed-input" />
               Business income tax return has been filed
             </label>
           </Field>
@@ -679,7 +680,7 @@ function PenaltiesTab() {
 
           <Field label="Concealment of Income" data-testid="biz-penalty-concealment" className="field--checkbox-row">
             <label className="field__checkbox-label">
-              <input type="checkbox" checked={form.isConcealment} onChange={handleChange("isConcealment")} data-testid="biz-penalty-concealment-input" />
+              <input type="checkbox" aria-label="Intentional concealment of business income is involved (increases penalties significantly)" checked={form.isConcealment} onChange={handleChange("isConcealment")} data-testid="biz-penalty-concealment-input" />
               Intentional concealment of business income is involved (increases penalties significantly)
             </label>
           </Field>

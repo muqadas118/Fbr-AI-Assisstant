@@ -1,35 +1,47 @@
-from pathlib import Path
 import json
 
 import faiss
 from sentence_transformers import SentenceTransformer
 
-
-ROOT = Path(__file__).resolve().parents[1]
-
-VECTOR_DIR = ROOT / "data" / "profile" / "vectorstore"
-
-INDEX_FILE = VECTOR_DIR / "fbr_faiss.index"
-METADATA_FILE = VECTOR_DIR / "metadata.json"
-
-MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+# Canonical paths / model defaults (single source of truth) — see
+# app/hybrid_retriever.py: DEFAULT_INDEX_PATH, DEFAULT_METADATA_PATH,
+# EMBEDDING_MODEL_NAME, EMBEDDING_MAX_SEQ_LENGTH, MODEL_REVISION and
+# resolve_vectorstore_paths().
+from app.hybrid_retriever import (
+    EMBEDDING_MAX_SEQ_LENGTH,
+    EMBEDDING_MODEL_NAME,
+    MODEL_REVISION,
+    resolve_vectorstore_paths,
+)
 
 
 class FBRRetriever:
 
-    def __init__(self):
-        if not INDEX_FILE.exists():
-            raise FileNotFoundError(f"FAISS index not found: {INDEX_FILE}")
+    def __init__(self, index_path=None, metadata_path=None):
+        index_path, metadata_path = resolve_vectorstore_paths(
+            index_path,
+            metadata_path,
+        )
 
-        if not METADATA_FILE.exists():
-            raise FileNotFoundError(f"Metadata not found: {METADATA_FILE}")
+        if not index_path.exists():
+            raise FileNotFoundError(f"FAISS index not found: {index_path}")
 
-        self.index = faiss.read_index(str(INDEX_FILE))
+        if not metadata_path.exists():
+            raise FileNotFoundError(f"Metadata not found: {metadata_path}")
 
-        with METADATA_FILE.open("r", encoding="utf-8") as f:
+        self.index = faiss.read_index(str(index_path))
+
+        with metadata_path.open("r", encoding="utf-8") as f:
             self.metadata = json.load(f)
 
-        self.model = SentenceTransformer(MODEL_NAME)
+        # Same loading flags as the canonical hybrid retriever so both
+        # retrievers embed with the identical pinned model revision.
+        self.model = SentenceTransformer(
+            EMBEDDING_MODEL_NAME,
+            revision=MODEL_REVISION,
+            local_files_only=True,
+        )
+        self.model.max_seq_length = EMBEDDING_MAX_SEQ_LENGTH
 
     def search(self, query, top_k=5):
 

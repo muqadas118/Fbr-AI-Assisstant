@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.supabase_auth import require_user
 from pydantic import BaseModel, Field, field_validator
 
-from app.notice_analyzer import NoticeAnalyzer, get_notice_analyzer
+from app.notice_analyzer import get_notice_analyzer
 
 logger = logging.getLogger("fbr_api.notices")
 
@@ -41,16 +41,6 @@ class NoticeAnalysisRequest(BaseModel):
     @classmethod
     def strip_whitespace(cls, v: str) -> str:
         return v.strip()
-
-
-class NoticeTextRequest(BaseModel):
-    """Simple text-based notice analysis."""
-    text: str = Field(
-        ...,
-        min_length=10,
-        max_length=500000,
-        description="Notice text"
-    )
 
 
 # =============================================================================
@@ -158,7 +148,7 @@ async def analyze_notice(request: NoticeAnalysisRequest) -> NoticeAnalysisRespon
         if result.action_plan:
             ap = result.action_plan
             action_plan = ActionPlanResponse(
-                notice_type=ap.notice_type.value if hasattr(ap.notice_type, 'value') else str(ap.notice_type),
+                notice_type=ap.notice_type,
                 summary=ap.summary,
                 total_steps=ap.total_steps,
                 estimated_total_hours=ap.estimated_total_hours,
@@ -223,7 +213,7 @@ async def analyze_notice(request: NoticeAnalysisRequest) -> NoticeAnalysisRespon
             formatted_text=result.formatted_text,
             summary=result.summary,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error analyzing notice")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -231,14 +221,18 @@ async def analyze_notice(request: NoticeAnalysisRequest) -> NoticeAnalysisRespon
         )
 
 
+# Same analysis as POST /analyze — kept as an alias so existing clients that
+# post plain text keep working. Accepts the identical request body (text plus
+# optional notice_id) and delegates to the single implementation above instead
+# of re-deriving the response and dropping notice_id.
 @router.post("/analyze/text", response_model=NoticeAnalysisResponse, dependencies=[Depends(require_user)])
-async def analyze_notice_text(request: NoticeTextRequest) -> NoticeAnalysisResponse:
+async def analyze_notice_text(request: NoticeAnalysisRequest) -> NoticeAnalysisResponse:
     """
     Analyze notice from plain text.
 
-    Same as /analyze but takes simple text field.
+    Alias of POST /analyze with the same request/response contract.
     """
-    return await analyze_notice(NoticeAnalysisRequest(text=request.text))
+    return await analyze_notice(request)
 
 
 # PUBLIC - intentionally no auth: static metadata for UI
@@ -247,26 +241,21 @@ async def get_notice_types() -> dict:
     """
     List all supported FBR notice types.
 
-    Returns all notice types the analyzer can classify.
+    Returns the notice types the analyzer can actually classify (derived from
+    CLASSIFICATION_SIGNALS), plus the types it cannot classify, so the
+    advertised count matches reality instead of the full NoticeType enum.
     """
     try:
-        from app.notice_analyzer.classifier import NoticeType
-        types = [t.value for t in NoticeType]
+        from app.notice_analyzer.classifier import get_notice_type_catalog
+
+        catalog = get_notice_type_catalog()
         return {
-            "total": len(types),
-            "notice_types": types,
-            "categories": [
-                "Income Tax",
-                "Sales Tax",
-                "Federal Excise",
-                "Customs",
-                "Withholding Tax",
-                "Wealth Statement",
-                "Sales Tax Federal",
-                "Professional Tax",
-            ],
+            "total": catalog.get("total", 0),
+            "notice_types": catalog.get("notice_types", []),
+            "unclassifiable_types": catalog.get("unclassifiable_types", []),
+            "categories": catalog.get("categories", {}),
         }
-    except Exception as e:
+    except Exception:
         logger.exception("Error listing notice types")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

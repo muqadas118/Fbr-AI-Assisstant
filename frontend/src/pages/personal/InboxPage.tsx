@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Tag } from "@/components/ui/Tag";
 import { Field } from "@/components/ui/Field";
 import { useAuth } from "@/state/auth";
+import { useNotification } from "@/state/notifications";
 import { getDemoUserId } from "@/lib/demoSession";
 import type { MonitorEvent, MonitorDashboard } from "@/lib/api";
 
@@ -247,6 +248,7 @@ export function InboxPage() {
   // button (below) subscribes the demo NTN and simulates a real notice
   // event through the monitor API so the flow is visible end-to-end.
   const sessionId = useAuth((s) => s.user?.id ?? "");
+  const { show: notify } = useNotification();
   const [userId, setUserId] = useState("");
   useEffect(() => {
     if (!userId) {
@@ -322,25 +324,33 @@ export function InboxPage() {
     setAcknowledgingId(eventId);
     try {
       await api.monitor.acknowledgeEvent(eventId);
+      notify("ok", "Event acknowledged");
       void fetchDashboard(userId);
-    } catch {
-      // silent — keep UI state
+    } catch (err) {
+      const msg = err instanceof ApiError
+        ? `Failed to acknowledge event: ${err.detail}`
+        : "Failed to acknowledge event";
+      notify("err", msg);
     } finally {
       setAcknowledgingId(null);
     }
-  }, [userId, fetchDashboard]);
+  }, [userId, fetchDashboard, notify]);
 
   const handleResolve = useCallback(async (eventId: string) => {
     setResolvingId(eventId);
     try {
       await api.monitor.resolveEvent(eventId);
+      notify("ok", "Event resolved");
       void fetchDashboard(userId);
-    } catch {
-      // silent
+    } catch (err) {
+      const msg = err instanceof ApiError
+        ? `Failed to resolve event: ${err.detail}`
+        : "Failed to resolve event";
+      notify("err", msg);
     } finally {
       setResolvingId(null);
     }
-  }, [userId, fetchDashboard]);
+  }, [userId, fetchDashboard, notify]);
 
   const handleMarkRead = useCallback(async (eventId: string) => {
     void handleAcknowledge(eventId);

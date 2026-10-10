@@ -2,6 +2,11 @@
 // Auth store — Zustand wrapper around the FBR backend's own auth system
 // (POST /auth/signup, /auth/login, /auth/logout; opaque bearer session
 // tokens persisted in localStorage). No external provider required.
+//
+// The tokens are opaque strings issued by the backend's own session
+// registry (NOT third-party JWTs), so localStorage is the intended
+// durable store — the session survives browser restarts, matching the
+// backend's long-lived session contract.
 // ---------------------------------------------------------------------------
 
 import { create } from "zustand";
@@ -183,8 +188,9 @@ export const useAuth = create<AuthState>((set) => ({
   },
 
   init: async () => {
-    // Restore + validate any persisted session. If the token is expired or
-    // revoked the backend returns 401 and the session is dropped here.
+    // Restore + validate any persisted session. A 401 (expired/revoked
+    // token) drops the session; any other failure (network blip, 5xx)
+    // KEEPS it — a transient error must never log out a valid user.
     const token = readStoredToken();
     if (!token) {
       set({ user: null, token: null, loading: false, initialized: true });
@@ -196,8 +202,22 @@ export const useAuth = create<AuthState>((set) => ({
       persistSession(token, user);
       set({ user, token, loading: false, initialized: true });
     } catch (err) {
-      if (isUnauthorized(err)) clearStoredSession();
-      set({ user: null, token: null, loading: false, initialized: true });
+      if (isUnauthorized(err)) {
+        // Backend rejected the session — the stored copy is worthless.
+        clearStoredSession();
+        set({ user: null, token: null, loading: false, initialized: true });
+      } else {
+        // Could not reach the server — keep the stored session and surface
+        // a connection error; the next authenticated request retries.
+        set({
+          user: readStoredUser(),
+          token,
+          loading: false,
+          initialized: true,
+          error:
+            "Could not reach the server to restore your session. Your session is kept — check your connection.",
+        });
+      }
     }
     return () => undefined;
   },

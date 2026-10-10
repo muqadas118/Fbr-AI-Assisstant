@@ -46,6 +46,8 @@ from typing import Optional
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from app.language import detect_language, output_directive
+
 
 load_dotenv()
 
@@ -243,6 +245,7 @@ def _call_provider(
     context: str,
     provider_name: str,
     max_retries: int = 2,
+    language: Optional[str] = None,
 ) -> _Result:
     if not api_key:
         raise LLMError(f"{provider_name}: API key not configured")
@@ -250,6 +253,9 @@ def _call_provider(
         raise LLMError(f"{provider_name}: base URL not configured")
 
     client = OpenAI(base_url=base_url, api_key=api_key, timeout=60.0)
+
+    if not language:
+        language = detect_language(question)
 
     prompt = f"""
 USER QUESTION:
@@ -259,6 +265,8 @@ RETRIEVED FBR CONTEXT:
 {context}
 
 Using the retrieved FBR context, answer the user's question.
+
+{output_directive(language)}
 """
 
     last_error: Optional[Exception] = None
@@ -345,7 +353,9 @@ def _provider_chain_impl() -> "list[_Provider]":
     return _provider_chain()
 
 
-def generate_answer_stream(question: str, context: str):
+def generate_answer_stream(
+    question: str, context: str, language: Optional[str] = None
+):
     """Yield answer text chunks as they arrive from the first working provider.
 
     Falls back across the provider chain only while NO content has been
@@ -364,6 +374,9 @@ def generate_answer_stream(question: str, context: str):
         )
 
     errors: list[str] = []
+    if not language:
+        language = detect_language(question)
+
     prompt = f"""
 USER QUESTION:
 {question}
@@ -372,6 +385,8 @@ RETRIEVED FBR CONTEXT:
 {context}
 
 Using the retrieved FBR context, answer the user's question.
+
+{output_directive(language)}
 """
 
     for p in providers:
@@ -408,7 +423,9 @@ Using the retrieved FBR context, answer the user's question.
     raise LLMError("All LLM providers failed (stream): " + " | ".join(errors))
 
 
-def generate_answer(question: str, context: str) -> str:
+def generate_answer(
+    question: str, context: str, language: Optional[str] = None
+) -> str:
     """
     Generate an FBR-grounded answer with automatic provider fallback.
 
@@ -436,6 +453,7 @@ def generate_answer(question: str, context: str) -> str:
                 question=question,
                 context=context,
                 provider_name=p.name,
+                language=language,
             )
             return result.content
         except LLMError as e:

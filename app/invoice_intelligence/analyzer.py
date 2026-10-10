@@ -8,16 +8,20 @@ Combines extraction, validation, and analysis into one workflow.
 import logging
 import time
 import uuid
-from dataclasses import dataclass, field
+from collections import deque
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
 from app.invoice_intelligence.extractor import InvoiceExtractor, ExtractedInvoice
 from app.invoice_intelligence.validator import InvoiceValidator, ValidationResult
-from app.invoice_intelligence.matcher import InvoiceMatcher, MatchResult
+from app.invoice_intelligence.matcher import InvoiceMatcher
 from app.invoice_intelligence.reconciler import InvoiceReconciler, ReconciliationReport
 
 logger = logging.getLogger("invoice_intelligence")
+
+# Audit log is capped so the long-lived analyzer singleton cannot grow forever
+AUDIT_LOG_MAX_ENTRIES = 1000
 
 
 @dataclass
@@ -52,7 +56,7 @@ class InvoiceAnalyzer:
         self.validator = InvoiceValidator()
         self.matcher = InvoiceMatcher()
         self.reconciler = InvoiceReconciler()
-        self.audit_log: list[dict] = []
+        self.audit_log: deque[dict] = deque(maxlen=AUDIT_LOG_MAX_ENTRIES)
 
     def analyze(
         self,

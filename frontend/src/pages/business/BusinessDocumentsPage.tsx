@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/Button";
 import { Tag } from "@/components/ui/Tag";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { Kv } from "@/components/ui/Kv";
+import { FileDrop, type UploadOutcome } from "@/components/ui/FileDrop";
 import { useNotification } from "@/state/notifications";
 
 // ---------------------------------------------------------------------------
@@ -94,6 +95,7 @@ function AnalyzeSection({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<DocumentAnalysisResponse | null>(null);
+  const [inputTab, setInputTab] = useState<"paste" | "upload">("paste");
 
   const { show: notify } = useNotification();
 
@@ -133,8 +135,52 @@ function AnalyzeSection({
     }
   }, [text, filename, typeHint, notify, onAnalyze]);
 
+  // FileDrop runs the server-side upload pipeline (OCR + extraction); fold its
+  // payload into the same preview/history state as the paste flow.
+  const handleAnalyzeUpload = useCallback((outcome: UploadOutcome) => {
+    if (outcome.data.kind !== "analyze") return;
+    const { analysis, meta } = outcome.data.response;
+    setError(null);
+    onAnalyze({
+      id: `doc-${Date.now()}`,
+      analysis_id: analysis.analysis_id,
+      timestamp: analysis.timestamp,
+      document_type: analysis.document_type,
+      document_category: analysis.document_category,
+      classification_confidence: analysis.classification_confidence,
+      extracted_info: analysis.extracted_info,
+      parsed_form: analysis.parsed_form as DocumentAnalysisResponse["parsed_form"],
+      filename: meta.filename,
+    });
+    notify("ok", `Document analyzed from file: ${analysis.document_type}`);
+  }, [onAnalyze, notify]);
+
   return (
-    <Card title="Analyze Business Document" subtitle="Paste sales tax invoice or business document text to extract structured data" testId="biz-doc-analyze-card">
+    <Card title="Analyze Business Document" subtitle="Paste business document text or upload a file to extract structured data" testId="biz-doc-analyze-card">
+      <div className="page__tabs doc-input-tabs" role="tablist" data-testid="biz-doc-analyze-tabs">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={inputTab === "paste"}
+          className={clsx("tab-btn", inputTab === "paste" && "tab-btn--active")}
+          onClick={() => setInputTab("paste")}
+          data-testid="biz-doc-analyze-tab-paste"
+        >
+          Paste Text
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={inputTab === "upload"}
+          className={clsx("tab-btn", inputTab === "upload" && "tab-btn--active")}
+          onClick={() => setInputTab("upload")}
+          data-testid="biz-doc-analyze-tab-upload"
+        >
+          Upload File
+        </button>
+      </div>
+
+      {inputTab === "paste" ? (
       <form
         className="doc-form"
         onSubmit={(e) => { e.preventDefault(); void submit(); }}
@@ -190,6 +236,15 @@ function AnalyzeSection({
           </Button>
         </div>
       </form>
+      ) : (
+      <div className="doc-upload" data-testid="biz-doc-analyze-upload">
+        <FileDrop
+          mode="analyze"
+          label="Drop a business document file (PDF, image, DOCX, CSV) or click to browse"
+          onOutcome={handleAnalyzeUpload}
+        />
+      </div>
+      )}
 
       {loading ? <Loading label="Extracting document data…" testId="biz-doc-analyze-loading" /> : null}
 
@@ -295,6 +350,7 @@ function VerifySection({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<DocumentVerifyResponse | null>(null);
+  const [inputTab, setInputTab] = useState<"paste" | "upload">("paste");
 
   const { show: notify } = useNotification();
 
@@ -327,8 +383,61 @@ function VerifySection({
     }
   }, [text, notify, onVerify]);
 
+  // The shared FileDrop already ran the server-side extraction + verification;
+  // fold its payload into the same preview/history state as the paste flow.
+  const handleVerifyUpload = useCallback((outcome: UploadOutcome) => {
+    if (outcome.data.kind !== "verify") return;
+    const r = outcome.data.response;
+    const mapped: DocumentVerifyResponse = {
+      ntn: r.ntn ?? undefined,
+      cnic: r.cnic ?? undefined,
+      name: r.name ?? undefined,
+      confidence: r.confidence,
+      extraction_quality: r.extraction_quality,
+    };
+    setError(null);
+    setLoading(false);
+    setPreview(mapped);
+    onVerify({
+      id: `verify-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      ntn: mapped.ntn,
+      cnic: mapped.cnic,
+      name: mapped.name,
+      confidence: mapped.confidence,
+    });
+    const flagged = r.ntn_format_valid === false || r.cnic_format_valid === false;
+    notify(flagged ? "err" : "ok", flagged
+      ? "Document read, but NTN/CNIC format looks invalid — check the numbers."
+      : `Identity verified from upload: ${mapped.name || mapped.ntn || mapped.cnic || "document"}`);
+  }, [notify, onVerify]);
+
   return (
-    <Card title="Verify Business Identity" subtitle="Extract and verify company NTN / CNIC from business document text" testId="biz-doc-verify-card">
+    <Card title="Verify Business Identity" subtitle="Extract and verify company NTN / CNIC from business document text or an uploaded file" testId="biz-doc-verify-card">
+      <div className="page__tabs doc-input-tabs" role="tablist" data-testid="biz-doc-verify-tabs">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={inputTab === "paste"}
+          className={clsx("tab-btn", inputTab === "paste" && "tab-btn--active")}
+          onClick={() => setInputTab("paste")}
+          data-testid="biz-doc-verify-tab-paste"
+        >
+          Paste Text
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={inputTab === "upload"}
+          className={clsx("tab-btn", inputTab === "upload" && "tab-btn--active")}
+          onClick={() => setInputTab("upload")}
+          data-testid="biz-doc-verify-tab-upload"
+        >
+          Upload File
+        </button>
+      </div>
+
+      {inputTab === "paste" ? (
       <form
         className="doc-form"
         onSubmit={(e) => { e.preventDefault(); void submit(); }}
@@ -364,6 +473,15 @@ function VerifySection({
           </Button>
         </div>
       </form>
+      ) : (
+      <div className="doc-upload" data-testid="biz-doc-verify-upload">
+        <FileDrop
+          mode="verify"
+          label="Drop an NTN/CNIC business document (PDF, image, scan) or click to browse"
+          onOutcome={handleVerifyUpload}
+        />
+      </div>
+      )}
 
       {loading ? <Loading label="Extracting identity data…" testId="biz-doc-verify-loading" /> : null}
 

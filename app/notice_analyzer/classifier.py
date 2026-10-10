@@ -41,7 +41,6 @@ FBR Notice Types:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 import re
 
 
@@ -220,14 +219,39 @@ CLASSIFICATION_SIGNALS = {
 }
 
 
+def _category_of(notice_type: NoticeType) -> str:
+    """Category of a notice type, derived from its enum value grouping."""
+    base = re.sub(r"_section_\d+[A-Za-z]?$", "", notice_type.value)
+    return base.replace("_", " ").title()
+
+
+def get_notice_type_catalog() -> dict:
+    """Catalog of notice types, derived from CLASSIFICATION_SIGNALS.
+
+    Totals come from the real signal map, so a notice type without signals is
+    reported as unclassifiable instead of being advertised as supported.
+    """
+    classifiable = [t for t in NoticeType if t in CLASSIFICATION_SIGNALS]
+    unclassifiable = [t for t in NoticeType if t not in CLASSIFICATION_SIGNALS]
+
+    categories: dict[str, list[str]] = {}
+    for notice_type in classifiable:
+        categories.setdefault(_category_of(notice_type), []).append(notice_type.value)
+
+    return {
+        "total": len(classifiable),
+        "notice_types": [t.value for t in classifiable],
+        "unclassifiable_types": [t.value for t in unclassifiable],
+        "categories": categories,
+    }
+
+
 @dataclass
 class ClassificationResult:
     """Result of notice classification."""
     notice_type: NoticeType
     confidence: float  # 0-1
     matched_signals: list[str] = field(default_factory=list)
-    score_breakdown: dict = field(default_factory=dict)
-    secondary_types: list[tuple[NoticeType, float]] = field(default_factory=list)
     is_appealable: bool = False
     is_critical: bool = False
 
@@ -249,20 +273,37 @@ class NoticeClassifier:
         NoticeType.SEIZURE,
     }
 
-    # Notice types that can be appealed
+    # Notice types that can be appealed.
+    # SINGLE SOURCE OF TRUTH: appealability is decided here and nowhere else.
+    # AppealGuideGenerator derives its own is_appealable flag from this set, so
+    # the top-level classification and the appeal guide can never disagree.
     APPEALABLE_TYPES = {
         NoticeType.SHOW_CAUSE_114,
         NoticeType.SHOW_CAUSE_122,
         NoticeType.SHOW_CAUSE_161,
+        NoticeType.SHOW_CAUSE_GENERAL,
         NoticeType.ASSESSMENT_120,
         NoticeType.ASSESSMENT_121,
         NoticeType.ASSESSMENT_122,
+        NoticeType.PROVISIONAL_ASSESSMENT,
+        NoticeType.BEST_JUDGMENT,
+        NoticeType.AMENDED_ASSESSMENT,
+        NoticeType.INTIMATION_143,
+        NoticeType.RECTIFICATION,
+        NoticeType.AMENDMENT,
+        NoticeType.DEMAND_137,
+        NoticeType.RECOVERY_138,
+        NoticeType.ARREARS_NOTICE,
         NoticeType.PENALTY_182,
         NoticeType.PENALTY_184,
-        NoticeType.RECOVERY_138,
-        NoticeType.DEMAND_137,
+        NoticeType.PENALTY_GENERAL,
         NoticeType.AUDIT_214C,
+        NoticeType.PROSECUTION,
     }
+
+    # Signals that are an explicit statutory section reference, e.g. "114(3)"
+    # or "section 122"
+    SECTION_SIGNAL_RE = re.compile(r"^(?:\d+[A-Za-z]?\(\d+[A-Za-z]?\)|section\s+\d+)")
 
     @staticmethod
     def classify(text: str) -> ClassificationResult:
@@ -284,14 +325,15 @@ class NoticeClassifier:
         text_lower = text.lower()
         # Real FBR notices commonly write "u/s 114(4)" / "U/S. 122" —
         # normalize to "section ..." so the section signals match.
-        text_lower = re.sub(r"\bu[./\s]*s\.?\s*", "section ", text_lower)
+        # The lookahead anchors this to a statutory reference, so "U.S." and a
+        # bare "us" are left alone instead of becoming "section".
+        text_lower = re.sub(r"\bu[./\s]*s\.?\s*(?=\d)", "section ", text_lower)
 
         # Score each notice type
-        scores: dict[NoticeType, tuple[float, list[str], dict, list[tuple[str, int]]]] = {}
+        scores: dict[NoticeType, tuple[float, list[str], list[tuple[str, int]]]] = {}
         for notice_type, signals in CLASSIFICATION_SIGNALS.items():
             total_score = 0
             matched = []
-            breakdown = {}
             matched_pairs: list[tuple[str, int]] = []
             for signal, weight in signals:
                 count = text_lower.count(signal.lower())
@@ -307,9 +349,8 @@ class NoticeClassifier:
                     total_score += weight * count
                     matched.append(signal)
                     matched_pairs.append((signal, weight))
-                    breakdown[signal] = count
             if total_score > 0:
-                scores[notice_type] = (total_score, matched, breakdown, matched_pairs)
+                scores[notice_type] = (total_score, matched, matched_pairs)
 
         if not scores:
             return ClassificationResult(
@@ -319,21 +360,20 @@ class NoticeClassifier:
 
         # Sort by score
         sorted_scores = sorted(scores.items(), key=lambda x: x[1][0], reverse=True)
-        top_type, (top_score, top_matched, top_breakdown, top_pairs) = sorted_scores[0]
+        top_type, (_top_score, top_matched, top_pairs) = sorted_scores[0]
 
-        # Confidence: a specific section reference is strong evidence —
-        # start high and add a little for every corroborating signal.
-        # Generic keyword-only matches keep the conservative score/50 scale.
-        if any(w >= 8 for _s, w in top_pairs):
+        # Confidence rule: an explicit statutory section reference ("114(3)",
+        # "section 122") is strong evidence on its own, so start high and add a
+        # little for every corroborating signal. Otherwise MULTIPLE keyword
+        # hits are required for real confidence. A single generic keyword hit
+        # (e.g. only "penalty", only "demand") is weak evidence and is floored
+        # at 0.35 so it cannot drive is_critical / is_appealable / the plan.
+        if any(NoticeClassifier.SECTION_SIGNAL_RE.match(s) for s, _w in top_pairs):
             confidence = min(0.75 + 0.05 * (len(top_pairs) - 1), 0.97)
+        elif len(top_pairs) >= 2:
+            confidence = min(0.4 + 0.1 * (len(top_pairs) - 1), 0.9)
         else:
-            confidence = min(top_score / 50.0, 1.0)
-
-        # Get secondary types
-        secondary = [
-            (t, s[0] / 50.0)
-            for t, s in sorted_scores[1:4]
-        ]
+            confidence = 0.35
 
         is_critical = top_type in NoticeClassifier.CRITICAL_TYPES
         is_appealable = top_type in NoticeClassifier.APPEALABLE_TYPES
@@ -342,8 +382,6 @@ class NoticeClassifier:
             notice_type=top_type,
             confidence=round(confidence, 2),
             matched_signals=top_matched,
-            score_breakdown=top_breakdown,
-            secondary_types=[(t, round(c, 2)) for t, c in secondary],
             is_appealable=is_appealable,
             is_critical=is_critical,
         )

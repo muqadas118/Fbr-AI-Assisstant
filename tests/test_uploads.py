@@ -18,11 +18,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from app.routers.uploads import (
-    MAX_FILE_BYTES,
     _file_family,
     _extract_pdf_text,
     _extract_text,

@@ -11,11 +11,10 @@ For Sole Proprietorships, Partnerships, AOPs:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 from app.calculations.income_tax import (
-    IncomeTaxCalculator, IncomeTaxInput, IncomeTaxResult,
-    FilingStatus, TaxYear, BUSINESS_SLABS_TY2025, BUSINESS_SLABS_TY2024
+    IncomeTaxCalculator, IncomeTaxInput,
+    FilingStatus, TaxYear
 )
 
 
@@ -46,6 +45,13 @@ PTR_RATES_TY2025 = {
 PTR_TURNOVER_LIMITS = {
     "goods": 100_000_000,    # 100M for goods
     "services": 50_000_000,  # 50M for services
+}
+
+# Presumptive rates per tax year. Only tabulated years are listed, so a
+# year without a table raises instead of silently borrowing another
+# year's rates.
+PTR_RATES_BY_YEAR: dict[TaxYear, dict] = {
+    TaxYear.TY_2025: PTR_RATES_TY2025,
 }
 
 # Turnover-based regime (Section 113) for small retailers
@@ -88,6 +94,9 @@ class BusinessTaxResult:
     tax_credits_applied: float
     tax_payable: float
     effective_tax_rate: float
+    # Year whose slabs produced every figure below, so a caller can tell
+    # which Finance Act schedule was applied without echoing the inputs.
+    tax_year: TaxYear
     slab_breakdown: list[dict] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
@@ -159,7 +168,16 @@ class BusinessTaxCalculator:
             if not eligible:
                 raise ValueError(f"PTR not applicable: {reason}")
 
-            rate = PTR_RATES_TY2025.get(inp.business_category, 1.0)
+            # Per-year PTR rates: a tax year without a tabulated table
+            # raises instead of silently substituting another year's.
+            ptr_rates = PTR_RATES_BY_YEAR.get(inp.tax_year)
+            if ptr_rates is None:
+                raise ValueError(
+                    f"No Presumptive Tax Regime (Section 100A) rates defined for tax year "
+                    f"{inp.tax_year.value}. Supported: "
+                    f"{', '.join(y.value for y in PTR_RATES_BY_YEAR)}."
+                )
+            rate = ptr_rates.get(inp.business_category, 1.0)
             tax_payable = inp.annual_turnover * (rate / 100)
             tax_payable = round(tax_payable, 2)
 
@@ -176,6 +194,7 @@ class BusinessTaxCalculator:
                 tax_credits_applied=0,
                 tax_payable=tax_payable,
                 effective_tax_rate=round(effective_rate, 2),
+                tax_year=inp.tax_year,
                 slab_breakdown=[{
                     "type": "presumptive",
                     "rate": f"{rate}%",
@@ -249,7 +268,7 @@ class BusinessTaxCalculator:
                     tier3_tax = remaining_turnover * tier3_rate
                     tax += tier3_tax
                     tier_breakdown.append({
-                        "tier": f"Tier 3 (above 200M)",
+                        "tier": "Tier 3 (above 200M)",
                         "amount": remaining_turnover,
                         "rate": "25%",
                         "tax": round(tier3_tax, 2),
@@ -265,6 +284,7 @@ class BusinessTaxCalculator:
                 tax_credits_applied=0,
                 tax_payable=tax,
                 effective_tax_rate=round(effective_rate, 2),
+                tax_year=inp.tax_year,
                 slab_breakdown=tier_breakdown,
                 notes=notes + ["Turnover-based regime (Section 113) for small retailers"],
                 sources=sources,
@@ -306,6 +326,7 @@ class BusinessTaxCalculator:
             tax_credits_applied=income_result.tax_credits_applied,
             tax_payable=income_result.tax_after_credits,
             effective_tax_rate=income_result.effective_tax_rate,
+            tax_year=inp.tax_year,
             slab_breakdown=income_result.slab_breakdown,
             notes=notes + income_result.notes,
             sources=sources + income_result.sources,
@@ -316,17 +337,18 @@ class BusinessTaxCalculator:
     def format_result(result: BusinessTaxResult, currency: str = "PKR") -> str:
         """Format result as human-readable string."""
         lines = [
-            f"=== Business Tax Calculation (FBR Compliant) ===",
+            "=== Business Tax Calculation (FBR Compliant) ===",
+            f"Tax Year: {result.tax_year.value}",
             f"Regime: {result.regime_applied.upper()}",
-            f"",
-            f"--- Tax Computation ---",
+            "",
+            "--- Tax Computation ---",
             f"Taxable Income/Base:     {currency} {result.taxable_income:>15,.2f}",
             f"Tax Before Credits:      {currency} {result.tax_before_credits:>15,.2f}",
             f"Tax Credits:             {currency} {result.tax_credits_applied:>15,.2f}",
             f"Tax Payable:             {currency} {result.tax_payable:>15,.2f}",
             f"Effective Tax Rate:      {result.effective_tax_rate:>14.2f}%",
-            f"",
-            f"--- Breakdown ---",
+            "",
+            "--- Breakdown ---",
         ]
         for i, item in enumerate(result.slab_breakdown, 1):
             if "tier" in item:
@@ -348,12 +370,12 @@ class BusinessTaxCalculator:
                     f"Tax={currency} {item['tax']:>10,.2f}"
                 )
 
-        lines.append(f"")
-        lines.append(f"--- Notes ---")
+        lines.append("")
+        lines.append("--- Notes ---")
         for note in result.notes:
             lines.append(f"  • {note}")
-        lines.append(f"")
-        lines.append(f"--- Sources ---")
+        lines.append("")
+        lines.append("--- Sources ---")
         for src in result.sources:
             lines.append(f"  📄 {src}")
         return "\n".join(lines)

@@ -421,7 +421,7 @@ class DocumentClassifier:
             return DocumentType.CASH_RECEIPT
         if "salary" in fn_lower or "payslip" in fn_lower:
             return DocumentType.SALARY_SLIP
-        if "itr" in fn_lower or "income" in fn_lower and "return" in fn_lower:
+        if "itr" in fn_lower or ("income" in fn_lower and "return" in fn_lower):
             return DocumentType.INCOME_TAX_RETURN
         if "16a" in fn_lower:
             return DocumentType.FORM_16A

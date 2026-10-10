@@ -720,6 +720,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--s-3);
   margin-top: var(--s-5);
+  width: min(560px, 100%);
 }
 
 @media (max-width: 700px) {
@@ -1038,48 +1039,53 @@
 }
 .chat__chips-toggle:hover { background: var(--c-primary-soft); }
 
-/* Empty state — crest-adjacent calm invitation, gold-ringed medallion. */
+/* Empty state — ChatGPT-style: centered product title + composer below. */
 .chat__empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  text-align: center;
   margin: auto 0;
   padding: var(--s-8) var(--s-5);
   animation: chat-bubble-in 520ms var(--ease-out-expo) both;
 }
-.chat__empty-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 1.5px solid var(--fbr-gold);
-  background: var(--c-gold-soft);
-  color: var(--c-gold-2);
-  margin-bottom: var(--s-3);
-}
 .chat__empty-title {
   font-family: var(--f-display);
-  font-size: 17px;
-  margin: 0 0 var(--s-2);
+  font-size: 30px;
+  font-weight: 600;
+  margin: 0 0 var(--s-3);
   color: var(--c-text);
+  text-align: center;
 }
 .chat__empty-text {
   max-width: 52ch;
-  margin: 0;
+  margin: 0 0 var(--s-5);
   font-size: 13.5px;
   color: var(--c-text-muted);
+  text-align: center;
 }
 
-/* Conversation head (count + clear) inside the chat panel. */
-.chat__head-label {
-  font-size: 12px;
-  font-weight: 600;
+/* Side "clear conversation" button — small, top-right corner of the chat. */
+.chat__clear-side {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--c-line);
+  border-radius: 8px;
+  background: var(--c-surface);
   color: var(--c-text-muted);
-  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background var(--t-fast) ease, color var(--t-fast) ease, border-color var(--t-fast) ease;
 }
+.chat__clear-side:hover { background: var(--c-paper-2); color: var(--c-text); border-color: var(--c-line-strong); }
+.chat__clear-side:focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }
 
 /* Reduced motion: show answers instantly, no caret, no entrance,
    static thinking dots (no bounce / shimmer). */
@@ -1864,4 +1870,277 @@
   background: color-mix(in srgb, var(--c-surface) 92%, var(--fbr-gold) 8%);
   max-height: 420px;
   overflow: auto;
+}
+
+/* ── Personalization: "For you" panel (Settings route still opens it) ── */
+
+.pers {
+  margin: var(--s-3) var(--s-4);
+  padding: var(--s-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: var(--c-surface);
+  display: grid;
+  gap: var(--s-4);
+}
+
+.pers__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.pers__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+
+.pers__subtitle,
+.pers__loading,
+.pers__empty {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--c-text-muted);
+}
+
+.pers__close {
+  border: 0;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.pers__close:hover { background: var(--c-paper-2); color: var(--c-text); }
+
+.pers__toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.pers__state {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--c-primary);
+  white-space: nowrap;
+}
+
+.pers__profile { display: grid; gap: var(--s-3); }
+
+.pers__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  font-size: 12.5px;
+}
+
+.pers__stat { font-weight: 600; color: var(--c-text); }
+.pers__stat--muted { font-weight: 400; color: var(--c-text-muted); }
+
+.pers__domains {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.pers__domain {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 3fr auto;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 12.5px;
+}
+
+.pers__domain-name { color: var(--c-text); font-weight: 600; }
+
+.pers__domain-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--c-paper-2);
+  overflow: hidden;
+}
+
+.pers__domain-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--c-primary), var(--fbr-gold));
+}
+
+.pers__domain-score { color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
+
+.pers__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--c-text-muted);
+}
+
+.pers__danger { border-top: 1px solid var(--c-line); padding-top: var(--s-3); }
+
+.pers__confirm { display: grid; gap: var(--s-2); }
+
+.pers__confirm-text {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--c-err);
+}
+
+.pers__confirm-actions { display: flex; gap: var(--s-2); }
+
+/* ── Recommendation strip under an assistant answer ─────────────────── */
+
+.recs {
+  margin: 0 0 var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: color-mix(in srgb, var(--c-surface) 94%, var(--fbr-gold) 6%);
+  display: grid;
+  gap: var(--s-2);
+}
+
+.recs__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.recs__title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-primary);
+}
+
+.recs__hint { font-size: 11.5px; color: var(--c-text-muted); }
+
+.recs__list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s-3); }
+
+.recs__item { display: flex; gap: var(--s-2); }
+
+.recs__icon { font-size: 16px; line-height: 1.4; }
+
+.recs__body { display: grid; gap: 2px; min-width: 0; }
+
+.recs__meta { display: flex; align-items: center; gap: var(--s-2); }
+
+.recs__kind {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-primary);
+}
+
+.recs__priority {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: var(--c-paper-2);
+  color: var(--c-text-muted);
+}
+.recs__priority--high,
+.recs__priority--critical { background: var(--c-gold-soft); color: var(--c-err); }
+
+.recs__item-title { margin: 0; font-size: 13.5px; font-weight: 700; color: var(--c-text); }
+.recs__text { margin: 0; font-size: 12.5px; color: var(--c-text-muted); }
+
+.recs__actions { display: flex; align-items: center; gap: var(--s-2); margin-top: 4px; }
+
+.recs__action {
+  border: 1px solid var(--c-line-strong);
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: var(--c-surface);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-primary);
+  cursor: pointer;
+}
+.recs__action:hover { border-color: var(--c-primary); background: var(--c-primary-soft); }
+
+.recs__dismiss {
+  border: 0;
+  background: transparent;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  border-radius: 6px;
+}
+.recs__dismiss:hover:not(:disabled) { color: var(--c-err); background: var(--c-paper-2); }
+.recs__dismiss:disabled { opacity: 0.5; cursor: default; }
+
+/* Urdu answers read right-to-left with a right-aligned text block. */
+.chat__bubble--rtl {
+  text-align: right;
+}
+.chat__bubble--rtl .chat__answer,
+.chat__bubble--rtl .chat__answer p {
+  text-align: right;
+}
+.chat__bubble--rtl .chat__answer ul,
+.chat__bubble--rtl .chat__answer ol {
+  padding-left: 0;
+  padding-right: 1.4em;
+}
+
+/* ── Daily quota: low-budget nudge + exhausted composer banner ────────── */
+
+/* ChatGPT-style nudge shown only when the daily budget is nearly spent
+   (no permanent counter in the header). */
+.chat__quota-hint {
+  margin: 0 0 var(--s-2);
+  font-size: 11.5px;
+  color: var(--c-text-muted);
+}
+.chat__quota-hint-reset { color: var(--c-text-muted); opacity: 0.75; }
+
+/* Inline "daily message limit reached" notice above the composer. */
+.chat__quota-banner {
+  margin: 0 0 var(--s-2);
+  padding: 8px 12px;
+  border: 1px solid rgba(138, 98, 0, 0.25);
+  border-radius: 10px;
+  background: var(--c-warn-soft);
+  color: var(--c-warn);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* ── Assistant page: exactly one scrollbar (ChatGPT-style) ────────────── */
+
+/* Every other page keeps its normal document scrolling. On the assistant
+   page the container becomes a fixed-height flex column, the page header
+   collapses once the conversation starts, and ONLY the message list scrolls
+   — so a second (nested) scrollbar can never appear. */
+@media (min-width: 881px) {
+  .app-main:has(.page--assistant) { overflow: hidden; }
+  .app-main:has(.page--assistant) .app-main__inner { height: 100%; }
+  .page--assistant {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .page--assistant .page__header { flex: 0 0 auto; margin-bottom: var(--s-4); }
+  .page--assistant .chat {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 420px;
+  }
 }

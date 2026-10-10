@@ -11,12 +11,25 @@ import os
 import threading
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger("multi_user")
+
+
+def _utcnow() -> datetime:
+    """Timezone-aware UTC now (datetime.utcnow is deprecated in 3.12+)."""
+    return datetime.now(timezone.utc)
+
+
+def _parse_iso(value: str) -> datetime:
+    """Parse an ISO-8601 timestamp; naive values are treated as UTC."""
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 class UserRole(str, Enum):
@@ -52,7 +65,7 @@ class User:
 
     def __post_init__(self):
         if not self.created_at:
-            self.created_at = datetime.utcnow().isoformat()
+            self.created_at = _utcnow().isoformat()
         if isinstance(self.role, str):
             self.role = UserRole(self.role)
 
@@ -157,6 +170,10 @@ class UserManager:
 
     def _load(self) -> None:
         """Hydrate the store from disk; tolerate missing/corrupt files."""
+        with self._lock:
+            self._load_locked()
+
+    def _load_locked(self) -> None:
         try:
             if not self.store_path.exists():
                 return
@@ -206,6 +223,10 @@ class UserManager:
 
     def _save(self) -> None:
         """Flush the whole store to disk (atomic-ish via tmp + replace)."""
+        with self._lock:
+            self._save_locked()
+
+    def _save_locked(self) -> None:
         payload = {
             "users": [
                 {**asdict(u), "role": u.role.value}
@@ -234,31 +255,32 @@ class UserManager:
         phone: Optional[str] = None,
     ) -> User:
         """Create a new user."""
-        if email in self.email_index:
-            raise ValueError(f"User with email {email} already exists")
+        with self._lock:
+            if email.lower() in self.email_index:
+                raise ValueError(f"User with email {email} already exists")
 
-        user = User(
-            id=str(uuid.uuid4()),
-            email=email.lower(),
-            name=name,
-            role=role,
-            password_hash=password_hash,
-            ntn=ntn,
-            cnic=cnic,
-            organization=organization,
-            phone=phone,
-        )
-        self.users[user.id] = user
-        self.email_index[user.email] = user.id
+            user = User(
+                id=str(uuid.uuid4()),
+                email=email.lower(),
+                name=name,
+                role=role,
+                password_hash=password_hash,
+                ntn=ntn,
+                cnic=cnic,
+                organization=organization,
+                phone=phone,
+            )
+            self.users[user.id] = user
+            self.email_index[user.email] = user.id
 
-        # Create default profile and settings
-        self.profiles[user.id] = UserProfile(user_id=user.id)
-        self.settings[user.id] = UserSettings(user_id=user.id)
+            # Create default profile and settings
+            self.profiles[user.id] = UserProfile(user_id=user.id)
+            self.settings[user.id] = UserSettings(user_id=user.id)
 
-        self._log_action(user.id, "user.created", "user", user.id)
-        self._save()
-        logger.info(f"User created: {email} ({role.value})")
-        return user
+            self._log_action(user.id, "user.created", "user", user.id)
+            self._save_locked()
+            logger.info(f"User created: {email} ({role.value})")
+            return user
 
     def get_user(self, user_id: str) -> Optional[User]:
         """Get user by ID."""
@@ -273,36 +295,39 @@ class UserManager:
 
     def update_user(self, user_id: str, **updates) -> Optional[User]:
         """Update user fields."""
-        user = self.users.get(user_id)
-        if not user:
-            return None
+        with self._lock:
+            user = self.users.get(user_id)
+            if not user:
+                return None
 
-        for key, value in updates.items():
-            if hasattr(user, key) and key not in ("id", "email"):
-                setattr(user, key, value)
+            for key, value in updates.items():
+                if hasattr(user, key) and key not in ("id", "email"):
+                    setattr(user, key, value)
 
-        self._log_action(user_id, "user.updated", "user", user_id)
-        self._save()
-        return user
+            self._log_action(user_id, "user.updated", "user", user_id)
+            self._save_locked()
+            return user
 
     def delete_user(self, user_id: str) -> bool:
         """Delete (deactivate) a user."""
-        user = self.users.get(user_id)
-        if not user:
-            return False
+        with self._lock:
+            user = self.users.get(user_id)
+            if not user:
+                return False
 
-        user.is_active = False
-        self._log_action(user_id, "user.deleted", "user", user_id)
-        self._save()
-        return True
+            user.is_active = False
+            self._log_action(user_id, "user.deleted", "user", user_id)
+            self._save_locked()
+            return True
 
     def record_login(self, user_id: str) -> None:
         """Record a successful login."""
-        user = self.users.get(user_id)
-        if user:
-            user.last_login_at = datetime.utcnow().isoformat()
-            self._log_action(user_id, "user.login", "session", None)
-            self._save()
+        with self._lock:
+            user = self.users.get(user_id)
+            if user:
+                user.last_login_at = _utcnow().isoformat()
+                self._log_action(user_id, "user.login", "session", None)
+                self._save_locked()
 
     def get_profile(self, user_id: str) -> Optional[UserProfile]:
         """Get user profile."""
@@ -310,18 +335,19 @@ class UserManager:
 
     def update_profile(self, user_id: str, **updates) -> Optional[UserProfile]:
         """Update user profile."""
-        profile = self.profiles.get(user_id)
-        if not profile:
-            profile = UserProfile(user_id=user_id)
-            self.profiles[user_id] = profile
+        with self._lock:
+            profile = self.profiles.get(user_id)
+            if not profile:
+                profile = UserProfile(user_id=user_id)
+                self.profiles[user_id] = profile
 
-        for key, value in updates.items():
-            if hasattr(profile, key):
-                setattr(profile, key, value)
+            for key, value in updates.items():
+                if hasattr(profile, key):
+                    setattr(profile, key, value)
 
-        self._log_action(user_id, "profile.updated", "user_profile", user_id)
-        self._save()
-        return profile
+            self._log_action(user_id, "profile.updated", "user_profile", user_id)
+            self._save_locked()
+            return profile
 
     def get_settings(self, user_id: str) -> Optional[UserSettings]:
         """Get user settings."""
@@ -329,18 +355,19 @@ class UserManager:
 
     def update_settings(self, user_id: str, **updates) -> Optional[UserSettings]:
         """Update user settings."""
-        settings = self.settings.get(user_id)
-        if not settings:
-            settings = UserSettings(user_id=user_id)
-            self.settings[user_id] = settings
+        with self._lock:
+            settings = self.settings.get(user_id)
+            if not settings:
+                settings = UserSettings(user_id=user_id)
+                self.settings[user_id] = settings
 
-        for key, value in updates.items():
-            if hasattr(settings, key):
-                setattr(settings, key, value)
+            for key, value in updates.items():
+                if hasattr(settings, key):
+                    setattr(settings, key, value)
 
-        self._log_action(user_id, "settings.updated", "user_settings", user_id)
-        self._save()
-        return settings
+            self._log_action(user_id, "settings.updated", "user_settings", user_id)
+            self._save_locked()
+            return settings
 
     def list_users(
         self,
@@ -387,7 +414,7 @@ class UserManager:
             resource_type=resource_type,
             resource_id=resource_id,
             details=details or {},
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=_utcnow().isoformat(),
         )
         self.audit_log.append(entry)
 

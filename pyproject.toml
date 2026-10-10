@@ -1,0 +1,18 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Rule set: the classic Ruff defaults (pycodestyle errors E4/E7/E9 + pyflakes F).
+# Ruff >= 0.16 ships a much broader built-in default (pyupgrade, isort,
+# flake8-blind-except, datetime, refurb, ...) that would flag ~1385 findings in
+# this repo; pinning the classic set keeps this cleanup minimal and
+# behaviour-preserving. Broader rule families can be adopted incrementally in
+# follow-up changes.
+# E501 (line length) is intentionally NOT selected: line-length above is only a
+# formatter target, and existing long lines are left untouched.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# E402: standalone scripts insert the project root into sys.path at module level before importing app.* / sibling script modules, so those imports cannot move above the bootstrap without breaking `python scripts/<name>.py`.
+"scripts/*.py" = ["E402"]

@@ -5,11 +5,11 @@ Tax Health API - Production-Grade
 High-level API for tax health operations.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
-from app.tax_health.health_engine import TaxHealthEngine, TaxHealthProfile, HealthIssue, IssueSeverity
-from app.tax_health.risk_analyzer import RiskAnalyzer, RiskFactor
+from app.tax_health.health_engine import TaxHealthEngine, TaxHealthProfile
+from app.tax_health.risk_analyzer import RiskAnalyzer
 from app.tax_health.penalty_calculator import PenaltyCalculator
 
 
@@ -22,15 +22,36 @@ class TaxHealthAPI:
         self.risk_analyzer = RiskAnalyzer()
         self.penalty_calculator = PenaltyCalculator()
 
-    def run_health_check(self, ntn: str, tax_year: int = 2024) -> dict:
-        """Run full health check (requires data to be provided externally)."""
-        # In production, this would pull data from user's records
-        # For now, returns template with placeholders
+    def run_health_check(
+        self,
+        ntn: str,
+        tax_year: int = 2024,
+        data: Optional[dict] = None,
+    ) -> dict:
+        """
+        Run a health check.
+
+        Without filing/payment data there is nothing to analyse, so this
+        returns an explicit insufficient-data result instead of a placeholder
+        that reads like a completed check (the previous "pending_data"
+        template was reported to users as "Tax health checked", ok=True).
+
+        When the caller supplies `data`, the check is computed for real via
+        analyze_with_data() - the same path POST /tax/health/check uses.
+        """
+        if data:
+            return self.analyze_with_data({"ntn": ntn, "tax_year": tax_year, **data})
+
         return {
             "ntn": ntn,
             "tax_year": tax_year,
-            "status": "pending_data",
-            "message": "Please provide your tax data for health analysis",
+            "status": "insufficient_data",
+            "ok": False,
+            "message": (
+                "No tax data was supplied, so no health score was calculated. "
+                "Provide the fields in required_fields (or POST /tax/health/check) "
+                "to get a real result."
+            ),
             "required_fields": [
                 "itr_filed", "itr_filing_date", "declared_income",
                 "tax_assessed", "tax_paid", "wht_collected",
@@ -140,6 +161,10 @@ class TaxHealthAPI:
             st_shortfall=data.get("st_shortfall", 0),
             estimated_income=data.get("estimated_income", 0),
             declared_income=data.get("declared_income", 0),
+            # Passed through explicitly: RiskAnalyzer used to default this to
+            # 5 years, which made the new-business risk (RISK008) unreachable
+            # because no caller ever supplied a real age.
+            business_age_years=data.get("business_age_years"),
         )
         overall_level, overall_score = self.risk_analyzer.get_overall_risk(factors)
 

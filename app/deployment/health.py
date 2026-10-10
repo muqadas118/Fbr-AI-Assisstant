@@ -7,7 +7,6 @@ Liveness, readiness, and component health monitoring.
 
 import logging
 import time
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -150,7 +149,6 @@ class HealthChecker:
     def _check_system() -> ComponentHealth:
         """Check system resource usage."""
         try:
-            import os
             import psutil  # type: ignore
             cpu = psutil.cpu_percent(interval=0.1)
             mem = psutil.virtual_memory()

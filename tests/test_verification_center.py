@@ -11,11 +11,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import unittest
 
 from app.verification_center import (
-    NTNVerifier, NTNStatus, get_ntn_verifier,
-    FilerStatusChecker, FilerStatus, get_filer_status_checker,
-    BusinessVerifier, RegistrationType, get_business_verifier,
-    VerificationAPI, get_verification_api,
-    VerificationRequest, VerificationResponse,
+    NTNVerifier, NTNStatus, FilerStatusChecker, FilerStatus, BusinessVerifier, RegistrationType, get_verification_api,
+    VerificationRequest,
 )
 
 
@@ -26,7 +23,8 @@ class TestNTNVerifier(unittest.TestCase):
         self.verifier = NTNVerifier()
 
     def test_valid_format(self):
-        result = self.verifier.verify("1234567-8")
+        # Contract (app/common/unavailable.py): 7 or 9 digits.
+        result = self.verifier.verify("123456-7")
         self.assertIn(result.status, [
             NTNStatus.ACTIVE, NTNStatus.SUSPENDED,
             NTNStatus.BLOCKED, NTNStatus.INACTIVE,
@@ -41,26 +39,32 @@ class TestNTNVerifier(unittest.TestCase):
         result = self.verifier.verify("12345")
         self.assertEqual(result.status, NTNStatus.INVALID_FORMAT)
 
+    def test_eight_digit_ntn_rejected(self):
+        # 8-digit NTNs are not part of the documented contract.
+        result = self.verifier.verify("1234567-8")
+        self.assertEqual(result.status, NTNStatus.INVALID_FORMAT)
+        self.assertFalse(result.is_valid)
+
     def test_active_ntn(self):
         # Use NTN ending in 1 (ACTIVE per simulation)
-        result = self.verifier.verify("1234567-1")
+        result = self.verifier.verify("123456-1")
         self.assertEqual(result.status, NTNStatus.ACTIVE)
         self.assertTrue(result.is_valid)
         self.assertIsNotNone(result.name)
 
     def test_suspended_ntn(self):
-        result = self.verifier.verify("1234567-3")
+        result = self.verifier.verify("123456-3")
         self.assertEqual(result.status, NTNStatus.SUSPENDED)
         self.assertFalse(result.is_valid)
 
     def test_caching(self):
-        result1 = self.verifier.verify("1234567-8")
-        result2 = self.verifier.verify("1234567-8")
+        result1 = self.verifier.verify("123456-8")
+        result2 = self.verifier.verify("123456-8")
         # Should be same instance due to cache
         self.assertIs(result1, result2)
 
     def test_bulk_verify(self):
-        results = self.verifier.bulk_verify(["1234567-1", "1234567-2", "1234567-3"])
+        results = self.verifier.bulk_verify(["123456-1", "123456-2", "123456-3"])
         self.assertEqual(len(results), 3)
 
 
@@ -89,8 +93,10 @@ class TestFilerStatusChecker(unittest.TestCase):
         self.assertTrue(info.is_atl)
 
     def test_check_by_cnic(self):
+        # A CNIC is never resolved to a fabricated NTN/filing history.
         info = self.checker.check_by_cnic("12345-1234567-1")
-        self.assertIn(info.status, [FilerStatus.FILER, FilerStatus.NON_FILER])
+        self.assertEqual(info.status, FilerStatus.UNKNOWN)
+        self.assertEqual(info.ntn, "")
 
     def test_invalid_cnic(self):
         info = self.checker.check_by_cnic("12345")

@@ -8,7 +8,7 @@ production-grade results with full audit trail.
 
 Usage:
     engine = TaxCalculationEngine()
-    result = engine.calculate("salary", {...input...})
+    result = engine.calculate("salary_tax", {...input...})
 """
 
 import logging
@@ -264,6 +264,25 @@ class TaxCalculationEngine:
                 error=error_msg,
             )
 
+    @staticmethod
+    def _coerce_tax_year(value: Any) -> TaxYear:
+        """
+        Coerce a raw JSON tax_year (int/str/None) into TaxYear.
+
+        TaxYear members are string-valued ("2024"|"2025"|"2026"), so a JSON
+        number (e.g. 2025) fails the enum value lookup. Coerce to str first
+        and raise a clear error naming the supported years otherwise.
+        """
+        if value is not None:
+            try:
+                return TaxYear(str(value))
+            except ValueError:
+                pass
+        supported = ", ".join(y.value for y in TaxYear)
+        raise ValueError(
+            f"{value!r} is not a valid tax_year. Supported years: {supported}."
+        )
+
     def _calc_income_tax(self, inputs: dict) -> tuple[IncomeTaxResult, str]:
         """Route to Income Tax Calculator."""
         # Parse filing_status
@@ -271,8 +290,7 @@ class TaxCalculationEngine:
         filing_status = FilingStatus(filing_status_str)
 
         # Parse tax_year
-        tax_year_str = inputs.get("tax_year", "2025")
-        tax_year = TaxYear(tax_year_str)
+        tax_year = self._coerce_tax_year(inputs.get("tax_year", "2025"))
 
         # Build input
         income_input = IncomeTaxInput(
@@ -295,8 +313,7 @@ class TaxCalculationEngine:
 
     def _calc_salary_tax(self, inputs: dict) -> tuple[SalaryTaxResult, str]:
         """Route to Salary Tax Calculator."""
-        tax_year_str = inputs.get("tax_year", "2025")
-        tax_year = TaxYear(tax_year_str)
+        tax_year = self._coerce_tax_year(inputs.get("tax_year", "2025"))
 
         salary_input = SalaryTaxInput(
             basic_salary=float(inputs.get("basic_salary", 0)),
@@ -326,8 +343,7 @@ class TaxCalculationEngine:
 
     def _calc_business_tax(self, inputs: dict) -> tuple[BusinessTaxResult, str]:
         """Route to Business Tax Calculator."""
-        tax_year_str = inputs.get("tax_year", "2025")
-        tax_year = TaxYear(tax_year_str)
+        tax_year = self._coerce_tax_year(inputs.get("tax_year", "2025"))
         business_type = BusinessType(inputs.get("business_type", "individual_business"))
         tax_regime = TaxRegime(inputs.get("tax_regime", "normal"))
 
@@ -363,10 +379,8 @@ class TaxCalculationEngine:
             purchases_category=inputs.get("purchases_category", "standard"),
             import_value=float(inputs.get("import_value", 0)),
             import_category=inputs.get("import_category", "standard"),
-            customs_duty=float(inputs.get("customs_duty", 0)),
             is_export=bool(inputs.get("is_export", False)),
             is_exempt=bool(inputs.get("is_exempt", False)),
-            is_retail_supplier=bool(inputs.get("is_retail_supplier", False)),
             service_category=inputs.get("service_category", "general"),
             is_federal_service=bool(inputs.get("is_federal_service", False)),
         )
@@ -380,11 +394,22 @@ class TaxCalculationEngine:
         section = WHTSection(inputs.get("section", "150_dividend"))
         filer_status = FilerStatus(inputs.get("filer_status", "filer"))
 
+        # Only coerce when the caller actually sent a year: WHTInput's own
+        # default tracks the current year, so injecting a fixed one here would
+        # pin year-less callers to a stale schedule (Section 149 salary WHT was
+        # hardcoded to TY_2025 that way).
+        year_kwargs = (
+            {"tax_year": self._coerce_tax_year(inputs["tax_year"])}
+            if inputs.get("tax_year") is not None
+            else {}
+        )
+
         wht_input = WHTInput(
             section=section,
             filer_status=filer_status,
             transaction_amount=float(inputs.get("transaction_amount", 0)),
             description=inputs.get("description", ""),
+            **year_kwargs,
         )
 
         result = WithholdingTaxCalculator.calculate(wht_input)
@@ -425,9 +450,8 @@ class TaxCalculationEngine:
 
     def _calc_property(self, inputs: dict) -> tuple[PropertyTaxResult, str]:
         """Route to Property Tax Calculator."""
-        from app.calculations.property_tax import PropertyType as PT
-        prop_type = PT(inputs.get("property_type", "residential"))
-        tax_year = TaxYear(inputs.get("tax_year", "2025"))
+        prop_type = PropertyType(inputs.get("property_type", "residential"))
+        tax_year = self._coerce_tax_year(inputs.get("tax_year", "2025"))
         filing_status = FilingStatus(inputs.get("filing_status", "individual"))
 
         prop_input = PropertyTaxInput(
@@ -486,9 +510,12 @@ class TaxCalculationEngine:
     def _calc_custom(self, inputs: dict) -> tuple[CustomCalcResult, str]:
         """Route to Custom Calculator."""
         if "expression" in inputs:
+            # Advertised calc types are derived from the enum so the
+            # message can never drift from the supported values.
+            valid_types = "|".join(t.value for t in CustomCalcType)
             raise ValueError(
                 "custom_calc does not evaluate free-form expressions. "
-                "Use calc_type (percentage|penalty|compound_interest|conditional_threshold) "
+                f"Use calc_type ({valid_types}) "
                 "with base_value, rate, principal, days_late, monthly_rate or periods."
             )
         calc_type = CustomCalcType(inputs.get("calc_type", "percentage"))

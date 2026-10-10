@@ -9,7 +9,6 @@ The dev/prod database split documented in CLAUDE.md is SQLite -> PostgreSQL;
 this module isolates all SQL so a PostgreSQL adapter can replace it later.
 """
 
-import json
 import logging
 import os
 import sqlite3

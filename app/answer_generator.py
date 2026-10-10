@@ -11,10 +11,10 @@ plus the retriever context helpers and the interactive CLI.
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
 from app.hybrid_retriever import FBRHybridRetriever
+from app.language import resolve_language
 from app.llm import generate_answer
 
 # Canonical verification owner — re-exported wholesale for parity.
@@ -186,13 +186,19 @@ def main() -> None:
         print("\nQuestion cannot be empty.")
         return
 
-    MAX_QUESTION_LENGTH = 10000
+    # Canonical cap shared with app.rag_engine (MAX_QUESTION_LENGTH).
+    # Imported lazily because rag_engine imports this module.
+    from app.rag_engine import MAX_QUESTION_LENGTH
+
     if len(question) > MAX_QUESTION_LENGTH:
         print(
             f"\nQuestion exceeds maximum allowed length "
             f"of {MAX_QUESTION_LENGTH} characters."
         )
         return
+
+    # Mirror the question's language/script in the CLI answer too.
+    language = resolve_language(question)
 
     print()
     print_separator()
@@ -244,7 +250,7 @@ def main() -> None:
     print_separator()
 
     try:
-        answer = generate_answer(question, context)
+        answer = generate_answer(question, context, language=language)
     except (OSError, RuntimeError, ValueError) as e:
         print("\nLLM ERROR: The answer could not be generated safely.")
         print(f"Reason: {e}")
@@ -255,7 +261,9 @@ def main() -> None:
     print("ANSWER VERIFICATION")
     print_separator()
 
-    verification = verify_answer(question=question, answer=answer, context=context)
+    verification = verify_answer(
+        question=question, answer=answer, context=context, language=language
+    )
 
     for name, result in verification.get("checks", {}).items():
         status = "PASS" if result.get("passed") else "FAIL"

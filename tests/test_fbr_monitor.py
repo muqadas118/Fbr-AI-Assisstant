@@ -11,11 +11,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import unittest
 
 from app.fbr_monitor import (
-    FBRMonitor, FBRMonitorEvent, FBRMonitorConfig,
+    FBRMonitorConfig,
     EventType, EventSeverity, EventStatus,
-    WebhookManager, WebhookEndpoint, WebhookEvent,
-    FBRMonitorAPI, get_fbr_monitor_api,
-    MonitorSubscription, MonitorAlert,
 )
 
 

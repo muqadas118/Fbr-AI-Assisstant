@@ -90,13 +90,12 @@ describe("AssistantPage", () => {
 
   it("renders the assistant interface", () => {
     renderWithRouter(<AssistantPage />);
-    expect(screen.getByText("AI Tax Assistant")).toBeInTheDocument();
     expect(screen.getByTestId("assistant-input")).toBeInTheDocument();
     expect(screen.getByTestId("assistant-form")).toBeInTheDocument();
     expect(screen.getByTestId("assistant-empty")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "No questions yet. Ask anything about FBR tax, filing obligations, notice types, or compliance timelines — or attach a document and let the AI analyze it.",
+        "Ask anything about FBR tax, filing obligations, notice types, or compliance timelines — or attach a document and let the AI analyze it.",
       ),
     ).toBeInTheDocument();
   });
@@ -385,7 +384,7 @@ describe("AssistantPage", () => {
   it("shows empty state when no messages", () => {
     renderWithRouter(<AssistantPage />);
     expect(screen.getByTestId("assistant-messages")).toBeInTheDocument();
-    expect(screen.getByText(/No questions yet/)).toBeInTheDocument();
+    expect(screen.getByText(/FBR AI Assistant/)).toBeInTheDocument();
   });
 
   it("shows domain information in response", async () => {

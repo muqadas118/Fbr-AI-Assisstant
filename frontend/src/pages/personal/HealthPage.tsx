@@ -231,7 +231,7 @@ function HealthCheckTab() {
       setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
     };
 
-  const validate = (): boolean => {
+  const validate = useCallback((): boolean => {
     const errs: Record<string, string> = {};
     if (!form.ntn.trim()) errs.ntn = "NTN is required";
     if (!form.taxYear.trim()) errs.taxYear = "Tax year is required";
@@ -239,7 +239,7 @@ function HealthCheckTab() {
     if (isNaN(yr) || yr < 2000 || yr > 2100) errs.taxYear = "Enter a valid tax year";
     setErrors(errs);
     return Object.keys(errs).length === 0;
-  };
+  }, [form]);
 
   const submit = useCallback(async () => {
     if (!validate()) return;
@@ -271,7 +271,7 @@ function HealthCheckTab() {
     } finally {
       setLoading(false);
     }
-  }, [form, notify]);
+  }, [form, notify, validate]);
 
   return (
     <div className="health-tab">

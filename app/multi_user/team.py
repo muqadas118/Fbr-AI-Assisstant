@@ -5,11 +5,15 @@ Team Management - Production-Grade
 Team creation, membership management, invitations, and permissions.
 """
 
+import json
 import logging
+import os
+import threading
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Optional
 
 from app.multi_user.models import (
@@ -17,6 +21,19 @@ from app.multi_user.models import (
 )
 
 logger = logging.getLogger("multi_user")
+
+
+def _utcnow() -> datetime:
+    """Timezone-aware UTC now (datetime.utcnow is deprecated in 3.12+)."""
+    return datetime.now(timezone.utc)
+
+
+def _parse_iso(value: str) -> datetime:
+    """Parse an ISO-8601 timestamp; naive values are treated as UTC."""
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 class InvitationStatus(str, Enum):
@@ -69,16 +86,133 @@ def has_permission(role: UserRole, permission: str) -> bool:
     return permission in ROLE_PERMISSIONS.get(role, set())
 
 
-class TeamManager:
-    """Manages teams, memberships, and invitations."""
+def _default_team_store_path() -> Path:
+    """On-disk home for the team store (survives backend restarts).
 
-    def __init__(self):
+    Overridable via FBR_TEAM_STORE. Defaults to <repo>/data/auth_teams.json
+    which is git-ignored, exactly like UserManager's data/auth_users.json, so
+    teams/memberships/invitations no longer vanish on uvicorn restarts.
+    """
+    override = os.environ.get("FBR_TEAM_STORE", "").strip()
+    if override:
+        return Path(override)
+    # app/multi_user/team.py -> repo root is parents[2]
+    return Path(__file__).resolve().parents[2] / "data" / "auth_teams.json"
+
+
+class TeamManager:
+    """Manages teams, memberships, and invitations (JSON-persisted)."""
+
+    def __init__(self, store_path: Optional[Path] = None):
         self.teams: dict[str, Team] = {}
         self.memberships: dict[str, TeamMember] = {}  # member_id
         self.invitations: dict[str, TeamInvitation] = {}
         # Indexes
         self.team_members_index: dict[str, list[str]] = {}  # team_id -> [member_id]
         self.user_teams_index: dict[str, list[str]] = {}  # user_id -> [team_id]
+        self.store_path: Path = store_path or _default_team_store_path()
+        # Reentrant: public mutators nest (create_team -> add_member,
+        # accept_invitation -> add_member), so a plain Lock would deadlock.
+        self._lock = threading.RLock()
+        self._load()
+
+    # -------- Persistence --------
+
+    def _load(self) -> None:
+        """Hydrate the store from disk; tolerate missing/corrupt files."""
+        with self._lock:
+            self._load_locked()
+
+    def _load_locked(self) -> None:
+        try:
+            if not self.store_path.exists():
+                return
+            raw = json.loads(self.store_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning("Team store load failed (%s): %s", self.store_path, exc)
+            return
+
+        for t in raw.get("teams", []):
+            try:
+                team = Team(
+                    id=t["id"],
+                    name=t.get("name", ""),
+                    owner_id=t.get("owner_id", ""),
+                    organization_type=t.get("organization_type"),
+                    ntn=t.get("ntn"),
+                    plan=t.get("plan", "free"),
+                    is_active=t.get("is_active", True),
+                    member_count=t.get("member_count", 1),
+                    created_at=t.get("created_at", ""),
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+            self.teams[team.id] = team
+
+        for m in raw.get("memberships", []):
+            try:
+                member = TeamMember(
+                    id=m["id"],
+                    team_id=m.get("team_id", ""),
+                    user_id=m.get("user_id", ""),
+                    role=UserRole(m.get("role", UserRole.ACCOUNTANT.value)),
+                    invited_by=m.get("invited_by"),
+                    joined_at=m.get("joined_at", ""),
+                    is_active=m.get("is_active", True),
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+            self.memberships[member.id] = member
+            self.team_members_index.setdefault(member.team_id, []).append(member.id)
+            self.user_teams_index.setdefault(member.user_id, []).append(member.team_id)
+
+        for i in raw.get("invitations", []):
+            try:
+                invitation = TeamInvitation(
+                    id=i["id"],
+                    team_id=i.get("team_id", ""),
+                    email=i.get("email", ""),
+                    role=UserRole(i.get("role", UserRole.ACCOUNTANT.value)),
+                    invited_by=i.get("invited_by", ""),
+                    invited_at=i.get("invited_at", ""),
+                    expires_at=i["expires_at"],
+                    status=InvitationStatus(
+                        i.get("status", InvitationStatus.PENDING.value)
+                    ),
+                    accepted_at=i.get("accepted_at"),
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+            self.invitations[invitation.id] = invitation
+
+        logger.info(
+            "Team store loaded %d teams from %s", len(self.teams), self.store_path
+        )
+
+    def _save(self) -> None:
+        """Flush the store to disk (atomic-ish via tmp + replace)."""
+        with self._lock:
+            self._save_locked()
+
+    def _save_locked(self) -> None:
+        payload = {
+            "teams": [asdict(t) for t in self.teams.values()],
+            "memberships": [
+                {**asdict(m), "role": m.role.value}
+                for m in self.memberships.values()
+            ],
+            "invitations": [
+                {**asdict(i), "role": i.role.value, "status": i.status.value}
+                for i in self.invitations.values()
+            ],
+        }
+        try:
+            self.store_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.store_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+            os.replace(tmp, self.store_path)
+        except OSError as exc:
+            logger.error("Team store save failed (%s): %s", self.store_path, exc)
 
     def create_team(
         self,
@@ -88,21 +222,22 @@ class TeamManager:
         ntn: Optional[str] = None,
     ) -> Team:
         """Create a new team and add owner as ADMIN."""
-        team = Team(
-            id=str(uuid.uuid4()),
-            name=name,
-            owner_id=owner_id,
-            organization_type=organization_type,
-            ntn=ntn,
-            created_at=datetime.utcnow().isoformat(),
-        )
-        self.teams[team.id] = team
+        with self._lock:
+            team = Team(
+                id=str(uuid.uuid4()),
+                name=name,
+                owner_id=owner_id,
+                organization_type=organization_type,
+                ntn=ntn,
+                created_at=_utcnow().isoformat(),
+            )
+            self.teams[team.id] = team
 
-        # Add owner as first member
-        self.add_member(team.id, owner_id, UserRole.ADMIN, invited_by=None)
+            # Add owner as first member
+            self.add_member(team.id, owner_id, UserRole.ADMIN, invited_by=None)
 
-        logger.info(f"Team created: {name} (owner: {owner_id})")
-        return team
+            logger.info(f"Team created: {name} (owner: {owner_id})")
+            return team
 
     def get_team(self, team_id: str) -> Optional[Team]:
         """Get a team by ID."""
@@ -110,27 +245,36 @@ class TeamManager:
 
     def update_team(self, team_id: str, **updates) -> Optional[Team]:
         """Update team fields."""
-        team = self.teams.get(team_id)
-        if not team:
-            return None
-        for key, value in updates.items():
-            if hasattr(team, key) and key not in ("id", "owner_id"):
-                setattr(team, key, value)
-        return team
+        with self._lock:
+            team = self.teams.get(team_id)
+            if not team:
+                return None
+            for key, value in updates.items():
+                if hasattr(team, key) and key not in ("id", "owner_id"):
+                    setattr(team, key, value)
+            self._save_locked()
+            return team
 
     def delete_team(self, team_id: str) -> bool:
         """Delete a team and all its memberships."""
-        if team_id not in self.teams:
-            return False
-        del self.teams[team_id]
-        # Remove all memberships
-        member_ids = self.team_members_index.pop(team_id, [])
-        for mid in member_ids:
-            self.memberships.pop(mid, None)
-        # Remove from user index
-        for uid, tids in list(self.user_teams_index.items()):
-            self.user_teams_index[uid] = [t for t in tids if t != team_id]
-        return True
+        with self._lock:
+            if team_id not in self.teams:
+                return False
+            del self.teams[team_id]
+            # Remove all memberships
+            member_ids = self.team_members_index.pop(team_id, [])
+            for mid in member_ids:
+                self.memberships.pop(mid, None)
+            # Remove from user index
+            for uid, tids in list(self.user_teams_index.items()):
+                self.user_teams_index[uid] = [t for t in tids if t != team_id]
+            # Drop this team's invitations
+            for inv_id in [
+                i for i, inv in self.invitations.items() if inv.team_id == team_id
+            ]:
+                self.invitations.pop(inv_id, None)
+            self._save_locked()
+            return True
 
     def add_member(
         self,
@@ -140,70 +284,74 @@ class TeamManager:
         invited_by: Optional[str],
     ) -> TeamMember:
         """Add a member to a team."""
-        # Check if already a member
-        existing = self._find_membership(team_id, user_id)
-        if existing:
-            existing.role = role
-            existing.is_active = True
-            return existing
+        with self._lock:
+            # Check if already a member
+            existing = self._find_membership(team_id, user_id)
+            if existing:
+                existing.role = role
+                existing.is_active = True
+                return existing
 
-        member = TeamMember(
-            id=str(uuid.uuid4()),
-            team_id=team_id,
-            user_id=user_id,
-            role=role,
-            invited_by=invited_by,
-            joined_at=datetime.utcnow().isoformat(),
-        )
-        self.memberships[member.id] = member
+            member = TeamMember(
+                id=str(uuid.uuid4()),
+                team_id=team_id,
+                user_id=user_id,
+                role=role,
+                invited_by=invited_by,
+                joined_at=_utcnow().isoformat(),
+            )
+            self.memberships[member.id] = member
 
-        # Update indexes
-        if team_id not in self.team_members_index:
-            self.team_members_index[team_id] = []
-        self.team_members_index[team_id].append(member.id)
+            # Update indexes
+            if team_id not in self.team_members_index:
+                self.team_members_index[team_id] = []
+            self.team_members_index[team_id].append(member.id)
 
-        if user_id not in self.user_teams_index:
-            self.user_teams_index[user_id] = []
-        self.user_teams_index[user_id].append(team_id)
+            if user_id not in self.user_teams_index:
+                self.user_teams_index[user_id] = []
+            self.user_teams_index[user_id].append(team_id)
 
-        # Update team member count
-        team = self.teams.get(team_id)
-        if team:
-            team.member_count = len(self.team_members_index[team_id])
+            # Update team member count
+            team = self.teams.get(team_id)
+            if team:
+                team.member_count = len(self.team_members_index[team_id])
 
-        logger.info(f"User {user_id} added to team {team_id} as {role.value}")
-        return member
+            logger.info(f"User {user_id} added to team {team_id} as {role.value}")
+            self._save_locked()
+            return member
 
     def remove_member(self, team_id: str, user_id: str) -> bool:
         """Remove a member from a team."""
-        membership = self._find_membership(team_id, user_id)
-        if not membership:
-            return False
+        with self._lock:
+            membership = self._find_membership(team_id, user_id)
+            if not membership:
+                return False
 
-        # Cannot remove the owner
-        team = self.teams.get(team_id)
-        if team and team.owner_id == user_id:
-            raise ValueError("Cannot remove team owner")
+            # Cannot remove the owner
+            team = self.teams.get(team_id)
+            if team and team.owner_id == user_id:
+                raise ValueError("Cannot remove team owner")
 
-        membership.is_active = False
+            membership.is_active = False
 
-        # Update indexes
-        if team_id in self.team_members_index:
-            self.team_members_index[team_id] = [
-                m for m in self.team_members_index[team_id]
-                if m != membership.id
-            ]
-        if user_id in self.user_teams_index:
-            self.user_teams_index[user_id] = [
-                t for t in self.user_teams_index[user_id]
-                if t != team_id
-            ]
+            # Update indexes
+            if team_id in self.team_members_index:
+                self.team_members_index[team_id] = [
+                    m for m in self.team_members_index[team_id]
+                    if m != membership.id
+                ]
+            if user_id in self.user_teams_index:
+                self.user_teams_index[user_id] = [
+                    t for t in self.user_teams_index[user_id]
+                    if t != team_id
+                ]
 
-        # Update team member count
-        if team:
-            team.member_count = len(self.team_members_index.get(team_id, []))
+            # Update team member count
+            if team:
+                team.member_count = len(self.team_members_index.get(team_id, []))
 
-        return True
+            self._save_locked()
+            return True
 
     def update_member_role(
         self,
@@ -212,17 +360,19 @@ class TeamManager:
         new_role: UserRole,
     ) -> Optional[TeamMember]:
         """Update a member's role in a team."""
-        membership = self._find_membership(team_id, user_id)
-        if not membership:
-            return None
+        with self._lock:
+            membership = self._find_membership(team_id, user_id)
+            if not membership:
+                return None
 
-        # Cannot change owner's role
-        team = self.teams.get(team_id)
-        if team and team.owner_id == user_id:
-            raise ValueError("Cannot change team owner's role")
+            # Cannot change owner's role
+            team = self.teams.get(team_id)
+            if team and team.owner_id == user_id:
+                raise ValueError("Cannot change team owner's role")
 
-        membership.role = new_role
-        return membership
+            membership.role = new_role
+            self._save_locked()
+            return membership
 
     def get_member(self, team_id: str, user_id: str) -> Optional[TeamMember]:
         """Get a member's membership record."""
@@ -256,57 +406,96 @@ class TeamManager:
         invited_by: str,
         expires_in_days: int = 7,
     ) -> TeamInvitation:
-        """Create an invitation to join a team."""
-        now = datetime.utcnow()
-        from datetime import timedelta
-        expires = now + timedelta(days=expires_in_days)
+        """Create an invitation to join a team.
 
-        invitation = TeamInvitation(
-            id=str(uuid.uuid4()),
-            team_id=team_id,
-            email=email.lower(),
-            role=role,
-            invited_by=invited_by,
-            invited_at=now.isoformat(),
-            expires_at=expires.isoformat(),
-        )
-        self.invitations[invitation.id] = invitation
-        logger.info(f"Invitation sent to {email} for team {team_id}")
-        return invitation
+        The team must exist and the inviter must hold `manage_team` on it.
+        """
+        with self._lock:
+            if team_id not in self.teams:
+                raise ValueError(f"Team {team_id} not found")
+            if not self.check_permission(invited_by, team_id, "manage_team"):
+                raise PermissionError(
+                    f"User {invited_by} is not allowed to invite members to team {team_id}"
+                )
 
-    def accept_invitation(self, invitation_id: str, user_id: str) -> bool:
-        """Accept an invitation and add user to team."""
-        invitation = self.invitations.get(invitation_id)
-        if not invitation:
-            return False
+            now = _utcnow()
+            expires = now + timedelta(days=expires_in_days)
 
-        if invitation.status != InvitationStatus.PENDING:
-            return False
+            invitation = TeamInvitation(
+                id=str(uuid.uuid4()),
+                team_id=team_id,
+                email=email.lower(),
+                role=role,
+                invited_by=invited_by,
+                invited_at=now.isoformat(),
+                expires_at=expires.isoformat(),
+            )
+            self.invitations[invitation.id] = invitation
+            self._save_locked()
+            logger.info(f"Invitation sent to {email} for team {team_id}")
+            return invitation
 
-        now = datetime.utcnow()
-        if datetime.fromisoformat(invitation.expires_at) < now:
-            invitation.status = InvitationStatus.EXPIRED
-            return False
+    def accept_invitation(
+        self,
+        invitation_id: str,
+        user_id: str,
+        email: Optional[str] = None,
+    ) -> bool:
+        """Accept an invitation and add user to team.
 
-        invitation.status = InvitationStatus.ACCEPTED
-        invitation.accepted_at = now.isoformat()
+        The accepting identity must be the invited address: `email` is
+        compared case-insensitively against the invitation, and when it is
+        omitted it is resolved from the accepting user's account.
+        """
+        with self._lock:
+            invitation = self.invitations.get(invitation_id)
+            if not invitation:
+                return False
 
-        # Add user to team
-        self.add_member(
-            invitation.team_id,
-            user_id,
-            invitation.role,
-            invited_by=invitation.invited_by,
-        )
-        return True
+            if invitation.status != InvitationStatus.PENDING:
+                return False
+
+            if email is None:
+                user = get_user_manager().get_user(user_id)
+                email = user.email if user else None
+            if email is None:
+                raise ValueError(
+                    "Cannot accept an invitation: no email on file to verify "
+                    "the invited address"
+                )
+            if email.strip().lower() != invitation.email:
+                raise ValueError(
+                    "Invitation email does not match the invited address"
+                )
+
+            now = _utcnow()
+            if _parse_iso(invitation.expires_at) < now:
+                invitation.status = InvitationStatus.EXPIRED
+                self._save_locked()
+                return False
+
+            invitation.status = InvitationStatus.ACCEPTED
+            invitation.accepted_at = now.isoformat()
+
+            # Add user to team
+            self.add_member(
+                invitation.team_id,
+                user_id,
+                invitation.role,
+                invited_by=invitation.invited_by,
+            )
+            self._save_locked()
+            return True
 
     def decline_invitation(self, invitation_id: str) -> bool:
         """Decline an invitation."""
-        invitation = self.invitations.get(invitation_id)
-        if not invitation or invitation.status != InvitationStatus.PENDING:
-            return False
-        invitation.status = InvitationStatus.DECLINED
-        return True
+        with self._lock:
+            invitation = self.invitations.get(invitation_id)
+            if not invitation or invitation.status != InvitationStatus.PENDING:
+                return False
+            invitation.status = InvitationStatus.DECLINED
+            self._save_locked()
+            return True
 
     def get_pending_invitations(self, team_id: str) -> list[TeamInvitation]:
         """Get all pending invitations for a team."""
@@ -323,9 +512,10 @@ class TeamManager:
         ]
 
     def _find_membership(self, team_id: str, user_id: str) -> Optional[TeamMember]:
-        """Find membership record for a user in a team."""
-        for member in self.memberships.values():
-            if member.team_id == team_id and member.user_id == user_id:
+        """Find membership record for a user in a team (indexed lookup)."""
+        for member_id in self.team_members_index.get(team_id, []):
+            member = self.memberships.get(member_id)
+            if member and member.user_id == user_id:
                 return member
         return None
 

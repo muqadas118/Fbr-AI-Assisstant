@@ -11,11 +11,11 @@ Handle recurring events:
 
 import calendar
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from enum import Enum
 from typing import Optional
 
-from app.compliance_calendar.events import ComplianceEvent, EventType
+from app.compliance_calendar.events import ComplianceEvent
 
 
 class RecurrenceType(str, Enum):
@@ -51,12 +51,12 @@ class RecurrenceRule:
             if self.recurrence_type == RecurrenceType.ANNUAL:
                 current = current.replace(year=current.year + self.interval)
             elif self.recurrence_type == RecurrenceType.QUARTERLY:
-                # Add 3 months
-                current = self._add_months(current, 3)
+                # `interval` quarters, i.e. interval * 3 months
+                current = self._add_months(current, 3 * self.interval)
             elif self.recurrence_type == RecurrenceType.MONTHLY:
-                current = self._add_months(current, 1)
+                current = self._add_months(current, self.interval)
             elif self.recurrence_type == RecurrenceType.BIANNUAL:
-                current = current.replace(year=current.year + 2)
+                current = current.replace(year=current.year + 2 * self.interval)
             else:
                 break
 
@@ -97,7 +97,25 @@ def expand_recurring_events(
         end_date=end_date,
     )
 
-    dates = rule.get_next_dates(count=10)
+    # Bound the expansion by the requested window instead of a hard cap: the
+    # old `count=10` silently truncated monthly/quarterly series (a monthly
+    # event stopped after 10 occurrences no matter how far `end_date` was).
+    # Generate enough occurrences to cover the window; RecurrenceRule stops
+    # at end_date regardless.
+    months_per_period = {
+        RecurrenceType.MONTHLY: 1,
+        RecurrenceType.QUARTERLY: 3,
+        RecurrenceType.BIANNUAL: 24,
+        RecurrenceType.ANNUAL: 12,
+    }.get(rec_type, 12)
+    span_months = (
+        (end_date.year - base_event.due_date.year) * 12
+        + (end_date.month - base_event.due_date.month)
+        + 1
+    )
+    count = max(1, span_months // months_per_period + 1)
+
+    dates = rule.get_next_dates(count=count)
     expanded = []
 
     for i, d in enumerate(dates):

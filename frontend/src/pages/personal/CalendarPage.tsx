@@ -106,19 +106,26 @@ function EventRow({
   const [reminding, setReminding] = useState(false);
   const [remindEmail, setRemindEmail] = useState("");
   const [showRemindForm, setShowRemindForm] = useState(false);
+  const { show: notify } = useNotification();
 
   const handleRemind = useCallback(async () => {
     if (!remindEmail.trim()) return;
     setReminding(true);
     try {
-      await api.calendar.scheduleReminder(event.id, remindEmail, ["email"]);
+      await api.calendar.scheduleReminder(event.id, remindEmail.trim(), ["email"]);
       setShowRemindForm(false);
-    } catch {
-      // Error handled by parent via toast
+      notify("ok", `Reminder scheduled for ${event.title}.`);
+    } catch (err) {
+      const msg = err instanceof ApiError
+        ? `Failed to schedule reminder: ${err.detail}`
+        : err instanceof NetworkError
+          ? "Network error — could not schedule the reminder."
+          : "Failed to schedule the reminder.";
+      notify("err", msg);
     } finally {
       setReminding(false);
     }
-  }, [event.id, remindEmail]);
+  }, [event.id, event.title, remindEmail, notify]);
 
   return (
     <div
@@ -202,6 +209,7 @@ function EventRow({
               placeholder="your@email.com"
               value={remindEmail}
               onChange={(e) => setRemindEmail(e.target.value)}
+              aria-label="Reminder recipient email"
               data-testid={`cal-remind-email-${event.id}`}
             />
             <Button

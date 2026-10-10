@@ -9,11 +9,11 @@ Exposes TaxHealthAPI as HTTP endpoints.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
-from app.tax_health import TaxHealthAPI, get_tax_health_api
+from app.tax_health import get_tax_health_api
 
 logger = logging.getLogger("fbr_api.tax_health")
 
@@ -73,6 +73,14 @@ class RiskAnalysisRequest(BaseModel):
     st_shortfall: float = Field(default=0, ge=0, description="Sales tax shortfall")
     estimated_income: float = Field(default=0, ge=0, description="Estimated income")
     declared_income: float = Field(default=0, ge=0, description="Declared income")
+    # Years the business has been operating. Omit when unknown - the
+    # new-business risk factor is only evaluated when this is supplied.
+    business_age_years: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=200,
+        description="Years the business has been operating (omit if unknown)"
+    )
 
 
 # =============================================================================
@@ -152,14 +160,6 @@ class RiskAnalysisResponse(BaseModel):
     factors: list[RiskFactorResponse]
 
 
-class PenaltyBreakdownResponse(BaseModel):
-    """Penalty breakdown."""
-    penalty_type: str
-    description: str
-    amount: float
-    days_late: int
-
-
 # =============================================================================
 # Endpoints
 # =============================================================================
@@ -234,7 +234,7 @@ async def run_health_check(request: HealthCheckRequest) -> TaxHealthResponse:
             ],
             generated_at=result["generated_at"],
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error running health check")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -260,6 +260,7 @@ async def analyze_risks(request: RiskAnalysisRequest) -> RiskAnalysisResponse:
             "st_shortfall": request.st_shortfall,
             "estimated_income": request.estimated_income,
             "declared_income": request.declared_income,
+            "business_age_years": request.business_age_years,
         }
 
         result = api.analyze_risk(data)
@@ -269,7 +270,7 @@ async def analyze_risks(request: RiskAnalysisRequest) -> RiskAnalysisResponse:
             risk_score=result["risk_score"],
             factors=[RiskFactorResponse(**f) for f in result["factors"]],
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error analyzing risks")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -299,7 +300,7 @@ async def estimate_penalties(request: PenaltyEstimateRequest) -> dict:
         }
 
         return api.estimate_penalties(data)
-    except Exception as e:
+    except Exception:
         logger.exception("Error estimating penalties")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

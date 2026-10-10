@@ -50,18 +50,19 @@ uvicorn==0.35.0
 httpx==0.28.1
 
 # --- Supabase Auth (JWT validation) ---
+# app/supabase_auth.py validates Supabase JWTs with PyJWT directly; the
+# supabase SDK is not imported anywhere (and its httpx<0.28 pin conflicts
+# with httpx==0.28.1 above), so it is not installed.
 PyJWT==2.13.0
-supabase==2.9.0
 
 # --- Deployment / health probes (app/deployment/health.py imports psutil) ---
-psutil>=5.9
+psutil==7.2.2
 
 # --- Compose-backed services (docker-compose.yml: postgres, redis, prometheus) ---
-# No direct code import yet (config uses REDIS_URL string; metrics.py is
-# hand-rolled Prometheus text format), but needed when wiring real backends.
-psycopg[binary]>=3.1
-redis>=5.0
-prometheus_client>=0.19
+# No Python client is installed: nothing under app/, scripts/ or tests/ imports
+# psycopg, redis or prometheus_client (config only carries REDIS_URL as a
+# string and app/deployment/metrics.py renders Prometheus text by hand). Pin
+# them here only once real client code lands.
 
 # --- Dev / test ---
-pytest>=8.0
+pytest==9.1.1

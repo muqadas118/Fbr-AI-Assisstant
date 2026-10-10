@@ -54,6 +54,31 @@ def _section(key: str, fn, errors: list[str]) -> dict:
         return {"available": False, "data": None}
 
 
+def _filer_status_payload(ntn: str) -> dict:
+    """Real filer/ATL status for one NTN, or the honest unavailable payload.
+
+    Delegates to the Verification Center, which returns an explicit
+    "unavailable" result when no official FBR source is configured. That
+    result is rendered as-is — the compliance calendar's score is NOT a
+    substitute, and nothing is fabricated.
+    """
+    from app.verification_center.api import get_verification_api
+
+    result = get_verification_api().verify_filer_status(ntn=ntn)
+    details = result.details or {}
+    return {
+        "ntn": result.value,
+        "is_verified": result.is_verified,
+        "status": details.get("status", "unknown"),
+        "confidence": result.confidence,
+        "message": result.message,
+        "reason": details.get("reason", ""),
+        "verification_source": details.get("verification_source", "unavailable"),
+        "format_valid": details.get("format_valid"),
+        "format_expected": details.get("format_expected"),
+    }
+
+
 @router.get("/types", dependencies=[Depends(require_user)])
 async def get_report_types() -> dict:
     """Report types offered by the generator (from the tool registry contract)."""
@@ -76,7 +101,6 @@ async def generate_report(request: Request, payload: ReportGenerateRequest) -> d
     """
     _limiter.check(request)
 
-    from app.compliance_calendar.calendar_api import CalendarQuery
     from app.compliance_calendar import ComplianceCalendarAPI
 
     errors: list[str] = []
@@ -104,12 +128,7 @@ async def generate_report(request: Request, payload: ReportGenerateRequest) -> d
         else:
             sections["filer_status"] = _section(
                 "filer_status",
-                lambda: calendar_api.get_calendar(
-                    CalendarQuery(
-                        taxpayer_type=payload.taxpayer_type,
-                        tax_year=payload.tax_year,
-                    )
-                ).compliance_score,
+                lambda: _filer_status_payload(ntn),
                 errors,
             )
 

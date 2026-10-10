@@ -19,8 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.calculations.income_tax import (
-    IncomeTaxCalculator, IncomeTaxInput, IncomeTaxResult,
-    FilingStatus, TaxYear
+    IncomeTaxCalculator, IncomeTaxInput, FilingStatus, TaxYear
 )
 from app.calculations.salary_tax import (
     SalaryTaxCalculator, SalaryTaxInput

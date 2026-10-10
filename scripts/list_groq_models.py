@@ -1,7 +1,6 @@
 """List current Groq models to find a free-tier one that actually exists."""
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 

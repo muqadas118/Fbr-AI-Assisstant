@@ -77,7 +77,7 @@ import time
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -311,7 +311,7 @@ def apply_fix(fix: str, flags: dict) -> dict:
             elif re.search(r"(?m)^OVERLAP\s*=\s*\d+", text):
                 new_text = re.sub(
                     r"(?m)^OVERLAP\s*=\s*\d+.*$",
-                    f"OVERLAP = 200  # agent.py: retrieval_miss fix (pehle 120)",
+                    "OVERLAP = 200  # agent.py: retrieval_miss fix (pehle 120)",
                     text,
                     count=1,
                 )
@@ -537,7 +537,6 @@ def run_agent(target: int, max_loops: int, use_golden: bool) -> dict:
             "actual_a": (r.get("actual_a") or "")[:300],
         })
 
-    passed_final = sum(1 for r in or_retests if r["status"] == "PASS")
     report = {
         "total": len(results),
         "passed": passed,
@@ -620,7 +619,6 @@ def selftest() -> int:
           "retrieved_sources": ["IncomeTax.pdf"]}, HALLUCINATION),
     ]
     ok = True
-    flags = load_flags()
     for res, expected in cases:
         got = failure_analyzer(res)
         status = "OK " if got == expected else "BAD"

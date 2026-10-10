@@ -185,7 +185,7 @@ def main() -> int:
                 return "FAIL", f"success=false: {_short(resp.text)}", data
             if _v and not _v(data):
                 return "WARN", f"200 but known-value check failed for {_t}", data
-            return "OK", f"HTTP 200, computed", data
+            return "OK", "HTTP 200, computed", data
         probe(f"calc/{calc_type}", check, "POST", "/calculate", json={"calc_type": calc_type, "inputs": inputs})
 
     # Validation guards on calculators
@@ -357,12 +357,9 @@ def main() -> int:
     # 11. Workspaces
     # ------------------------------------------------------------------
     probe("workspaces/health", expect_http(200, "status"), "GET", "/workspaces/health")
-    payload = probe("workspaces/create", expect_http(200), "POST", "/workspaces/create",
-                    json={"user_id": user_id or sweep_user, "name": f"Sweep WS {run_id}",
-                          "workspace_type": "personal"})
-    ws_id = None
-    if isinstance(payload, dict):
-        ws_id = payload.get("workspace_id") or (payload.get("workspace") or {}).get("id")
+    probe("workspaces/create", expect_http(200), "POST", "/workspaces/create",
+          json={"user_id": user_id or sweep_user, "name": f"Sweep WS {run_id}",
+                "workspace_type": "personal"})
     if user_id:
         probe("workspaces/get", expect_http(200), "GET", f"/workspaces/{user_id}")
 

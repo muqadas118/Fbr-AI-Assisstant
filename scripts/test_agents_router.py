@@ -593,19 +593,19 @@ def test_query_expansion(results: list[dict[str, Any]]) -> None:
         rg.expand_query("What is STRN?"),
     )
 
-    # Research: city+context -> "{City} tehsil property valuation"
+    # Research: city+context -> "<question> (City tehsil property valuation)"
     _assert(
         results,
         "expansion[research]_city_normalized",
         rs.expand_query("Vehari immovable property valuation rates")
-        == "Vehari tehsil property valuation",
+        == "Vehari immovable property valuation rates (Vehari tehsil property valuation)",
         rs.expand_query("Vehari immovable property valuation rates"),
     )
     _assert(
         results,
         "expansion[research]_city_phrase_rewritten",
         rs.expand_query("property valuation in Vehari")
-        == "Vehari tehsil property valuation",
+        == "property valuation in Vehari (Vehari tehsil property valuation)",
         rs.expand_query("property valuation in Vehari"),
     )
     _assert(
@@ -808,7 +808,7 @@ def test_agents(
             results,
             "agent[research]_city_normalized_for_retrieval",
             rs_response.get("retrieval_question")
-            == "Vehari tehsil property valuation",
+            == "Vehari immovable property valuation rates (Vehari tehsil property valuation)",
             f"retrieval_question={rs_response.get('retrieval_question')}",
         )
     except Exception:
@@ -1523,9 +1523,6 @@ def test_phase2_query_understanding(
     """
 
     from app.query_understanding import (
-        classify_query,
-        detect_intent,
-        preprocess_query,
         understand_query,
     )
 
@@ -2105,8 +2102,6 @@ def test_phase6_answer_synthesis(
 
     from app.answer_synthesis import (
         ConfidenceInfo,
-        Example,
-        SourceReference,
         StructuredAnswer,
         synthesize_answer,
     )
@@ -2647,7 +2642,8 @@ def main() -> int:
         status = "PASS" if result["passed"] else "FAIL"
         print(f"[{status}] {result['name']}")
         if not result["passed"]:
-            print(f"        detail: {result['detail']}")
+            detail = result["detail"].encode("ascii", "replace").decode("ascii")
+            print(f"        detail: {detail}")
     print("=" * 72)
     print(f"Total : {total}")
     print(f"Passed: {passed}")

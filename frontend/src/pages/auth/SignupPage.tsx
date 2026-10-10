@@ -14,6 +14,8 @@ function isValidEmail(value: string): boolean {
 export function SignupPage() {
   const navigate = useNavigate();
   const token = useAuth((s) => s.token);
+  const authLoading = useAuth((s) => s.loading);
+  const initialized = useAuth((s) => s.initialized);
   const signUp = useAuth((s) => s.signUp);
 
   const [name, setName] = useState("");
@@ -28,6 +30,10 @@ export function SignupPage() {
     password?: string;
     confirm?: string;
   }>({});
+
+  if (!initialized || authLoading) {
+    return <div className="auth-wrap auth-wrap--loading" role="status">Restoring your secure session…</div>;
+  }
 
   if (token) {
     return <Navigate to="/onboarding" replace />;

@@ -16,7 +16,7 @@ from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
 from app.compliance_calendar import (
-    ComplianceCalendarAPI, get_compliance_calendar,
+    get_compliance_calendar,
     EventType, EventCategory, EventPriority,
 )
 
@@ -94,9 +94,11 @@ class CalendarQueryRequest(BaseModel):
 class ReminderRequest(BaseModel):
     """Request to schedule a reminder."""
     event_id: str = Field(..., description="Event ID to schedule reminder for")
-    recipient: str = Field(
-        default="user@example.com",
-        description="Email address for reminder"
+    # No hardcoded fallback address ("user@example.com"): reminders without an
+    # explicit recipient are addressed to the authenticated user's email.
+    recipient: Optional[str] = Field(
+        default=None,
+        description="Email address for reminder (defaults to the authenticated user's email)"
     )
     channels: Optional[list[str]] = Field(
         default=None,
@@ -116,6 +118,9 @@ class EventResponse(BaseModel):
     due_date: str
     fiscal_year: int
     tax_year: Optional[int] = None
+    # Serialised as a string by the calendar API (ComplianceEvent.quarter is an
+    # Optional[int]); keep this typed as str so the serializer and the model
+    # agree - a raw int here raised a 400 ValidationError on quarterly events.
     quarter: Optional[str] = None
     priority: str
     category: str
@@ -151,7 +156,10 @@ class CalendarResponse(BaseModel):
     summary: dict
     upcoming_tasks: list[UpcomingTaskResponse]
     overdue_events: list[EventResponse]
-    compliance_score: float
+    # None when no completion data was supplied - see
+    # CalendarEngine.calculate_compliance_score. Optional, because "no data" is
+    # not the same as a score of 0.
+    compliance_score: Optional[float] = None
     compliance_grade: str
     recommendations: list[str]
     generated_at: str
@@ -160,7 +168,7 @@ class CalendarResponse(BaseModel):
 class DashboardSummaryResponse(BaseModel):
     """Dashboard summary."""
     taxpayer_type: str
-    compliance_score: float
+    compliance_score: Optional[float] = None
     compliance_grade: str
     total_events: int
     overdue_count: int
@@ -176,45 +184,6 @@ class ReminderResponse(BaseModel):
     event_id: str
     reminders_scheduled: int
     reminder_ids: list[str]
-
-
-# =============================================================================
-# Internal helpers
-# =============================================================================
-
-def _build_query(request: CalendarQueryRequest) -> dict:
-    """Build calendar query dict from request."""
-    from app.compliance_calendar.events import ComplianceEvent, get_all_events
-    from app.compliance_calendar.calendar_engine import CalendarConfig
-
-    q = CalendarQueryRequest(
-        taxpayer_type=request.taxpayer_type,
-        fiscal_year=request.fiscal_year or date.today().year,
-        tax_year=request.tax_year,
-        start_date=request.start_date,
-        end_date=request.end_date,
-        event_types=request.event_types,
-        categories=request.categories,
-        min_priority=request.min_priority,
-        include_holidays=request.include_holidays,
-        limit=request.limit,
-    )
-
-    from app.compliance_calendar.calendar_api import CalendarQuery
-    from datetime import datetime
-
-    return CalendarQuery(
-        taxpayer_type=q.taxpayer_type.value,
-        fiscal_year=q.fiscal_year or 2025,
-        tax_year=q.tax_year,
-        start_date=datetime.fromisoformat(q.start_date).date() if q.start_date else None,
-        end_date=datetime.fromisoformat(q.end_date).date() if q.end_date else None,
-        event_types=[EventType(et) for et in q.event_types] if q.event_types else [],
-        categories=[EventCategory(cat) for cat in q.categories] if q.categories else [],
-        min_priority=EventPriority(q.min_priority) if q.min_priority else EventPriority.LOW,
-        include_holidays=q.include_holidays,
-        limit=q.limit,
-    )
 
 
 # =============================================================================
@@ -244,7 +213,6 @@ async def get_calendar(
         api = get_compliance_calendar()
 
         # Build query
-        from datetime import datetime
         query_kwargs = {
             "taxpayer_type": taxpayer_type.value,
             "fiscal_year": fiscal_year or date.today().year,
@@ -284,7 +252,7 @@ async def get_calendar(
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception as e:
+    except Exception:
         logger.exception("Error getting calendar")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -307,7 +275,7 @@ async def get_upcoming_tasks(
         api = get_compliance_calendar()
         tasks = api.get_upcoming_tasks(taxpayer_type.value, days)
         return [UpcomingTaskResponse(**asdict(t)) for t in tasks]
-    except Exception as e:
+    except Exception:
         logger.exception("Error getting upcoming tasks")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -326,7 +294,7 @@ async def mark_event_complete(event_id: str) -> dict:
         api = get_compliance_calendar()
         success = api.mark_event_completed(event_id)
         return {"event_id": event_id, "completed": success}
-    except Exception as e:
+    except Exception:
         logger.exception("Error marking event complete")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -335,12 +303,25 @@ async def mark_event_complete(event_id: str) -> dict:
 
 
 @router.post("/reminders", response_model=ReminderResponse, dependencies=[Depends(require_user)])
-async def schedule_reminder(request: ReminderRequest) -> ReminderResponse:
+async def schedule_reminder(
+    request: ReminderRequest,
+    user: Optional[dict] = Depends(require_user),
+) -> ReminderResponse:
     """
     Schedule reminder notifications for a compliance event.
 
-    Supports email, SMS, push, and WhatsApp notification channels.
+    Supports email, SMS, push, and WhatsApp notification channels. Reminders are
+    addressed to the authenticated user's email unless an explicit recipient is
+    supplied, so a placeholder address is never used as a default.
     """
+    # Resolve recipient: explicit value, else the authenticated user, else fail.
+    recipient = request.recipient or (user or {}).get("email")
+    if not recipient:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No reminder recipient: send 'recipient' or authenticate with a user that has an email address",
+        )
+
     try:
         api = get_compliance_calendar()
 
@@ -352,7 +333,7 @@ async def schedule_reminder(request: ReminderRequest) -> ReminderResponse:
 
         result = api.schedule_reminders(
             event_id=request.event_id,
-            recipient=request.recipient,
+            recipient=recipient,
             channels=channels,
         )
 
@@ -365,7 +346,7 @@ async def schedule_reminder(request: ReminderRequest) -> ReminderResponse:
         return ReminderResponse(**result)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Error scheduling reminder")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -394,7 +375,7 @@ async def export_calendar(
         )
 
         return api.export_calendar(query, format.value)
-    except Exception as e:
+    except Exception:
         logger.exception("Error exporting calendar")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -416,7 +397,7 @@ async def get_dashboard(
         api = get_compliance_calendar()
         summary = api.get_dashboard_summary(taxpayer_type.value)
         return DashboardSummaryResponse(**summary)
-    except Exception as e:
+    except Exception:
         logger.exception("Error getting dashboard")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

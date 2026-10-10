@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   api,
   ApiError,
@@ -453,6 +453,47 @@ export function BusinessNoticesPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [showTypes, setShowTypes] = useState(false);
   const [textError, setTextError] = useState<string | null>(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /** Extract text from an uploaded notice file into the textarea so the
+   * standard text-analysis flow can run on it. */
+  const handleNoticeFile = useCallback(
+    async (file: File) => {
+      setUploadingFile(true);
+      setError(null);
+      setTextError(null);
+      try {
+        if (file.name.toLowerCase().endsWith(".txt")) {
+          const text = await file.text();
+          setNoticeText(text);
+        } else {
+          // PDF / image → backend OCR + extraction endpoint.
+          const resp = await api.documents.uploadAnalyze(file);
+          const extracted =
+            resp.analysis?.formatted_text ||
+            String(resp.analysis?.extracted_info?.text ?? "");
+          if (!extracted.trim()) {
+            setError("Could not extract readable text from that file. Please paste the notice text instead.");
+            notify("err", "Text extraction returned nothing usable.");
+            return;
+          }
+          setNoticeText(extracted);
+        }
+        notify("ok", "Notice text extracted — review it below, then Analyze.");
+      } catch (err) {
+        const msg =
+          err instanceof ApiError
+            ? `Could not read that file (${err.status}): ${err.detail}`
+            : "Could not read that file. Please paste the notice text instead.";
+        setError(msg);
+        notify("err", msg);
+      } finally {
+        setUploadingFile(false);
+      }
+    },
+    [notify],
+  );
 
   const analyze = useCallback(async () => {
     setTextError(null);
@@ -564,6 +605,38 @@ export function BusinessNoticesPage() {
             testId="biz-analyze-card"
           >
             <div className="notice-input">
+              {/* Optional file shortcut: extract text from a PDF/image notice
+                  into the textarea, then analyze as usual. */}
+              <div className="notice-input__file">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.txt"
+                  style={{ display: "none" }}
+                  aria-label="Attach an FBR business notice file"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleNoticeFile(f);
+                    e.target.value = "";
+                  }}
+                  data-testid="biz-file-input"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  loading={uploadingFile}
+                  disabled={uploadingFile || analyzing}
+                  onClick={() => fileInputRef.current?.click()}
+                  data-testid="biz-file-button"
+                >
+                  {uploadingFile ? "Extracting text…" : "📎 Attach notice file (optional)"}
+                </Button>
+                <span className="notice-input__file-hint">
+                  PDF, image or text — we extract the text and fill it below.
+                </span>
+              </div>
+
               <Field
                 label="Notice Text"
                 error={textError ?? undefined}

@@ -29,8 +29,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Callable
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -91,8 +90,6 @@ def _authed_client():
 
 
 def test_health_returns_ok() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     client = _authed_client()
     resp = client.get("/health")
@@ -106,8 +103,6 @@ def test_health_returns_ok() -> None:
 
 
 def test_valid_query_accepted() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     with patch("app.api._get_orchestrator") as mock_get_orch:
         mock_orch = MagicMock()
@@ -151,8 +146,6 @@ def test_valid_query_accepted() -> None:
 
 
 def test_missing_query_rejected() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     client = _authed_client()
     resp = client.post("/answer", json={})
@@ -164,8 +157,6 @@ def test_missing_query_rejected() -> None:
 
 
 def test_empty_query_rejected() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     client = _authed_client()
     # NOTE 2026-09-13 (pre-existing, not auth-related): "" violates
@@ -180,8 +171,6 @@ def test_empty_query_rejected() -> None:
 
 
 def test_whitespace_query_rejected() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     client = _authed_client()
     resp = client.post("/answer", json={"query": "   \t\n  "})
@@ -193,8 +182,6 @@ def test_whitespace_query_rejected() -> None:
 
 
 def test_oversized_query_rejected() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     client = _authed_client()
     large_query = "x" * 1001
@@ -207,8 +194,6 @@ def test_oversized_query_rejected() -> None:
 
 
 def test_invalid_schema_rejected() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     client = _authed_client()
     resp = client.post("/answer", json={"query": 123})
@@ -220,8 +205,6 @@ def test_invalid_schema_rejected() -> None:
 
 
 def test_orchestrator_invoked() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     with patch("app.api._get_orchestrator") as mock_get_orch:
         mock_orch = MagicMock()
@@ -265,8 +248,6 @@ def test_orchestrator_invoked() -> None:
 
 
 def test_response_schema_stable() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     with patch("app.api._get_orchestrator") as mock_get_orch:
         mock_orch = MagicMock()
@@ -342,13 +323,11 @@ def test_response_schema_stable() -> None:
             and isinstance(data["answer"], str)
             and isinstance(data["sources"], list)
             and isinstance(data["grounded"], bool),
-            f"type mismatch in response",
+            "type mismatch in response",
         )
 
 
 def test_safe_refusal_returned_200() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     with patch("app.api._get_orchestrator") as mock_get_orch:
         mock_orch = MagicMock()
@@ -391,8 +370,6 @@ def test_safe_refusal_returned_200() -> None:
 
 
 def test_llmerror_maps_to_503() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
     from app.llm import LLMError
 
     with patch("app.api._get_orchestrator") as mock_get_orch:
@@ -416,8 +393,6 @@ def test_llmerror_maps_to_503() -> None:
 
 
 def test_unexpected_error_maps_to_500() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     with patch("app.api._get_orchestrator") as mock_get_orch:
         mock_orch = MagicMock()
@@ -439,8 +414,6 @@ def test_unexpected_error_maps_to_500() -> None:
 
 
 def test_multi_domain_detected() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     with patch("app.api._get_orchestrator") as mock_get_orch:
         mock_orch = MagicMock()
@@ -486,8 +459,6 @@ def test_multi_domain_detected() -> None:
 
 
 def test_primary_domain_present() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     with patch("app.api._get_orchestrator") as mock_get_orch:
         mock_orch = MagicMock()
@@ -528,8 +499,6 @@ def test_primary_domain_present() -> None:
 
 
 def test_sources_serialized_correctly() -> None:
-    from fastapi.testclient import TestClient
-    from app.api import app
 
     with patch("app.api._get_orchestrator") as mock_get_orch:
         mock_orch = MagicMock()

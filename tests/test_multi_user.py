@@ -12,11 +12,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import unittest
 
 from app.multi_user import (
-    User, UserRole, UserProfile, UserSettings,
-    Team, TeamMember, AuditLogEntry,
-    AuthManager, Session, hash_password, verify_password,
-    TeamManager, has_permission,
-    MultiUserAPI, get_multi_user_api,
+    UserRole, AuthManager, hash_password, verify_password,
+    TeamManager,
 )
 
 
@@ -181,7 +178,11 @@ class TestTeamManager(unittest.TestCase):
     """Test team manager."""
 
     def setUp(self):
-        self.tm = TeamManager()
+        # Isolated temp store — TeamManager now persists to disk
+        # (data/auth_teams.json) and must not be touched by tests.
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tm = TeamManager(store_path=Path(self._tmp.name) / "auth_teams.json")
 
     def test_create_team(self):
         team = self.tm.create_team(
@@ -227,8 +228,36 @@ class TestTeamManager(unittest.TestCase):
             invited_by="o1",
         )
         self.assertEqual(inv.status.value, "pending")
-        success = self.tm.accept_invitation(inv.id, "new_user_id")
+        # The accepting identity must be the invited address.
+        success = self.tm.accept_invitation(
+            inv.id, "new_user_id", "New@Example.com"
+        )
         self.assertTrue(success)
+
+    def test_accept_invitation_wrong_email(self):
+        team = self.tm.create_team(owner_id="o1", name="T1")
+        inv = self.tm.invite_to_team(
+            team_id=team.id,
+            email="invited@example.com",
+            role=UserRole.ACCOUNTANT,
+            invited_by="o1",
+        )
+        with self.assertRaises(ValueError):
+            self.tm.accept_invitation(inv.id, "attacker_id", "attacker@example.com")
+        # A failed email check must not have joined the team.
+        self.assertIsNone(self.tm.get_member(team.id, "attacker_id"))
+
+    def test_invite_requires_manage_permission(self):
+        team = self.tm.create_team(owner_id="o1", name="T1")
+        self.tm.add_member(team.id, "viewer1", UserRole.VIEWER, "o1")
+        with self.assertRaises(PermissionError):
+            self.tm.invite_to_team(
+                team.id, "x@example.com", UserRole.VIEWER, "viewer1"
+            )
+        with self.assertRaises(ValueError):
+            self.tm.invite_to_team(
+                "no-such-team", "x@example.com", UserRole.VIEWER, "o1"
+            )
 
     def test_decline_invitation(self):
         team = self.tm.create_team(owner_id="o1", name="T1")
@@ -247,8 +276,8 @@ class TestTeamManager(unittest.TestCase):
         self.assertTrue(self.tm.check_permission("u1", team.id, "view_reports"))
 
     def test_user_teams(self):
-        t1 = self.tm.create_team(owner_id="u1", name="T1")
-        t2 = self.tm.create_team(owner_id="u1", name="T2")
+        self.tm.create_team(owner_id="u1", name="T1")
+        self.tm.create_team(owner_id="u1", name="T2")
         teams = self.tm.get_user_teams("u1")
         self.assertEqual(len(teams), 2)
 
@@ -269,7 +298,7 @@ class TestMultiUserAPI(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.api.users = UserManager(store_path=Path(self._tmp.name) / "auth_users.json")
         self.api.auth = AuthManager()
-        self.api.teams = TeamManager()
+        self.api.teams = TeamManager(store_path=Path(self._tmp.name) / "auth_teams.json")
 
     def test_register_user(self):
         user = self.api.register_user(

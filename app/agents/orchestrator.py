@@ -24,6 +24,12 @@ agent and combine their INDEPENDENTLY VERIFIED results:
   flags remain visible in `domain_results`.
 - Aggregate sources are deduplicated by chunk_id and keep the
   full provenance record from the RAG engine.
+- Repetition suppression is the one aggregation rule applied to
+  the combined text: when two domains independently verify the
+  same answer, the repeated domain keeps its label and a one-line
+  summary instead of the full text. No content is merged,
+  invented, or re-worded, and sources of suppressed repeats are
+  still dropped so provenance matches what is shown.
 
 All agents share ONE FBRRAGEngine instance (one FAISS load, one
 BM25 index, one embedding model) — no per-agent vector store.
@@ -60,7 +66,11 @@ from app.agents.research_agent import ResearchAgent
 from app.agents.return_filing_agent import ReturnFilingAgent
 from app.agents.router import FBRQueryRouter, RoutingDecision
 from app.agents.sales_tax_agent import SalesTaxAgent
-from app.rag_engine import DEFAULT_TOP_K, _NO_EVIDENCE_ANSWER
+from app.rag_engine import (
+    DEFAULT_TOP_K,
+    _AMBIGUOUS_SECTION_ANSWER,
+    _NO_EVIDENCE_ANSWER,
+)
 from app.verification_layer import PLACEHOLDER_ANSWER
 
 _AGENT_CLASSES: dict[str, type[SpecializedAgent]] = {
@@ -75,7 +85,22 @@ _AGENT_CLASSES: dict[str, type[SpecializedAgent]] = {
     "research": ResearchAgent,
 }
 
-_SAFE_ANSWERS = (PLACEHOLDER_ANSWER, _NO_EVIDENCE_ANSWER)
+# Refusal-style answers that must never be presented as a grounded,
+# sourced answer. _AMBIGUOUS_SECTION_ANSWER is a rephrase-request
+# refusal that rag_engine emits with grounded=True plus sources, so
+# it belongs here; its sources are dropped by the `continue` in the
+# multi-domain aggregation loop below. PLACEHOLDER_ANSWER is
+# harmless defence only: rag_engine substitutes _NO_EVIDENCE_ANSWER
+# first, so that arm is unreachable today.
+_SAFE_ANSWERS = (
+    PLACEHOLDER_ANSWER,
+    _NO_EVIDENCE_ANSWER,
+    _AMBIGUOUS_SECTION_ANSWER,
+)
+
+# One-line cap for the repetition-suppression summary in the
+# multi-domain aggregation (see the aggregation loop in handle()).
+_REPETITION_SUMMARY_MAX_CHARS = 160
 
 
 class AgentOrchestrator:
@@ -213,9 +238,24 @@ class AgentOrchestrator:
                 continue
             first_label = _is_repetition(answer)
             if first_label is not None:
+                # Aggregation rule: every routed domain keeps its own
+                # labelled section. When two domains return the same
+                # independently verified answer, the repeated domain is
+                # not printed twice; it keeps its label plus a
+                # one-line summary of the answer it produced. Nothing
+                # is merged, invented, or re-worded.
+                first_line = " ".join(
+                    str(answer).strip().splitlines()[0].split()
+                )
+                if len(first_line) > _REPETITION_SUMMARY_MAX_CHARS:
+                    first_line = (
+                        first_line[: _REPETITION_SUMMARY_MAX_CHARS - 3]
+                        .rstrip()
+                        + "..."
+                    )
                 combined_parts.append(
                     f"[{label}] (Same answer as [{first_label}]; "
-                    "omitted to avoid repetition.)"
+                    f"summary: {first_line})"
                 )
             else:
                 seen_answers.append(

@@ -16,25 +16,29 @@ import csv
 import io
 import json
 import logging
-import uuid
 from dataclasses import dataclass, field, asdict
-from datetime import date, datetime, timedelta
-from enum import Enum
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from app.compliance_calendar.events import (
     ComplianceEvent, EventType, EventCategory, EventPriority,
-    get_all_events, get_events_by_year, get_upcoming_events,
+    get_all_events,
+    DATASET_CAVEAT,
 )
 from app.compliance_calendar.calendar_engine import (
-    CalendarEngine, CalendarConfig, calculate_compliance_score,
+    CalendarEngine, CalendarConfig,
 )
 from app.compliance_calendar.notifications import (
-    NotificationManager, NotificationChannel, NotificationPriority,
+    NotificationChannel, NotificationPriority,
     get_notification_manager,
 )
 
 logger = logging.getLogger("compliance_calendar")
+
+
+def _utc_now_iso() -> str:
+    """UTC timestamp as a naive ISO string (replaces deprecated utcnow())."""
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
 
 @dataclass
@@ -76,8 +80,10 @@ class CalendarResponse:
     summary: dict = field(default_factory=dict)
     upcoming_tasks: list[UpcomingTask] = field(default_factory=list)
     overdue_events: list[dict] = field(default_factory=list)
-    compliance_score: float = 0.0
-    compliance_grade: str = "F"
+    # None + "insufficient_data" when no completion data was supplied; see
+    # CalendarEngine.calculate_compliance_score.
+    compliance_score: Optional[float] = None
+    compliance_grade: str = "insufficient_data"
     recommendations: list[str] = field(default_factory=list)
     generated_at: str = ""
 
@@ -85,16 +91,43 @@ class CalendarResponse:
 class ComplianceCalendarAPI:
     """Main API for compliance calendar."""
 
+    # Known Pakistani public holidays as they appear in the event dataset.
+    # Used by _is_holiday() so the "include holidays" filter does not depend on
+    # the word "Holiday" being present in the title.
+    HOLIDAY_TITLES = (
+        "independence day of pakistan",
+        "pakistan day",
+        "eid-ul-fitr",
+        "eid ul fitr",
+        "eid-ul-adha",
+        "eid ul adha",
+        "eid milad un-nabi",
+        "ashura",
+        "youm-e-ashur",
+        "quaid-e-azam day",
+        "kashmir day",
+        "labour day",
+    )
+
+    # Generic markers fall back for holidays not named above.
+    HOLIDAY_MARKERS = (
+        "holiday",
+        "public holiday",
+    )
+
     def __init__(self):
         self.notification_manager = get_notification_manager()
         self.completed_events: set[str] = set()  # Track manually completed events
 
     def get_calendar(self, query: CalendarQuery) -> CalendarResponse:
         """Get compliance calendar based on query."""
+        today = date.today()
+        # Fiscal year defaults to the year in progress: a hardcoded 2025 made
+        # every query older than the calendar itself.
         config = CalendarConfig(
             taxpayer_type=query.taxpayer_type,
-            tax_year=query.tax_year or date.today().year - 1,
-            fiscal_year=query.fiscal_year or 2025,
+            tax_year=query.tax_year or today.year - 1,
+            fiscal_year=query.fiscal_year or today.year,
         )
         engine = CalendarEngine(config)
 
@@ -122,10 +155,26 @@ class ComplianceCalendarAPI:
             self._event_to_dict(e) for e in filtered_events
             if e.is_overdue()
         ]
-        score = engine.calculate_compliance_score()
-        grade = engine.get_compliance_grade()
+        # Real completion data only: events the user has marked as filed.
+        score = engine.calculate_compliance_score(
+            completed_event_ids=self.completed_events or None,
+            today=today,
+        )
+        grade = engine.get_compliance_grade(
+            completed_event_ids=self.completed_events or None,
+            today=today,
+        )
         summary = self._build_summary(filtered_events, query)
         recommendations = self._build_recommendations(filtered_events, score)
+
+        if not filtered_events:
+            # A caller must never receive an unexplained empty calendar.
+            summary["notice"] = (
+                "No events matched these filters. The static calendar snapshot "
+                f"({DATASET_CAVEAT}) may not cover the requested period or "
+                "taxpayer type; widen the date/fiscal-year range or try another "
+                "taxpayer type."
+            )
 
         return CalendarResponse(
             query=asdict(query) if hasattr(query, '__dataclass_fields__') else {},
@@ -137,7 +186,7 @@ class ComplianceCalendarAPI:
             compliance_score=score,
             compliance_grade=grade,
             recommendations=recommendations,
-            generated_at=datetime.utcnow().isoformat(),
+            generated_at=_utc_now_iso(),
         )
 
     def get_upcoming_tasks(
@@ -163,13 +212,20 @@ class ComplianceCalendarAPI:
     def schedule_reminders(
         self,
         event_id: str,
-        recipient: str = "user@example.com",
+        recipient: Optional[str] = None,
         channels: Optional[list[NotificationChannel]] = None,
     ) -> dict:
-        """Schedule reminder notifications for an event."""
+        """
+        Schedule reminder notifications for an event.
+
+        `recipient` is required - there is deliberately no default address, so a
+        reminder can never be silently addressed to a placeholder mailbox.
+        """
         events = [e for e in get_all_events() if e.id == event_id]
         if not events:
             return {"error": "Event not found"}
+        if not recipient:
+            return {"error": "Reminder recipient is required"}
 
         event = events[0]
         days_remaining = event.days_until_due()
@@ -226,7 +282,6 @@ class ComplianceCalendarAPI:
 
     def get_dashboard_summary(self, taxpayer_type: str = "individual") -> dict:
         """Get dashboard summary for compliance status."""
-        today = date.today()
         query = CalendarQuery(taxpayer_type=taxpayer_type)
         response = self.get_calendar(query)
 
@@ -300,8 +355,24 @@ class ComplianceCalendarAPI:
         return taxpayer_type in event.applicable_to
 
     def _is_holiday(self, event: ComplianceEvent) -> bool:
-        """Check if event is a holiday."""
-        return event.category == EventCategory.REGULATORY and "Holiday" in event.title
+        """
+        Check if event is a holiday.
+
+        A literal "Holiday" substring match missed most of the national
+        holidays in this dataset ("Independence Day of Pakistan",
+        "Pakistan Day", ...), so match against the known holiday titles plus
+        the generic markers instead.
+        """
+        if event.category != EventCategory.REGULATORY:
+            return False
+
+        title = (event.title or "").lower()
+        text = title + " " + (event.description or "").lower()
+        notes = " ".join(n for n in (event.notes or []) if n).lower()
+
+        if any(keyword in title for keyword in self.HOLIDAY_TITLES):
+            return True
+        return any(marker in text or marker in notes for marker in self.HOLIDAY_MARKERS)
 
     def _event_to_dict(self, event: ComplianceEvent) -> dict:
         """Convert event to dictionary."""
@@ -312,7 +383,11 @@ class ComplianceCalendarAPI:
             "due_date": event.due_date.isoformat(),
             "fiscal_year": event.fiscal_year,
             "tax_year": event.tax_year,
-            "quarter": event.quarter,
+            # ComplianceEvent.quarter is an Optional[int] (events.py), while the
+            # API contract exposes quarter as a string. Pydantic 2 does not
+            # coerce int -> str, so serialise it here explicitly; emitting the
+            # raw int made every quarterly event a 400 ValidationError.
+            "quarter": str(event.quarter) if event.quarter is not None else None,
             "priority": event.priority.value,
             "category": event.category.value,
             "event_type": event.event_type.value,
@@ -370,11 +445,16 @@ class ComplianceCalendarAPI:
 
         return summary
 
-    def _build_recommendations(self, events: list[ComplianceEvent], score: float) -> list[str]:
+    def _build_recommendations(self, events: list[ComplianceEvent], score: Optional[float]) -> list[str]:
         """Build recommendations based on events."""
         recommendations = []
 
-        if score < 70:
+        if score is None:
+            recommendations.append(
+                "ℹ️ Not enough data to score compliance: mark filed events as completed "
+                "(POST /calendar/events/{event_id}/complete) to get a real score."
+            )
+        elif score < 70:
             recommendations.append(
                 "⚠️ Your compliance score is low. File all pending returns immediately."
             )
@@ -470,6 +550,8 @@ class ComplianceCalendarAPI:
             return "Average compliance. Please focus on filing on time."
         elif grade == "D":
             return "Below average. You need to catch up on filings."
+        elif grade == "insufficient_data":
+            return "Insufficient data: no filings have been recorded yet, so no compliance score was calculated."
         else:
             return f"Critical: {overdue_count} overdue items. Take action now!"
 

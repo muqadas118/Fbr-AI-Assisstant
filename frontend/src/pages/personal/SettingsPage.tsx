@@ -1,10 +1,12 @@
 import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/Card";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 import { Select } from "@/components/ui/Select";
 import { useProfile } from "@/state/profile";
+import { usePersonalizationUi } from "@/state/personalizationUi";
 
 interface SettingsForm {
   displayName: string;
@@ -43,6 +45,8 @@ function initialForm(): SettingsForm {
 }
 
 export function SettingsPage() {
+  const navigate = useNavigate();
+  const requestPanel = usePersonalizationUi((st) => st.requestPanel);
   const [form, setForm] = useState<SettingsForm>(initialForm);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -88,6 +92,12 @@ export function SettingsPage() {
           <div className="page__eyebrow page-eyebrow eyebrow">FBR · Settings</div>
           <h2 className="page__title">Profile / Settings</h2>
           <p className="page__subtitle">Display and notification preferences.</p>
+          <StatusBanner
+            kind="info"
+            title="Local-only settings"
+            description="These preferences are saved in this browser's local storage. They are not synced to your account or the server, so they will not follow you to another device or browser."
+            testId="settings-local-only"
+          />
         </div>
       </header>
 
@@ -104,8 +114,8 @@ export function SettingsPage() {
         {saved ? (
           <StatusBanner
             kind="ok"
-            title="Settings saved"
-            description="Your preferences have been saved locally."
+            title="Settings saved on this device"
+            description="Your preferences have been saved locally in this browser only — they are not stored on the server."
             testId="settings-saved"
           />
         ) : null}
@@ -236,6 +246,35 @@ export function SettingsPage() {
                 <span>Enable SMS notifications</span>
               </label>
             </Field>
+          </div>
+        </Card>
+
+        <Card title="Personalization & Learning" testId="settings-personalization">
+          <div className="settings-form">
+            <p className="settings-form__note">
+              The assistant learns from your own questions — which topics, entity type and tax
+              year come up — and uses that to shape the "For you" recommendations in your chat.
+              This profile is stored on the server for your account, unlike the local-only
+              preferences on this page.
+            </p>
+            <p className="settings-form__note">
+              Learning is on-device-per-account: your questions shape your recommendations. We
+              never use your data to train shared models. Open the "For you" panel in the
+              assistant to see what has been learned, switch learning on or off, or delete every
+              learned signal.
+            </p>
+            <div className="settings-form__actions">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  requestPanel();
+                  navigate("/personal/assistant");
+                }}
+                data-testid="settings-open-personalization"
+              >
+                Open "For you" panel
+              </Button>
+            </div>
           </div>
         </Card>
 

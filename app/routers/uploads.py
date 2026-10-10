@@ -24,6 +24,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
+from app.language import localize
+from app.quotas import get_quota_store
 from app.supabase_auth import require_user
 
 logger = logging.getLogger("fbr_api.uploads")
@@ -284,6 +286,35 @@ def _cnic_format_valid(cnic: Optional[str]) -> bool:
     return digits.isdigit() and len(digits) == 13
 
 
+# Daily upload budget: PER ACCOUNT and intentionally shared across every page
+# that accepts an uploaded file (documents/analyze, documents/verify,
+# invoices/process and any future upload route) — one pool, so the cap cannot
+# be sidestepped by hopping endpoints. Under FBR_AUTH_REQUIRED=false there is
+# no caller, so calls meter against one shared "dev-user" scope (the same
+# fallback /quota and vault use) rather than crashing on a None id.
+_DEV_USER_SCOPE = "dev-user"
+
+
+def _consume_upload_quota(user: Optional[dict]) -> None:
+    """Charge one uploaded file against the caller's daily upload budget.
+
+    Raises HTTPException 429 (localized) once the daily budget is exhausted.
+    A no-op when quotas are globally disabled (the store reports allowed).
+    """
+    scope = _DEV_USER_SCOPE
+    if isinstance(user, dict):
+        for key in ("id", "user_id", "sub"):
+            if user.get(key):
+                scope = str(user[key])
+                break
+    snap = get_quota_store().consume_upload(scope)
+    if not snap.allowed_upload:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=localize("quota_upload_exceeded", "en"),
+        )
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
@@ -296,16 +327,17 @@ def _cnic_format_valid(cnic: Optional[str]) -> bool:
 async def upload_and_analyze_document(
     file: UploadFile = File(...),
     document_type_hint: Optional[str] = None,
+    user: Optional[dict] = Depends(require_user),
 ) -> UploadDocumentAnalysisResponse:
     """
     Upload a document file (PDF, image, or text) and run the full
     document analysis pipeline on its extracted text.
     """
     try:
+        _consume_upload_quota(user)
         analysis, filename, family, ocr_warning = _analyze_uploaded_document(
             file, document_type_hint
         )
-        import os
 
         size = file.size if file.size is not None else None
         return UploadDocumentAnalysisResponse(
@@ -335,12 +367,14 @@ async def upload_and_analyze_document(
 )
 async def upload_and_verify_document(
     file: UploadFile = File(...),
+    user: Optional[dict] = Depends(require_user),
 ) -> UploadDocumentVerifyResponse:
     """
     Upload a document file (PDF, image, or text) and verify the taxpayer
     identity (NTN/CNIC) it contains, including format validation.
     """
     try:
+        _consume_upload_quota(user)
         analysis, filename, family, ocr_warning = _analyze_uploaded_document(file, None)
         ntn = analysis.extracted_info.person_ntn
         cnic = analysis.extracted_info.person_cnic
@@ -378,12 +412,14 @@ async def upload_and_verify_document(
 async def upload_and_process_invoice(
     file: UploadFile = File(...),
     invoice_id: Optional[str] = None,
+    user: Optional[dict] = Depends(require_user),
 ) -> UploadInvoiceProcessResponse:
     """
     Upload an invoice file (PDF, image, or text) and run the invoice
     processing pipeline: extraction, validation, duplicates, ITC.
     """
     try:
+        _consume_upload_quota(user)
         text, family, ocr_warning = _read_and_extract(file)
         from app.invoice_intelligence import get_invoice_api
 

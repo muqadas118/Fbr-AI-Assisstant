@@ -21,9 +21,8 @@ Each stage has specific:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
-from app.notice_analyzer.classifier import NoticeType
+from app.notice_analyzer.classifier import NoticeClassifier, NoticeType
 
 
 class AppealForum(str, Enum):
@@ -56,7 +55,15 @@ class AppealGuideGenerator:
 
     @staticmethod
     def generate(notice_type: NoticeType) -> AppealGuide:
-        """Generate appeal guide for notice type."""
+        """Generate appeal guide for notice type.
+
+        RULE (single source of truth): appealability comes from
+        NoticeClassifier.APPEALABLE_TYPES and nowhere else. The branches below
+        only describe HOW to appeal (forum, time limit, forms); they never
+        decide WHETHER a notice is appealable, so the guide and the top-level
+        classification always agree.
+        """
+        is_appealable = notice_type in NoticeClassifier.APPEALABLE_TYPES
 
         # First appeal (CIR-A) - common for most
         if notice_type in {
@@ -82,7 +89,7 @@ class AppealGuideGenerator:
                 notice_type=notice_type.value,
                 forum=AppealForum.CIR_A.value,
                 time_limit_days=30,
-                is_appealable=True,
+                is_appealable=is_appealable,
                 forms_required=["Form-31 (Memorandum of Appeal)"],
                 documents_needed=[
                     "Original notice/order copy",
@@ -132,7 +139,7 @@ class AppealGuideGenerator:
                 notice_type=notice_type.value,
                 forum="not_directly_appealable",
                 time_limit_days=0,
-                is_appealable=False,
+                is_appealable=is_appealable,
                 forms_required=[],
                 documents_needed=["Notice copy"],
                 fees_required="N/A",
@@ -157,7 +164,7 @@ class AppealGuideGenerator:
                 notice_type=notice_type.value,
                 forum=AppealForum.CIR_A.value,
                 time_limit_days=30,
-                is_appealable=True,
+                is_appealable=is_appealable,
                 forms_required=["Form-31"],
                 documents_needed=["Intimation copy", "Relevant return/record"],
                 fees_required="PKR 1,000",
@@ -181,7 +188,7 @@ class AppealGuideGenerator:
                 notice_type=notice_type.value,
                 forum="special_court",
                 time_limit_days=14,
-                is_appealable=True,
+                is_appealable=is_appealable,
                 forms_required=["Bail application (urgent)"],
                 documents_needed=[
                     "Notice copy",
@@ -212,7 +219,7 @@ class AppealGuideGenerator:
             notice_type=notice_type.value,
             forum="consult_professional",
             time_limit_days=0,
-            is_appealable=False,
+            is_appealable=is_appealable,
             forms_required=[],
             documents_needed=["Notice copy"],
             fees_required="N/A",
@@ -230,40 +237,40 @@ class AppealGuideGenerator:
     def format_guide(guide: AppealGuide) -> str:
         """Format appeal guide."""
         lines = [
-            f"=== Appeal Guide ===",
+            "=== Appeal Guide ===",
             f"Notice Type: {guide.notice_type}",
-            f"",
+            "",
             f"Appealable: {'Yes' if guide.is_appealable else 'No'}",
             f"Forum: {guide.forum}",
             f"Time Limit: {guide.time_limit_days} days from order",
             f"Fees: {guide.fees_required}",
             f"Estimated Cost: {guide.estimated_cost}",
             f"Typical Success Rate: {guide.typical_success_rate}",
-            f"",
+            "",
         ]
 
         if guide.forms_required:
-            lines.append(f"--- Forms Required ---")
+            lines.append("--- Forms Required ---")
             for form in guide.forms_required:
                 lines.append(f"  📋 {form}")
 
         if guide.documents_needed:
-            lines.append(f"\n--- Documents Needed ---")
+            lines.append("\n--- Documents Needed ---")
             for doc in guide.documents_needed:
                 lines.append(f"  📎 {doc}")
 
         if guide.common_grounds:
-            lines.append(f"\n--- Common Grounds for Appeal ---")
+            lines.append("\n--- Common Grounds for Appeal ---")
             for ground in guide.common_grounds:
                 lines.append(f"  • {ground}")
 
         if guide.success_factors:
-            lines.append(f"\n--- Success Factors ---")
+            lines.append("\n--- Success Factors ---")
             for factor in guide.success_factors:
                 lines.append(f"  ✓ {factor}")
 
         if guide.notes:
-            lines.append(f"\n--- Important Notes ---")
+            lines.append("\n--- Important Notes ---")
             for note in guide.notes:
                 lines.append(f"  ⚠️  {note}")
 

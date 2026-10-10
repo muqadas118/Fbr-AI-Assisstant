@@ -1,9 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import clsx from "clsx";
 import {
   api,
   ApiError,
   NetworkError,
+  type VaultDocument,
   type VerificationResponse,
 } from "@/lib/api";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
@@ -24,15 +25,6 @@ import { useProfile } from "@/state/profile";
 
 type Tab = "vault" | "ntn" | "business" | "vendor";
 
-interface VaultFile {
-  id: string;
-  filename: string;
-  type: string;
-  size: string;
-  date: string;
-  secure: boolean;
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -52,6 +44,28 @@ function formatDate(iso: string): string {
 function boolTag(value: boolean, trueLabel = "Yes", falseLabel = "No"): React.ReactNode {
   return <Tag variant={value ? "ok" : "warn"}>{value ? trueLabel : falseLabel}</Tag>;
 }
+
+/**
+ * Business document labels → the backend vault doc_type enum
+ * (app/routers/vault.py ALLOWED_TYPES). The business page offers richer
+ * labels than the vault store accepts, and POST /vault/documents rejects any
+ * other value with 422, so the label is mapped on submit.
+ */
+const VAULT_DOC_TYPE_BY_LABEL: Record<string, string> = {
+  "Sales Tax Return": "Sales Tax Return",
+  "Withholding (WHT) Statement": "WHT Certificate",
+  "Company Income Tax Return": "Tax Return",
+  "Federal Excise Return": "Tax Return",
+  "Sales Tax Invoice": "Invoice",
+  "Supplier/Vendor Invoice": "Invoice",
+  "Input Tax Credit (ITC) Sheet": "Other",
+  "Corporate Registration / NTN": "Other",
+  "Bank Statement": "Bank Statement",
+  "Business Contract": "Contract",
+  "Other": "Other",
+};
+
+const BUSINESS_DOC_TYPE_LABELS = Object.keys(VAULT_DOC_TYPE_BY_LABEL);
 
 function verifiedBadge(response: VerificationResponse): React.ReactNode {
   return (
@@ -84,34 +98,72 @@ function renderDetails(details: Record<string, unknown>): Array<{ key: string; v
 // ---------------------------------------------------------------------------
 
 function VaultTab() {
-  const [files, setFiles] = useState<VaultFile[]>([]);
+  const { show: notify } = useNotification();
+  const [files, setFiles] = useState<VaultDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [newFilename, setNewFilename] = useState("");
   const [newType, setNewType] = useState("Sales Tax Return");
   const [newContent, setNewContent] = useState("");
 
-  const handleAdd = useCallback(() => {
-    if (!newFilename.trim()) return;
-    const file: VaultFile = {
-      id: `vault-${Date.now()}`,
-      filename: newFilename.trim(),
-      type: newType,
-      size: `${newContent.length} chars`,
-      date: new Date().toISOString(),
-      secure: true,
-    };
-    setFiles((prev) => [file, ...prev]);
-    setNewFilename("");
-    setNewType("Sales Tax Return");
-    setNewContent("");
-    setShowAdd(false);
-  }, [newFilename, newType, newContent]);
+  const fetchDocs = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const resp = await api.vault.list();
+      setFiles(resp.documents);
+    } catch (err) {
+      if (err instanceof ApiError) setLoadError(`API error (${err.status}): ${err.detail}`);
+      else if (err instanceof NetworkError) setLoadError("Network error — could not reach the server.");
+      else setLoadError("An unexpected error occurred.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const handleDelete = useCallback((id: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== id));
-    if (selectedId === id) setSelectedId(null);
-  }, [selectedId]);
+  useEffect(() => {
+    void fetchDocs();
+  }, [fetchDocs]);
+
+  const handleAdd = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFilename.trim()) return;
+    setSaving(true);
+    try {
+      const doc = await api.vault.create({
+        filename: newFilename.trim(),
+        doc_type: VAULT_DOC_TYPE_BY_LABEL[newType] ?? "Other",
+        content: newContent,
+      });
+      setFiles((prev) => [doc, ...prev]);
+      setNewFilename("");
+      setNewType("Sales Tax Return");
+      setNewContent("");
+      setShowAdd(false);
+      notify("ok", `“${doc.filename}” added to the business vault.`);
+    } catch (err) {
+      if (err instanceof ApiError) notify("err", `Failed to add document: ${err.detail}`);
+      else if (err instanceof NetworkError) notify("err", "Network error — could not reach the server.");
+      else notify("err", "An unexpected error occurred.");
+    } finally {
+      setSaving(false);
+    }
+  }, [newFilename, newType, newContent, notify]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      await api.vault.remove(id);
+      setFiles((prev) => prev.filter((f) => f.id !== id));
+      if (selectedId === id) setSelectedId(null);
+      notify("ok", "Document deleted from vault.");
+    } catch (err) {
+      if (err instanceof ApiError) notify("err", `Delete failed: ${err.detail}`);
+      else notify("err", "An unexpected error occurred.");
+    }
+  }, [selectedId, notify]);
 
   const selected = files.find((f) => f.id === selectedId) ?? null;
 
@@ -124,11 +176,21 @@ function VaultTab() {
         <span className="small muted">{files.length} document{files.length !== 1 ? "s" : ""} in business vault</span>
       </div>
 
+      {loadError ? (
+        <StatusBanner kind="err" title="Failed to load business vault" description={loadError} testId="biz-vault-load-error" />
+      ) : null}
+
+      {loading ? (
+        <div className="vault-tab">
+          <Loading label="Loading your business vault…" testId="biz-vault-loading" />
+        </div>
+      ) : null}
+
       {showAdd && (
         <Card title="Add Document to Business Vault" testId="biz-vault-add-card">
           <form
             className="vault-add-form"
-            onSubmit={(e) => { e.preventDefault(); void handleAdd(); }}
+            onSubmit={(e) => { void handleAdd(e); }}
             data-testid="biz-vault-add-form"
           >
             <div className="grid grid--2">
@@ -148,19 +210,7 @@ function VaultTab() {
                   onChange={setNewType}
                   testId="biz-vault-add-type-select"
                   ariaLabel="Document type"
-                  options={[
-                    "Sales Tax Return",
-                    "Withholding (WHT) Statement",
-                    "Company Income Tax Return",
-                    "Input Tax Credit (ITC) Sheet",
-                    "Sales Tax Invoice",
-                    "Supplier/Vendor Invoice",
-                    "Federal Excise Return",
-                    "Corporate Registration / NTN",
-                    "Bank Statement",
-                    "Business Contract",
-                    "Other",
-                  ]}
+                  options={BUSINESS_DOC_TYPE_LABELS}
                 />
               </Field>
             </div>
@@ -174,8 +224,8 @@ function VaultTab() {
               />
             </Field>
             <div className="form__actions">
-              <Button type="submit" variant="primary" data-testid="biz-vault-add-submit">
-                Add to Vault
+              <Button type="submit" variant="primary" loading={saving} disabled={saving} data-testid="biz-vault-add-submit">
+                {saving ? "Saving…" : "Add to Vault"}
               </Button>
               <Button type="button" variant="ghost" onClick={() => setShowAdd(false)} data-testid="biz-vault-add-cancel">
                 Cancel
@@ -185,14 +235,16 @@ function VaultTab() {
         </Card>
       )}
 
-      {files.length === 0 && !showAdd ? (
+      {!loading && files.length === 0 && !showAdd && !loadError ? (
         <StatusBanner
           kind="info"
           title="Business vault is empty"
-          description="Add your first business tax document to the secure vault above."
+          description="Add your first business tax document to the secure vault above — it is saved to your account and survives page refreshes."
           testId="biz-vault-empty"
         />
-      ) : (
+      ) : null}
+
+      {files.length > 0 ? (
         <div className="vault-table-wrap">
           <table className="vault-table table--fbr" data-testid="biz-vault-table">
             <thead>
@@ -226,12 +278,12 @@ function VaultTab() {
                   <td>{boolTag(f.secure, "Encrypted", "Unencrypted")}</td>
                   <td>
                     <div className="vault-table__actions">
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setSelectedId(f.id); }} data-testid={`biz-vault-view-${f.id}`}>
-                        View
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDelete(f.id); }} data-testid={`biz-vault-delete-${f.id}`}>
-                        Delete
-                      </Button>
+                          <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setSelectedId(f.id); }} data-testid={`biz-vault-view-${f.id}`}>
+                            View
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); void handleDelete(f.id); }} data-testid={`biz-vault-delete-${f.id}`}>
+                            Delete
+                          </Button>
                     </div>
                   </td>
                 </tr>
@@ -239,7 +291,7 @@ function VaultTab() {
             </tbody>
           </table>
         </div>
-      )}
+      ) : null}
 
       {selected ? (
         <Card title={`Document: ${selected.filename}`} testId="biz-vault-detail-card">
@@ -253,11 +305,20 @@ function VaultTab() {
             ]}
             testId="biz-vault-detail-kv"
           />
+          {selected.content ? (
+            <>
+              <hr className="divider" />
+              <h4 style={{ fontSize: "14px", margin: "0 0 var(--s-2)" }}>Content / Notes</h4>
+              <p className="card__body-text" style={{ whiteSpace: "pre-wrap", margin: 0 }} data-testid="biz-vault-detail-content">
+                {selected.content}
+              </p>
+            </>
+          ) : null}
           <div className="form__actions" style={{ marginTop: "var(--s-4)" }}>
             <Button variant="ghost" size="sm" onClick={() => setSelectedId(null)} data-testid="biz-vault-detail-close">
               Close
             </Button>
-            <Button variant="danger" size="sm" onClick={() => { handleDelete(selected.id); }} data-testid="biz-vault-detail-delete">
+            <Button variant="danger" size="sm" onClick={() => { void handleDelete(selected.id); }} data-testid="biz-vault-detail-delete">
               Delete
             </Button>
           </div>
@@ -280,14 +341,14 @@ function NtnTab() {
 
   const { show: notify } = useNotification();
 
-  const validate = (): boolean => {
+  const validate = useCallback((): boolean => {
     if (!ntn.trim()) {
       setNtnError("Company NTN is required");
       return false;
     }
     setNtnError(null);
     return true;
-  };
+  }, [ntn]);
 
   const submit = useCallback(async () => {
     if (!validate()) return;
@@ -312,7 +373,7 @@ function NtnTab() {
     } finally {
       setLoading(false);
     }
-  }, [ntn, notify]);
+  }, [validate, ntn, notify]);
 
   return (
     <div className="vault-tab">
@@ -384,14 +445,14 @@ function BusinessTab() {
 
   const { show: notify } = useNotification();
 
-  const validate = (): boolean => {
+  const validate = useCallback((): boolean => {
     if (!regNumber.trim()) {
       setRegError("Registration number is required");
       return false;
     }
     setRegError(null);
     return true;
-  };
+  }, [regNumber]);
 
   const submit = useCallback(async () => {
     if (!validate()) return;
@@ -415,7 +476,7 @@ function BusinessTab() {
     } finally {
       setLoading(false);
     }
-  }, [regNumber, regType, notify]);
+  }, [validate, regNumber, regType, notify]);
 
   return (
     <div className="vault-tab">
@@ -443,7 +504,8 @@ function BusinessTab() {
                 ariaLabel="Registration type"
                 options={[
                   { value: "ntn", label: "NTN" },
-                  { value: "strn", label: "STRN (Sales Tax)" },
+                  { value: "secp_company", label: "SECP Company" },
+                  { value: "pra_registration", label: "PRA Registration" },
                 ]}
               />
             </Field>
@@ -500,14 +562,14 @@ function VendorTab() {
 
   const { show: notify } = useNotification();
 
-  const validate = (): boolean => {
+  const validate = useCallback((): boolean => {
     if (!vendorNtn.trim()) {
       setVendorError("Supplier/Vendor NTN is required");
       return false;
     }
     setVendorError(null);
     return true;
-  };
+  }, [vendorNtn]);
 
   const submit = useCallback(async () => {
     if (!validate()) return;
@@ -533,7 +595,7 @@ function VendorTab() {
     } finally {
       setLoading(false);
     }
-  }, [vendorNtn, notify]);
+  }, [validate, vendorNtn, notify]);
 
   const details = result?.details as Record<string, unknown> | undefined;
 

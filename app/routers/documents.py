@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
-from app.document_intelligence import DocumentAnalyzer, get_document_analyzer
+from app.document_intelligence import get_document_analyzer
 
 logger = logging.getLogger("fbr_api.documents")
 
@@ -206,7 +206,7 @@ async def analyze_document(request: DocumentAnalysisRequest) -> DocumentAnalysis
             ocr_simulated=getattr(result, "ocr_simulated", False) or "OCR simulated" in request.text,
             ocr_warning=getattr(result, "ocr_warning", None),
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error analyzing document")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -233,7 +233,7 @@ async def verify_document_identity(request: DocumentVerifyRequest) -> DocumentVe
             confidence=result.classification_confidence,
             extraction_quality=result.extracted_info.extraction_quality,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error verifying document")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -255,7 +255,7 @@ async def get_document_types() -> dict:
             "document_types": [dt.value for dt in DocumentType],
             "categories": [dc.value for dc in DocumentCategory],
         }
-    except Exception as e:
+    except Exception:
         logger.exception("Error listing document types")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

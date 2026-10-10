@@ -13,10 +13,10 @@ from app.multi_user.models import (
     get_user_manager,
 )
 from app.multi_user.auth import (
-    AuthManager, Session, hash_password, verify_password, get_auth_manager,
+    Session, hash_password, verify_password, get_auth_manager,
 )
 from app.multi_user.team import (
-    TeamManager, TeamInvitation, get_team_manager,
+    TeamInvitation, get_team_manager,
 )
 
 logger = logging.getLogger("multi_user")
@@ -48,7 +48,8 @@ class MultiUserAPI:
         if user is None:
             raise ValueError(f"User {user_id} not found")
         updated = self.users.update_user(user_id, preferred_workspace=ws)
-        assert updated is not None  # user existence checked above
+        if updated is None:
+            raise ValueError(f"User {user_id} not found")
         self.users._log_action(
             user_id, "user.workspace_allocated", "user", user_id, {"workspace": ws}
         )
@@ -195,9 +196,14 @@ class MultiUserAPI:
         self,
         invitation_id: str,
         user_id: str,
+        email: Optional[str] = None,
     ) -> bool:
-        """Accept a team invitation."""
-        return self.teams.accept_invitation(invitation_id, user_id)
+        """Accept a team invitation.
+
+        `email` (the invited address) is checked case-insensitively; when it is
+        omitted it is resolved from the accepting user's account.
+        """
+        return self.teams.accept_invitation(invitation_id, user_id, email)
 
     def get_team_dashboard(self, team_id: str) -> dict:
         """Get team dashboard data."""
@@ -319,6 +325,7 @@ class MultiUserAPI:
         return {
             "id": session.id,
             "user_id": session.user_id,
+            "token": session.token,
             "created_at": session.created_at,
             "expires_at": session.expires_at,
             "ip_address": session.ip_address,

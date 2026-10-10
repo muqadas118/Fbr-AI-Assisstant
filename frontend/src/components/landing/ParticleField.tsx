@@ -18,6 +18,14 @@ const GOLD = "198, 161, 91";
 const GREEN = "134, 197, 160";
 const LINK_DIST = 120;
 const MOUSE_DIST = 160;
+// Half of the 8-neighbourhood (cell size == LINK_DIST): walking each dot
+// against only these offsets visits every dot pair exactly once.
+const FORWARD_CELLS: ReadonlyArray<readonly [number, number]> = [
+  [0, 1],
+  [1, -1],
+  [1, 0],
+  [1, 1],
+];
 
 export function ParticleField({ density = 110, testId = "landing-particles" }: ParticleFieldProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -72,24 +80,54 @@ export function ParticleField({ density = 110, testId = "landing-particles" }: P
     function draw() {
       ctx.clearRect(0, 0, w, h);
 
-      for (let i = 0; i < dots.length; i++) {
-        const a = dots[i];
-        for (let j = i + 1; j < dots.length; j++) {
-          const b = dots[j];
-          const dx = a.x - b.x;
-          const dy = a.y - b.y;
-          const d = Math.hypot(dx, dy);
-          if (d < LINK_DIST) {
-            const alpha = (1 - d / LINK_DIST) * 0.28;
-            ctx.strokeStyle = `rgba(${GOLD},${alpha.toFixed(3)})`;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-            ctx.stroke();
+      // Spatial hash: bucket dots into LINK_DIST-sized cells so each dot is
+      // only compared against its own cell and the four forward neighbours
+      // (O(n) pair checks per frame instead of O(n^2) — 180 dots used to cost
+      // ~16k distance checks on every animation frame, which is heavy on a
+      // 390px phone). Same links are drawn as before.
+      const cols = Math.max(1, Math.ceil(w / LINK_DIST));
+      const rows = Math.max(1, Math.ceil(h / LINK_DIST));
+      const grid: Dot[][] = Array.from({ length: cols * rows }, () => []);
+      for (const d of dots) {
+        const cx = Math.min(cols - 1, Math.max(0, Math.floor(d.x / LINK_DIST)));
+        const cy = Math.min(rows - 1, Math.max(0, Math.floor(d.y / LINK_DIST)));
+        grid[cy * cols + cx].push(d);
+      }
+
+      const link = (a: Dot, b: Dot) => {
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const d = Math.hypot(dx, dy);
+        if (d < LINK_DIST) {
+          const alpha = (1 - d / LINK_DIST) * 0.28;
+          ctx.strokeStyle = `rgba(${GOLD},${alpha.toFixed(3)})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      };
+
+      for (let cy = 0; cy < rows; cy++) {
+        for (let cx = 0; cx < cols; cx++) {
+          const bucket = grid[cy * cols + cx];
+          for (let i = 0; i < bucket.length; i++) {
+            const a = bucket[i];
+            for (let j = i + 1; j < bucket.length; j++) link(a, bucket[j]);
+            for (let n = 0; n < FORWARD_CELLS.length; n++) {
+              const nx = cx + FORWARD_CELLS[n][0];
+              const ny = cy + FORWARD_CELLS[n][1];
+              if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+              const near = grid[ny * cols + nx];
+              for (let j = 0; j < near.length; j++) link(a, near[j]);
+            }
           }
         }
-        if (mouse.inside) {
+      }
+
+      if (mouse.inside) {
+        for (const a of dots) {
           const dx = a.x - mouse.x;
           const dy = a.y - mouse.y;
           const d = Math.hypot(dx, dy);

@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -15,10 +14,8 @@ from build_vector_database import (
     EMBEDDING_METADATA_FILE,
     EMBEDDINGS_FILE,
     EXPECTED_VECTORS,
-    INDEX_FILE,
     INDEX_TYPE,
     MANIFEST_FILE,
-    METADATA_FILE,
     MODEL_NAME,
     MODEL_REVISION,
     ROOT,

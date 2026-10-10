@@ -1,11 +1,21 @@
+from app.hybrid_retriever import resolve_vectorstore_paths
 from app.llm import generate_answer
 from app.retriever import FBRRetriever
 
 
 class FBRRAG:
 
-    def __init__(self, top_k=5):
-        self.retriever = FBRRetriever()
+    def __init__(self, top_k=5, index_path=None, metadata_path=None):
+        # Resolve through the canonical helper so this wrapper never
+        # hardcodes a vectorstore path of its own.
+        index_path, metadata_path = resolve_vectorstore_paths(
+            index_path,
+            metadata_path,
+        )
+        self.retriever = FBRRetriever(
+            index_path=index_path,
+            metadata_path=metadata_path,
+        )
         self.top_k = top_k
 
     def answer(self, question):

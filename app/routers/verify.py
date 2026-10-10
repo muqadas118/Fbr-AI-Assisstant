@@ -8,13 +8,12 @@ Exposes VerificationAPI as HTTP endpoints.
 
 import logging
 from enum import Enum
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from app.supabase_auth import require_user
 from pydantic import BaseModel, Field
 
-from app.verification_center import VerificationAPI, get_verification_api
+from app.verification_center import get_verification_api
 
 logger = logging.getLogger("fbr_api.verify")
 
@@ -45,27 +44,27 @@ class BusinessRegType(str, Enum):
 
 class VerifyNTNRequest(BaseModel):
     """Verify NTN request."""
-    ntn: str = Field(..., min_length=1, description="NTN number")
+    ntn: str = Field(..., min_length=1, max_length=9, description="NTN number")
 
 
 class VerifyFilerRequest(BaseModel):
     """Verify filer status request."""
-    ntn: str = Field(..., min_length=1, description="NTN number")
+    ntn: str = Field(..., min_length=1, max_length=9, description="NTN number")
 
 
 class VerifyVendorRequest(BaseModel):
     """Verify vendor request."""
-    vendor_ntn: str = Field(..., min_length=1, description="Vendor NTN")
+    vendor_ntn: str = Field(..., min_length=1, max_length=9, description="Vendor NTN")
 
 
 class VerifyCNICRequest(BaseModel):
     """Verify CNIC request."""
-    cnic: str = Field(..., min_length=1, description="CNIC number (without dashes)")
+    cnic: str = Field(..., min_length=1, max_length=15, description="CNIC number (without dashes)")
 
 
 class VerifyBusinessRequest(BaseModel):
     """Verify business registration request."""
-    registration_number: str = Field(..., min_length=1)
+    registration_number: str = Field(..., min_length=1, max_length=20)
     reg_type: BusinessRegType = Field(default=BusinessRegType.NTN)
 
 
@@ -116,7 +115,7 @@ async def verify_ntn(request: VerifyNTNRequest) -> VerificationResponse:
             message=result.message,
             details=result.details,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error verifying NTN")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -143,7 +142,7 @@ async def verify_filer_status(request: VerifyFilerRequest) -> VerificationRespon
             message=result.message,
             details=result.details,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error checking filer status")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -170,7 +169,7 @@ async def verify_vendor(request: VerifyVendorRequest) -> VerificationResponse:
             message=result.message,
             details=result.details,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error verifying vendor")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -196,7 +195,7 @@ async def verify_cnic(request: VerifyCNICRequest) -> VerificationResponse:
             message=result.message,
             details=result.details,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error verifying CNIC")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -225,7 +224,7 @@ async def verify_business(request: VerifyBusinessRequest) -> VerificationRespons
             message=result.message,
             details=result.details,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error verifying business")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -283,7 +282,7 @@ async def batch_verify(request: BatchVerifyRequest) -> list[VerificationResponse
         ]
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Error in batch verification")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -297,17 +296,33 @@ async def check_atl(ntn: str) -> dict:
     Check if NTN is on Active Taxpayers List (ATL).
 
     Returns ATL status which determines WHT rates.
+
+    `on_atl` is only ever a real verdict when the verification source
+    returned one. The default build has no official FBR lookup wired in, so
+    the payload carries status="unavailable" with `check_available` false —
+    reported explicitly instead of a misleading `on_atl: false`.
     """
     try:
         api = get_verification_api()
         result = api.verify_filer_status(ntn)
+        details = result.details or {}
+        status_value = details.get("status", "unknown")
+        if "is_atl" in details:
+            on_atl = bool(details["is_atl"])
+        elif status_value == "unavailable":
+            on_atl = None
+        else:
+            on_atl = False
         return {
             "ntn": ntn,
-            "on_atl": result.details.get("is_atl", False),
-            "filer_status": result.details.get("status", "unknown"),
-            "last_return": result.details.get("last_return", "N/A"),
+            "on_atl": on_atl,
+            "filer_status": status_value,
+            "last_return": details.get("last_return", "N/A"),
+            "check_available": status_value != "unavailable",
+            "message": result.message,
+            "reason": details.get("reason", ""),
         }
-    except Exception as e:
+    except Exception:
         logger.exception("Error checking ATL")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

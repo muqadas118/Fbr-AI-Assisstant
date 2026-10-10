@@ -43,8 +43,13 @@ Rates vary based on:
 """
 
 from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
 from typing import Optional
+
+from app.calculations.income_tax import (
+    FilingStatus, IncomeTaxCalculator, TaxYear
+)
 
 
 class FilerStatus(str, Enum):
@@ -172,7 +177,35 @@ WHT_RATES = {
         "non_filer": 0.10,
         "applies_to": "vehicle_registration",
     },
+    # Section 149: Salaries — no flat rate. WHT on salary follows the
+    # salaried slabs of the authoritative income_tax module, so the
+    # rate is derived at calculation time (see calculate()) instead of
+    # being tabulated here.
+    WHTSection.SALARY_149: {
+        "filer": 0.0,  # derived from the salaried slabs
+        "non_filer": 0.0,  # derived from the salaried slabs
+        "applies_to": "salary_income",
+        "basis": "salary_slabs",
+    },
 }
+
+
+def _default_wht_tax_year() -> TaxYear:
+    """Default tax year for a WHTInput that omits one.
+
+    Convention: the current calendar year, clamped to the nearest year the
+    slab tables actually support — exactly what
+    ``app/routers/assistant.py::_extract_tax_year`` does for a year named
+    in a query. ``IncomeTaxCalculator.get_slabs`` only has 2024/2025/2026
+    schedules, so an out-of-range year (e.g. 2027) must fall back to the
+    closest supported one rather than raise a ValueError with no
+    fallback.
+
+    A dynamic default (rather than a hardcoded ``TaxYear.TY_2025``) is the
+    point: without it, Section 149 salary withholding was priced on the
+    2025 slabs forever and a 2026 caller silently got 2025 rates.
+    """
+    return min(TaxYear, key=lambda y: abs(int(y.value) - date.today().year))
 
 
 @dataclass
@@ -183,6 +216,11 @@ class WHTInput:
     transaction_amount: float
     description: str = ""
     custom_rate: Optional[float] = None  # Override rate if needed
+    # Year whose slabs price a Section 149 (salary) deduction. Defaulted
+    # (not required) so the callers that omit the year — app/calculations/
+    # engine.py._calc_wht builds WHTInput from a plain dict — keep
+    # working; see _default_wht_tax_year() for the default choice.
+    tax_year: TaxYear = field(default_factory=lambda: _default_wht_tax_year())
 
 
 @dataclass
@@ -194,6 +232,9 @@ class WHTResult:
     rate_applied: float
     wht_amount: float
     net_amount: float  # After WHT deduction
+    # Year whose slabs produced every figure above, so a caller can tell
+    # which Finance Act schedule was applied without echoing the inputs.
+    tax_year: TaxYear
     threshold_check: bool = True
     notes: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
@@ -221,6 +262,13 @@ class WithholdingTaxCalculator:
         if custom_rate is not None:
             return custom_rate
         rates = WHT_RATES.get(section, {})
+        if rates.get("basis") == "salary_slabs":
+            # Section 149 has no flat rate — WHT follows the salaried
+            # slabs, see calculate(). Never fall back to 0%.
+            raise ValueError(
+                "WHT Section 149 (salary) has no flat rate: tax follows the "
+                "salaried slabs, use WithholdingTaxCalculator.calculate()."
+            )
         if filer_status == FilerStatus.FILER:
             return rates.get("filer", 0.0)
         return rates.get("non_filer", rates.get("filer", 0.0))
@@ -245,20 +293,50 @@ class WithholdingTaxCalculator:
         sources = [
             "Income Tax Ordinance 2001",
             f"WHT Section: {inp.section.value}",
-            f"FBR Finance Act 2024-25",
+            f"FBR Finance Act {inp.tax_year.value}",
         ]
 
-        # Threshold check
+        # Threshold check — below the threshold no WHT is due at all
+        # (the threshold was previously only noted while the FULL
+        # amount was still taxed).
         threshold_ok, threshold_note = WithholdingTaxCalculator.check_threshold(inp.section, inp.transaction_amount)
         if not threshold_ok:
             notes.append(f"⚠️  {threshold_note}")
+            notes.append(
+                f"No WHT deducted: amount PKR {inp.transaction_amount:,.2f} is below the threshold."
+            )
+            return WHTResult(
+                section=inp.section.value,
+                filer_status=inp.filer_status.value,
+                transaction_amount=inp.transaction_amount,
+                rate_applied=0.0,
+                wht_amount=0.0,
+                net_amount=inp.transaction_amount,
+                tax_year=inp.tax_year,
+                threshold_check=False,
+                notes=notes,
+                sources=sources,
+            )
 
-        # Get rate
-        rate = WithholdingTaxCalculator.get_rate(inp.section, inp.filer_status, inp.custom_rate)
-        notes.append(f"Rate applied: {rate * 100:.2f}% ({inp.filer_status.value})")
+        if inp.section == WHTSection.SALARY_149 and inp.custom_rate is None:
+            # Section 149 (salary) has no flat WHT rate — tax follows the
+            # salaried slabs of the authoritative income_tax module.
+            # Assumption: transaction_amount is ANNUAL salary.
+            slabs = IncomeTaxCalculator.get_slabs(FilingStatus.SALARIED, inp.tax_year)
+            salary_tax, _ = IncomeTaxCalculator.calculate_tax_on_slab(inp.transaction_amount, slabs)
+            rate = salary_tax / inp.transaction_amount if inp.transaction_amount > 0 else 0.0
+            wht_amount = salary_tax
+            notes.append(
+                f"Salary slabs applied (annual salary basis): effective {rate * 100:.2f}%"
+            )
+        else:
+            # Get rate
+            rate = WithholdingTaxCalculator.get_rate(inp.section, inp.filer_status, inp.custom_rate)
+            notes.append(f"Rate applied: {rate * 100:.2f}% ({inp.filer_status.value})")
 
-        # Calculate
-        wht_amount = inp.transaction_amount * rate
+            # Calculate
+            wht_amount = inp.transaction_amount * rate
+
         net_amount = inp.transaction_amount - wht_amount
 
         notes.append(f"Gross Amount: PKR {inp.transaction_amount:,.2f}")
@@ -272,6 +350,7 @@ class WithholdingTaxCalculator:
             rate_applied=rate,
             wht_amount=round(wht_amount, 2),
             net_amount=round(net_amount, 2),
+            tax_year=inp.tax_year,
             threshold_check=threshold_ok,
             notes=notes,
             sources=sources,
@@ -287,21 +366,22 @@ class WithholdingTaxCalculator:
         """Format result as human-readable string."""
         lines = [
             f"=== WHT Calculation (Section {result.section}) ===",
+            f"Tax Year: {result.tax_year.value}",
             f"Filer Status: {result.filer_status}",
-            f"",
+            "",
             f"Transaction Amount:      {currency} {result.transaction_amount:>15,.2f}",
             f"Rate Applied:            {result.rate_applied * 100:>14.2f}%",
             f"WHT Deducted:            {currency} {result.wht_amount:>15,.2f}",
             f"Net Payable:             {currency} {result.net_amount:>15,.2f}",
-            f"",
+            "",
             f"Threshold Check:         {'✓ Pass' if result.threshold_check else '⚠️ Below threshold'}",
-            f"",
-            f"--- Notes ---",
+            "",
+            "--- Notes ---",
         ]
         for note in result.notes:
             lines.append(f"  • {note}")
-        lines.append(f"")
-        lines.append(f"--- Sources ---")
+        lines.append("")
+        lines.append("--- Sources ---")
         for src in result.sources:
             lines.append(f"  📄 {src}")
         return "\n".join(lines)

@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, type ReactNode } from "react";
+import { cloneElement, isValidElement, useId, type ReactElement, type ReactNode } from "react";
 import clsx from "clsx";
 
 interface FieldProps {
@@ -24,18 +24,32 @@ export function Field({
 }: FieldProps) {
   // Rs (or any prefix) is now a placeholder that erases on typing —
   // no permanent pill/badge inside the box.
+  const autoId = useId();
   let content = children;
-  if (prefix && isValidElement(content)) {
-    const props = (content as React.ReactElement<{ placeholder?: string }>).props;
-    if (!props.placeholder) {
-      content = cloneElement(content as React.ReactElement<{ placeholder?: string }>, {
-        placeholder: `e.g. ${prefix} 500,000`,
+  // The visible <label> must point at the control (htmlFor/id). Controls
+  // that already carry their own id keep it; the rest get the generated
+  // one injected. Controls with no visible label at all (none here — the
+  // label is always rendered) would need an explicit aria-label instead.
+  let controlId = autoId;
+  if (isValidElement(content)) {
+    const control = content as ReactElement<{ id?: string; placeholder?: string }>;
+    if (control.props.id) {
+      controlId = control.props.id;
+      if (prefix && !control.props.placeholder) {
+        content = cloneElement(control, { placeholder: `e.g. ${prefix} 500,000` });
+      }
+    } else {
+      content = cloneElement(control, {
+        id: controlId,
+        ...(prefix && !control.props.placeholder
+          ? { placeholder: `e.g. ${prefix} 500,000` }
+          : {}),
       });
     }
   }
   return (
     <div className={clsx("field", error && "field--error", className)} data-testid={testId}>
-      <label className="field__label">
+      <label className="field__label" htmlFor={controlId}>
         {label}
         {helperText ? <span className="field__helper">{helperText}</span> : null}
       </label>

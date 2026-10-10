@@ -23,10 +23,11 @@ MIGRATED FUNCTIONALITY
 This agent absorbs the useful logic from the removed
 PropertyValuation and FinanceAct agents:
 
-- City-specific valuation queries are normalized to the
-  corpus retrieval vocabulary ("{city} tehsil property
-  valuation"). This addresses the documented Phase 8
-  hybrid scoring limitation where a bare city name
+- City-specific valuation queries carry the corpus retrieval
+  vocabulary ("{city} tehsil property valuation") appended to the
+  user's own wording. The original question is preserved, not
+  replaced: appending the corpus phrase addresses the documented
+  Phase 8 hybrid scoring limitation where a bare city name
   combined with generic legal phrasing was pulled toward
   Income Tax Ordinance property-acquisition text by the
   semantic component of the hybrid score.
@@ -69,7 +70,8 @@ class ResearchAgent(SpecializedAgent):
             return q
 
         # 1. Property valuation vocabulary normalization.
-        #    City + context -> "{City} tehsil property valuation"
+        #    City + context -> append "{City} tehsil property
+        #    valuation"; the user's own wording is kept.
         q_lower = q.lower()
         city = detect_city(q_lower)
         if city is not None:
@@ -85,7 +87,7 @@ class ResearchAgent(SpecializedAgent):
                     "district",
                 )
             ):
-                return f"{city} tehsil property valuation"
+                return f"{q} ({city} tehsil property valuation)"
 
         # 2. Finance Act year abbreviation -> "Finance Act YYYY"
         if "finance act" not in q_lower:

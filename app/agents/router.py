@@ -45,6 +45,11 @@ Priority order (highest first):
 Multi-domain queries return every matched domain, priority-ordered.
 A city name alone never triggers Research routing; a context
 term (property/valuation/tehsil/district) must also be present.
+
+When the same phrase appears in two signal lists, the
+higher-priority domain wins and the question maps to exactly one
+domain (see _collapse_duplicate_signal_domains), so a single-domain
+question never runs two agents.
 """
 
 from __future__ import annotations
@@ -265,6 +270,81 @@ _RESEARCH_SIGNALS: tuple[str, ...] = (
     "multi-domain",
 )
 
+# Collision-prone signals matched on word boundaries. Short ASCII
+# signals (e.g. "cd", "strn", "pos") are substrings of ordinary
+# words ("record", "according", "purpose"), and "import" is a
+# substring of "important", so a plain substring test produces
+# false customs / sales-tax routing. These are matched with
+# compiled word-boundary regexes instead, following the
+# _FED_WORD_RE / _WHT_WORD_RE / _NTN_WORD_RE pattern below.
+_SHORT_SIGNAL_MAX_LEN = 4
+_WORD_BOUNDARY_TOKENS: tuple[str, ...] = ("import", "export")
+
+# All signal lists, so the word-boundary map below is built from
+# one place and shared by every matching site.
+_ALL_SIGNAL_TUPLES: tuple[tuple[str, ...], ...] = (
+    _INCOME_TAX_SIGNALS,
+    _SALES_TAX_SIGNALS,
+    _FEDERAL_EXCISE_SIGNALS,
+    _CUSTOMS_SIGNALS,
+    _REGISTRATION_SIGNALS,
+    _RETURN_FILING_SIGNALS,
+    _CALCULATION_SIGNALS,
+    _NOTICE_APPEAL_SIGNALS,
+    _RESEARCH_SIGNALS,
+)
+
+
+def _needs_word_boundary(signal: str) -> bool:
+    """True when a signal must not be matched as a plain substring.
+    """
+
+    if not signal or not signal.isascii():
+        return False
+    if len(signal) <= _SHORT_SIGNAL_MAX_LEN:
+        return True
+    return signal in _WORD_BOUNDARY_TOKENS
+
+
+# Compiled word-boundary regexes for every collision-prone signal,
+# shared by _match_phrases and the per-domain match sites.
+_WORD_BOUNDARY_SIGNAL_RES: dict[str, re.Pattern[str]] = {
+    signal: re.compile(rf"\b{re.escape(signal)}\b", re.IGNORECASE)
+    for signals in _ALL_SIGNAL_TUPLES
+    for signal in signals
+    if _needs_word_boundary(signal)
+}
+
+# Deterministic primary-domain tie-break for phrases that appear in
+# two domain signal lists. DOMAIN_PRIORITY above decides the
+# surviving domain: registration > sales_tax for STRN, and
+# return_filing > income_tax for return / filer status queries.
+# Format: (dropped_domain, kept_domain, signals in both lists).
+_SHARED_SIGNALS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    (DOMAIN_SALES_TAX, DOMAIN_REGISTRATION, ("strn",)),
+    (
+        DOMAIN_INCOME_TAX,
+        DOMAIN_RETURN_FILING,
+        ("income tax return", "filer", "non-filer"),
+    ),
+)
+
+# A bare domain-name mention ("sales tax") is a topic qualifier,
+# not a second intent: "how do I register for sales tax" is one
+# registration question, not a registration question plus a
+# sales-tax question. Format: (dropped_domain, kept_domain,
+# dropped-only signals, kept-required signals).
+_TIE_BREAK_RULES: tuple[
+    tuple[str, str, tuple[str, ...], tuple[str, ...]], ...
+] = (
+    (
+        DOMAIN_SALES_TAX,
+        DOMAIN_REGISTRATION,
+        ("sales tax",),
+        ("register",),
+    ),
+)
+
 # Word-boundary regex signals (avoid substring false positives).
 _FED_WORD_RE = re.compile(r"\bfed\b", re.IGNORECASE)
 _WHT_WORD_RE = re.compile(r"\bwht\b", re.IGNORECASE)
@@ -370,7 +450,9 @@ class RoutingDecision:
 
     @property
     def primary_domain(self) -> str:
-        return self.domains[0] if self.domains else DOMAIN_RESEARCH
+        # route() never returns an empty domains tuple (it falls
+        # back to research), so domains[0] always exists.
+        return self.domains[0]
 
     @property
     def multi_domain(self) -> bool:
@@ -395,7 +477,59 @@ class RoutingDecision:
 def _match_phrases(
     query_lower: str, signals: tuple[str, ...]
 ) -> tuple[str, ...]:
-    return tuple(s for s in signals if s in query_lower)
+    """Match signals against a lower-cased query.
+
+    Collision-prone signals (short ASCII tokens such as "cd" or
+    "import"; see _WORD_BOUNDARY_SIGNAL_RES) are matched on word
+    boundaries so they cannot fire inside longer words. Longer
+    phrases remain plain substring matches.
+    """
+
+    matched: list[str] = []
+    for signal in signals:
+        word_re = _WORD_BOUNDARY_SIGNAL_RES.get(signal)
+        if word_re is not None:
+            if word_re.search(query_lower):
+                matched.append(signal)
+        elif signal in query_lower:
+            matched.append(signal)
+    return tuple(matched)
+
+
+def _collapse_duplicate_signal_domains(
+    matched: dict[str, tuple[str, ...]],
+) -> dict[str, tuple[str, ...]]:
+    """Apply the deterministic primary-domain tie-break.
+
+    The same phrase can appear in two domain signal lists, which
+    would otherwise make a single-domain question run two agents
+    and contradict the documented contract "Single-domain question
+    -> exactly one agent". When a domain's ONLY matched signals are
+    shared with (or merely name) another matched domain, that
+    domain is dropped and the question maps to exactly one domain.
+    A domain with at least one exclusive signal of its own keeps
+    running, so genuine multi-domain questions still run every
+    routed agent.
+    """
+
+    for dropped, kept, shared in _SHARED_SIGNALS:
+        dropped_signals = matched.get(dropped)
+        if dropped_signals and all(
+            s in shared for s in dropped_signals
+        ):
+            del matched[dropped]
+
+    for dropped, kept, only_signals, required in _TIE_BREAK_RULES:
+        dropped_signals = matched.get(dropped)
+        if (
+            dropped_signals
+            and all(s in only_signals for s in dropped_signals)
+            and kept in matched
+            and any(s in required for s in matched[kept])
+        ):
+            del matched[dropped]
+
+    return matched
 
 
 def detect_city(query_lower: str) -> str | None:
@@ -441,11 +575,13 @@ class FBRQueryRouter:
             list(_match_phrases(query_lower, _RESEARCH_SIGNALS))
         )
         # Remove self-matches from FA phrases to avoid double-count
-        rs_signals = [
-            s for s in rs_signals
-            if s not in ("finance act", "finance-act", "fa-year")
-            or True
-        ]
+        # when explicit FA detection already fired (the generic
+        # phrase then adds no signal of its own).
+        if "finance-act" in rs_signals or "fa-year" in rs_signals:
+            rs_signals = [
+                s for s in rs_signals
+                if s not in ("finance act", "finance-act", "fa-year")
+            ]
         # If the user clearly asks for a research/compare/FA change
         # question, route to research.
         city = detect_city(query_lower)
@@ -484,26 +620,23 @@ class FBRQueryRouter:
         # --- 4. Return Filing --------------------------------
         # Strong return/filing signal that is NOT already a
         # "section 114 return" pattern (which is income_tax).
-        rf_signals: list[str] = []
-        for s in _RETURN_FILING_SIGNALS:
-            if s in query_lower:
-                rf_signals.append(s)
+        rf_signals = list(
+            _match_phrases(query_lower, _RETURN_FILING_SIGNALS)
+        )
         if rf_signals and not _SECTION_RETURN_RE.search(query_lower):
             matched[DOMAIN_RETURN_FILING] = tuple(rf_signals)
 
         # --- 5. Registration ---------------------------------
-        reg_signals: list[str] = []
-        for s in _REGISTRATION_SIGNALS:
-            if s in query_lower:
-                reg_signals.append(s)
+        reg_signals = list(
+            _match_phrases(query_lower, _REGISTRATION_SIGNALS)
+        )
         if reg_signals:
             matched[DOMAIN_REGISTRATION] = tuple(reg_signals)
 
         # --- 6. Customs --------------------------------------
-        cu_signals: list[str] = []
-        for s in _CUSTOMS_SIGNALS:
-            if s in query_lower:
-                cu_signals.append(s)
+        cu_signals = list(
+            _match_phrases(query_lower, _CUSTOMS_SIGNALS)
+        )
         if cu_signals:
             matched[DOMAIN_CUSTOMS] = tuple(cu_signals)
 
@@ -534,7 +667,20 @@ class FBRQueryRouter:
         if _SECTION_RE.search(query_lower):
             it_signals.append("section")
         if it_signals:
-            matched[DOMAIN_INCOME_TAX] = tuple(it_signals)
+            # de-dup: the word-regex "wht" match above can repeat
+            # the "wht" phrase signal from _INCOME_TAX_SIGNALS.
+            seen = set()
+            unique = []
+            for s in it_signals:
+                if s not in seen:
+                    seen.add(s)
+                    unique.append(s)
+            matched[DOMAIN_INCOME_TAX] = tuple(unique)
+
+        # --- Duplicate-signal tie-break ----------------------
+        # Shared phrases must not make a single-domain question
+        # run two agents (see _collapse_duplicate_signal_domains).
+        _collapse_duplicate_signal_domains(matched)
 
         # --- Assemble priority-ordered domains ---------------
         domains = tuple(

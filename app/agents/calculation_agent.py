@@ -43,7 +43,7 @@ import re
 from typing import Any
 
 from app.agents.base import SpecializedAgent
-from app.rag_engine import _NO_EVIDENCE_ANSWER
+from app.rag_engine import DEFAULT_TOP_K, _NO_EVIDENCE_ANSWER
 from app.verification_layer import PLACEHOLDER_ANSWER
 
 _AMOUNT_RE = re.compile(
@@ -137,7 +137,7 @@ class CalculationAgent(SpecializedAgent):
     def handle(
         self,
         question: object,
-        top_k: int = 5,
+        top_k: int = DEFAULT_TOP_K,
     ) -> dict:
         """
         Calculation-specific handle:
@@ -177,6 +177,9 @@ class CalculationAgent(SpecializedAgent):
         # verified answer when no evidence exists). The
         # Calculation Agent must never append a calculation
         # basis to a safe-refusal text, even when grounded.
+        # The PLACEHOLDER_ANSWER arm is harmless defence only:
+        # rag_engine substitutes _NO_EVIDENCE_ANSWER first, so it
+        # is unreachable today.
         is_safe_refusal = (
             not answer
             or answer == _NO_EVIDENCE_ANSWER

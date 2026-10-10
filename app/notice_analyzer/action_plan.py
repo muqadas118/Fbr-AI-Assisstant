@@ -14,7 +14,6 @@ Each notice type has a specific action plan:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from app.notice_analyzer.classifier import NoticeType
 
@@ -414,17 +413,17 @@ class ActionPlanGenerator:
     def format_plan(plan: ActionPlan) -> str:
         """Format action plan as human-readable string."""
         lines = [
-            f"=== Action Plan ===",
+            "=== Action Plan ===",
             f"Notice Type: {plan.notice_type}",
-            f"",
+            "",
             f"Summary: {plan.summary}",
-            f"",
+            "",
             f"Total Steps: {plan.total_steps}",
             f"Estimated Time: {plan.estimated_total_hours} hours",
             f"Professional Help Needed: {'Yes' if plan.requires_professional_help else 'No'}",
             f"Payment Required: {'Yes' if plan.requires_payment else 'No'}",
-            f"",
-            f"--- Step-by-Step Action Plan ---",
+            "",
+            "--- Step-by-Step Action Plan ---",
         ]
 
         for step in plan.steps:
@@ -441,15 +440,15 @@ class ActionPlanGenerator:
             if step.documents_needed:
                 lines.append(f"  Documents needed: {', '.join(step.documents_needed)}")
 
-        lines.append(f"\n--- Common Mistakes to Avoid ---")
+        lines.append("\n--- Common Mistakes to Avoid ---")
         for mistake in plan.common_mistakes:
             lines.append(f"  ✗ {mistake}")
 
-        lines.append(f"\n--- Helpful Tips ---")
+        lines.append("\n--- Helpful Tips ---")
         for tip in plan.helpful_tips:
             lines.append(f"  💡 {tip}")
 
-        lines.append(f"\n--- Legal References ---")
+        lines.append("\n--- Legal References ---")
         for ref in plan.references:
             lines.append(f"  📄 {ref}")
 

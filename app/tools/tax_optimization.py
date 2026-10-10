@@ -21,12 +21,12 @@ Design rules (project contracts):
   contains an explicit disavowal cue ("never", "do not",
   "only lawful", ...) does not count as an evasion request.
 - The tool performs NO retrieval and calls NO LLM: baseline and
-  optimized scenarios are computed from a documented slab table
-  (an approximation of the Income Tax Ordinance 2001 individual
-  slabs and the 29% corporate rate), and every opportunity
-  cites its legislative basis with corpus provenance. Estimated
-  figures are clearly labelled as estimates; final liability
-  always requires FBR verification.
+  optimized scenarios are computed from the slab tables of
+  app.calculations.income_tax (the authoritative module — a single
+  source of truth, so this tool can never disagree with the tax
+  engines) and every opportunity cites its legislative basis with
+  corpus provenance. Estimated figures are clearly labelled as
+  estimates; final liability always requires FBR verification.
 - Output is additive structured data for the agent layer:
   opportunities[], baseline{}, optimized{}, savings, sources[],
   verification{} — the canonical RAG response fields are never
@@ -39,6 +39,16 @@ import re
 from typing import Any
 
 from .base import BaseTool, ToolError, ToolResult
+
+# Single source of truth: slabs/rates come from app.calculations
+# (income_tax), the authoritative module named by the README, so this
+# tool's estimates can never drift from the engine it estimates for.
+from app.calculations.income_tax import (
+    COMPANY_RATES_TY2025,
+    FilingStatus,
+    IncomeTaxCalculator,
+    TaxYear,
+)
 
 
 # ============================================================
@@ -152,27 +162,30 @@ def detect_unlawful_intent(text: str) -> bool:
 
 
 # ============================================================
-# DOCUMENTED SLAB TABLE (estimate, tax year 2025)
+# SLAB / RATE TABLES — derived from app.calculations.income_tax
 # ============================================================
 
-# Individual (non-business) slabs, Income Tax Ordinance 2001,
-# Division I of Part I of the First Schedule as amended by the
-# Finance Act 2024 (tax year 2025). Used for ESTIMATES only;
-# final liability requires FBR verification.
-_INDIVIDUAL_SLABS: tuple[tuple[float, float], ...] = (
-    (600_000.0, 0.00),
-    (1_200_000.0, 0.05),
-    (1_800_000.0, 0.10),
-    (2_500_000.0, 0.15),
-    (3_500_000.0, 0.20),
-    (5_000_000.0, 0.25),
-    (7_000_000.0, 0.30),
-    (float("inf"), 0.35),
-)
+# Entity profile -> filing status in app.calculations.income_tax.
+# The slabs themselves are read from that authoritative module, so
+# identical income always produces identical tax here and in the engine.
+#
+# Assumption: the tool's "individual" profile is a SALARIED individual
+# (FilingStatus.SALARIED), matching the default income_tax routing.
+_ENTITY_FILING_STATUS: dict[str, FilingStatus] = {
+    "individual": FilingStatus.SALARIED,
+    "aop": FilingStatus.AOP,
+    "company": FilingStatus.COMPANY_PRIVATE,
+}
 
-# Corporate rate (most companies), Income Tax Ordinance 2001
-# section 56 as amended (29% for tax year 2025 onward).
-_COMPANY_RATE = 0.29
+# Corporate rates per tax year. Only years with a tabulated table are
+# listed; any other year is a clear refusal instead of a silent
+# substitution.
+_COMPANY_RATES_BY_YEAR: dict[int, dict] = {
+    2025: COMPANY_RATES_TY2025,
+}
+
+# Tax years with salaried / AOP slab tables in app.calculations.
+_SLAB_YEARS: tuple[int, ...] = (2024, 2025, 2026)
 
 _ITO_2001_SHA256 = (
     "3eb83defefad0930b5d35dbbf6f3961f967a9330114f70058dac2f096a0b6812"
@@ -315,23 +328,34 @@ _NUMERIC_FIELD_HINTS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _company_rate(tax_year: int) -> float:
+    """Corporate rate for a tax year (29% private/public, TY 2025 table)."""
+    rates = _COMPANY_RATES_BY_YEAR.get(tax_year)
+    if rates is None:
+        raise ValueError(
+            f"No corporate tax rates defined for tax year {tax_year}. "
+            f"Supported: {', '.join(str(y) for y in _COMPANY_RATES_BY_YEAR)}."
+        )
+    return rates["company_private"]
+
+
 def _calculate_tax(
-    taxable_income: float, entity_type: str
+    taxable_income: float, entity_type: str, tax_year: int
 ) -> float:
-    """Deterministic slab/corporate estimate (never negative)."""
+    """Deterministic slab/corporate estimate (never negative).
+
+    Slabs and rates are read from app.calculations.income_tax, so this
+    tool never disagrees with the engine it estimates for.
+    """
 
     if taxable_income <= 0:
         return 0.0
-    if entity_type != "individual":
-        return round(taxable_income * _COMPANY_RATE, 2)
+    filing_status = _ENTITY_FILING_STATUS.get(entity_type, FilingStatus.SALARIED)
+    if filing_status == FilingStatus.COMPANY_PRIVATE:
+        return round(taxable_income * _company_rate(tax_year), 2)
 
-    tax = 0.0
-    lower = 0.0
-    for upper, rate in _INDIVIDUAL_SLABS:
-        if taxable_income <= lower:
-            break
-        tax += (min(taxable_income, upper) - lower) * rate
-        lower = upper
+    slabs = IncomeTaxCalculator.get_slabs(filing_status, TaxYear(str(tax_year)))
+    tax, _ = IncomeTaxCalculator.calculate_tax_on_slab(taxable_income, slabs)
     return round(tax, 2)
 
 
@@ -483,6 +507,22 @@ class TaxOptimizationTool(BaseTool):
                 "entity_type must be one of individual, company, aop."
             )
 
+        # tax_year must select a table that actually exists: companies
+        # only have a tabulated corporate rate for the listed years,
+        # individuals/AOPs only for the listed slab years. Anything else
+        # is a clear refusal instead of a silent substitution.
+        if entity_type == "company":
+            if tax_year not in _COMPANY_RATES_BY_YEAR:
+                raise ToolError(
+                    "tax_year has no corporate rate table; supported years: "
+                    f"{', '.join(str(y) for y in _COMPANY_RATES_BY_YEAR)}."
+                )
+        elif tax_year not in _SLAB_YEARS:
+            raise ToolError(
+                "tax_year has no slab table; supported years: "
+                f"{', '.join(str(y) for y in _SLAB_YEARS)}."
+            )
+
         clean: dict[str, Any] = {
             "tax_year": tax_year,
             "tax_type": tax_type,
@@ -555,12 +595,13 @@ class TaxOptimizationTool(BaseTool):
         donations: float = clean_payload["donations"]
         business_expenses: float = clean_payload["business_expenses"]
         entity_type: str = clean_payload["entity_type"]
+        tax_year: int = clean_payload["tax_year"]
 
         # Baseline: the taxpayer's CURRENT lawful position —
         # income reduced by already-allowable business expenses.
         current_deductions = allowable_expenses + business_expenses
         baseline_taxable = max(0.0, annual_income - current_deductions)
-        baseline_tax = _calculate_tax(baseline_taxable, entity_type)
+        baseline_tax = _calculate_tax(baseline_taxable, entity_type, tax_year)
 
         # Optimized: the baseline PLUS additional lawful
         # incentives (approved investments and donations).
@@ -568,7 +609,7 @@ class TaxOptimizationTool(BaseTool):
         optimized_taxable = max(
             0.0, baseline_taxable - additional_incentives
         )
-        optimized_tax = _calculate_tax(optimized_taxable, entity_type)
+        optimized_tax = _calculate_tax(optimized_taxable, entity_type, tax_year)
 
         savings = round(max(0.0, baseline_tax - optimized_tax), 2)
         net_liability = round(

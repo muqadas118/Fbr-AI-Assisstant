@@ -6,7 +6,7 @@ Core engine that evaluates taxpayer's tax health.
 """
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -127,6 +127,13 @@ class TaxHealthEngine:
     WHT_DEPOSIT_THRESHOLD = 0.95  # 95% of collected
     RECONCILIATION_THRESHOLD = 0.85
 
+    # Statutory default ITR due date (Section 114, ITO 2001): 30 September of
+    # the year following the tax year. Kept as named constants - and still
+    # overridable per call via analyze(itr_due_date=...) - instead of an
+    # inline f-string, so the default is documented in one place.
+    ITR_DUE_MONTH = 9
+    ITR_DUE_DAY = 30
+
     def analyze(
         self,
         ntn: str,
@@ -161,7 +168,9 @@ class TaxHealthEngine:
             assessment_year=tax_year + 1,
             itr_filed=itr_filed,
             itr_filing_date=itr_filing_date,
-            itr_due_date=itr_due_date or f"{tax_year + 1}-09-30",
+            itr_due_date=itr_due_date or (
+                f"{tax_year + 1}-{self.ITR_DUE_MONTH:02d}-{self.ITR_DUE_DAY:02d}"
+            ),
             declared_income=declared_income,
             estimated_income=estimated_income,
             tax_assessed=tax_assessed,
@@ -172,12 +181,11 @@ class TaxHealthEngine:
             sales_tax_deposited=st_deposited,
             period_from=period_from,
             period_to=period_to,
-            generated_at=datetime.utcnow().isoformat(),
+            generated_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             notices_outstanding=notices_outstanding,
         )
 
         issues: list[HealthIssue] = []
-        recommendations: list[HealthRecommendation] = []
 
         # ===================================================================
         # CHECK 1: ITR Filing Status
@@ -214,7 +222,21 @@ class TaxHealthEngine:
                             recommendation="Ensure timely filing in future",
                         ))
                 except ValueError:
-                    pass
+                    # Surfaced instead of silently swallowed: an unparseable
+                    # date means the lateness check above did NOT run, and the
+                    # user needs to know that rather than see a clean report.
+                    issues.append(HealthIssue(
+                        code="ITR003",
+                        title="ITR Dates Could Not Be Parsed",
+                        description=(
+                            f"Filing date '{itr_filing_date}' or due date "
+                            f"'{itr_due_date}' is not a valid YYYY-MM-DD date, "
+                            "so filing lateness could not be verified."
+                        ),
+                        severity=IssueSeverity.LOW,
+                        section="ITR",
+                        recommendation="Re-enter the ITR filing and due dates as YYYY-MM-DD",
+                    ))
 
         # ===================================================================
         # CHECK 2: Tax Payment Status
@@ -238,11 +260,18 @@ class TaxHealthEngine:
                     penalty_estimate=shortfall * 0.15,  # 15% default surcharge
                     recommendation="Pay outstanding tax immediately",
                 ))
-            elif payment_ratio < self.TAX_PAYMENT_THRESHOLD:
+            # Partial payment flag. This used to be an `elif` behind
+            # `payment_ratio < 1.0`, which already catches every partial
+            # payment, so TAX002 could never fire.
+            if payment_ratio < self.TAX_PAYMENT_THRESHOLD:
                 issues.append(HealthIssue(
                     code="TAX002",
                     title="Partial Tax Payment",
-                    description="Less than 90% of assessed tax was paid",
+                    description=(
+                        f"Less than {self.TAX_PAYMENT_THRESHOLD * 100:.0f}% of "
+                        f"assessed tax was paid (PKR {tax_paid:,.0f} of "
+                        f"PKR {tax_assessed:,.0f})"
+                    ),
                     severity=IssueSeverity.MEDIUM,
                     section="ITR",
                     recommendation="Pay remaining tax before penalty accrues",
@@ -366,27 +395,37 @@ class TaxHealthEngine:
         return 0.0
 
     def _calculate_deposit_score(self, p: TaxHealthProfile) -> float:
-        """Score 0-100 for tax deposit compliance."""
-        scores = []
+        """
+        Score 0-100 for tax deposit compliance.
+
+        Each obligation that actually applies (tax, WHT, sales tax)
+        contributes its own deposit ratio, weighted by its share of the
+        obligations that exist. Normalising this way is what keeps the score
+        on a 0-100 scale: the raw 40/30/30 weights used to be summed, so a
+        WHT-only taxpayer topped out at 30/100 and was graded "F" while being
+        fully compliant on every obligation they actually had.
+        """
+        components: list[tuple[float, float]] = []  # (ratio 0-1, weight)
 
         # Tax deposit
         if p.tax_assessed > 0:
             ratio = min(p.tax_paid / p.tax_assessed, 1.0)
-            scores.append(ratio * 40)
+            components.append((ratio, 40))
 
         # WHT deposit
         if p.wht_collected > 0:
             ratio = min(p.wht_deposited / p.wht_collected, 1.0)
-            scores.append(ratio * 30)
+            components.append((ratio, 30))
 
         # Sales tax deposit
         if p.sales_tax_collected > 0:
             ratio = min(p.sales_tax_deposited / p.sales_tax_collected, 1.0)
-            scores.append(ratio * 30)
+            components.append((ratio, 30))
 
-        if not scores:
+        if not components:
             return 100.0  # No obligations
-        return sum(scores)
+        total_weight = sum(weight for _, weight in components)
+        return sum(ratio * weight for ratio, weight in components) / total_weight * 100
 
     def _calculate_compliance_score(self, p: TaxHealthProfile) -> float:
         """Score 0-100 for general compliance."""

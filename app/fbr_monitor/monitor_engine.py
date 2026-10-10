@@ -1,18 +1,28 @@
 """
-FBR Monitor Engine - Production-Grade
-=====================================
+FBR Monitor Engine
+==================
 
-Real-time FBR monitoring engine.
+In-memory FBR monitoring state.
+
+Everything here lives in this process: subscriptions, events and the audit
+log are bounded in-memory collections, so they are lost on restart. Nothing
+polls the IRIS portal - events only enter through detect_event(), which the
+env-gated simulate route and any future background worker call.
 """
 
 import logging
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
 logger = logging.getLogger("fbr_monitor")
+
+# In-memory collections are process-local, so they are capped to keep a busy
+# monitor from growing them without bound.
+STATE_MAXLEN = 1000
 
 
 class EventType(str, Enum):
@@ -54,6 +64,8 @@ class FBRMonitorConfig:
     """Configuration for FBR monitoring."""
     ntn: str
     user_id: str
+    sub_id: str = ""
+    subscribed_at: str = ""
     monitor_notices: bool = True
     monitor_payments: bool = True
     monitor_returns: bool = True
@@ -86,7 +98,7 @@ class FBRMonitorEvent:
 
     def __post_init__(self):
         if not self.detected_at:
-            self.detected_at = datetime.utcnow().isoformat()
+            self.detected_at = datetime.now(timezone.utc).isoformat()
         if isinstance(self.event_type, str):
             self.event_type = EventType(self.event_type)
         if isinstance(self.severity, str):
@@ -95,23 +107,62 @@ class FBRMonitorEvent:
             self.status = EventStatus(self.status)
 
 
+def _same_subscription(a: FBRMonitorConfig, b: FBRMonitorConfig) -> bool:
+    """Whether two configs monitor the same events for the same NTN."""
+    return (
+        a.ntn == b.ntn
+        and a.user_id == b.user_id
+        and a.check_interval_minutes == b.check_interval_minutes
+        and a.monitor_notices == b.monitor_notices
+        and a.monitor_payments == b.monitor_payments
+        and a.monitor_returns == b.monitor_returns
+        and a.monitor_policy_changes == b.monitor_policy_changes
+    )
+
+
 class FBRMonitor:
     """Main FBR monitor."""
 
     def __init__(self):
-        self.configs: dict[str, FBRMonitorConfig] = {}
-        self.events: list[FBRMonitorEvent] = []
-        self.audit_log: list[dict] = []
+        # A user can hold several subscriptions (different NTNs, intervals or
+        # event selections), so configs map a user id to a list.
+        self.configs: dict[str, list[FBRMonitorConfig]] = {}
+        self.events: deque[FBRMonitorEvent] = deque(maxlen=STATE_MAXLEN)
+        self.audit_log: deque[dict] = deque(maxlen=STATE_MAXLEN)
 
     def subscribe(self, config: FBRMonitorConfig) -> str:
-        """Subscribe a user to FBR monitoring."""
-        sub_id = str(uuid.uuid4())
-        self.configs[config.user_id] = config
-        logger.info(f"User {config.user_id} subscribed to FBR monitor for NTN {config.ntn}")
-        return sub_id
+        """Subscribe a user to FBR monitoring.
+
+        Returns the stored sub_id. Subscriptions are appended to the user's
+        list; one that selects the same events for the same NTN and interval
+        updates the existing entry instead of piling up a duplicate.
+        """
+        subscriptions = self.configs.setdefault(config.user_id, [])
+        existing = next((c for c in subscriptions if _same_subscription(c, config)), None)
+
+        if existing is not None:
+            existing.notification_email = config.notification_email
+            existing.notification_webhook = config.notification_webhook
+            logger.info(
+                f"User {config.user_id} updated FBR monitor subscription "
+                f"{existing.sub_id} for NTN {config.ntn}"
+            )
+            return existing.sub_id
+
+        config.sub_id = str(uuid.uuid4())
+        config.subscribed_at = datetime.now(timezone.utc).isoformat()
+        subscriptions.append(config)
+        logger.info(
+            f"User {config.user_id} subscribed to FBR monitor for NTN {config.ntn}"
+        )
+        return config.sub_id
+
+    def get_subscriptions(self, user_id: str) -> list[FBRMonitorConfig]:
+        """List the subscriptions stored for a user."""
+        return list(self.configs.get(user_id, []))
 
     def unsubscribe(self, user_id: str) -> bool:
-        """Unsubscribe a user."""
+        """Unsubscribe a user (drops every subscription they hold)."""
         if user_id in self.configs:
             del self.configs[user_id]
             return True
@@ -133,48 +184,57 @@ class FBRMonitor:
         """
         Detect and record a new FBR event.
 
-        In production, this would be called by background workers
-        polling the FBR API/portal.
-        """
-        # Find user_id for this NTN
-        user_id = None
-        for uid, cfg in self.configs.items():
-            if cfg.ntn == ntn:
-                user_id = uid
-                break
+        Every user subscribed to this NTN is notified, so an NTN shared by
+        several taxpayers is not attributed only to whoever subscribed first.
+        The first event created is returned for callers acting on one event.
 
-        if not user_id:
+        No portal polling happens here: this is called by the env-gated
+        simulate route and by any future background worker.
+        """
+        # Every user subscribed to this NTN gets an event; a shared NTN must
+        # not be attributed only to the first matching subscription.
+        subscriber_ids: list[str] = []
+        for subscriptions in self.configs.values():
+            for cfg in subscriptions:
+                if cfg.ntn == ntn and cfg.user_id not in subscriber_ids:
+                    subscriber_ids.append(cfg.user_id)
+
+        if not subscriber_ids:
             return None
 
-        event = FBRMonitorEvent(
-            id=str(uuid.uuid4()),
-            user_id=user_id,
-            ntn=ntn,
-            event_type=event_type,
-            severity=severity,
-            title=title,
-            description=description,
-            reference_number=reference_number,
-            url=url,
-            requires_action=requires_action,
-            action_deadline=action_deadline,
-            metadata=metadata or {},
-        )
+        events = []
+        for user_id in subscriber_ids:
+            event = FBRMonitorEvent(
+                id=str(uuid.uuid4()),
+                user_id=user_id,
+                ntn=ntn,
+                event_type=event_type,
+                severity=severity,
+                title=title,
+                description=description,
+                reference_number=reference_number,
+                url=url,
+                requires_action=requires_action,
+                action_deadline=action_deadline,
+                metadata=metadata or {},
+            )
 
-        self.events.append(event)
-        self.audit_log.append({
-            "event_id": event.id,
-            "ntn": ntn,
-            "type": event_type.value,
-            "timestamp": event.detected_at,
-        })
+            self.events.append(event)
+            self.audit_log.append({
+                "event_id": event.id,
+                "user_id": user_id,
+                "ntn": ntn,
+                "type": event_type.value,
+                "timestamp": event.detected_at,
+            })
+            events.append(event)
 
         logger.info(
             f"Detected FBR event: {event_type.value} for NTN {ntn} "
-            f"(severity: {severity.value})"
+            f"(severity: {severity.value}, subscribers: {len(subscriber_ids)})"
         )
 
-        return event
+        return events[0]
 
     def get_events(
         self,

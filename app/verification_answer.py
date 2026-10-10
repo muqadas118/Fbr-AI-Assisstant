@@ -10,6 +10,8 @@ pins this module and `app.answer_generator` to identical behavior.
 
 import re
 
+from app.language import LANG_EN, detect_language, normalize_language
+
 # ============================================================
 # SHARED CONSTANTS
 # ============================================================
@@ -599,13 +601,27 @@ def check_grounding(
     answer: str,
     context: str,
     question: str = "",
+    language: str | None = None,
 ) -> dict:
-    """Lexical + numeric grounding for the whole answer."""
+    """Lexical + numeric grounding for the whole answer.
+
+    Language-aware rule: the lexical score is over English tokens of the
+    FBR context, so a faithful Roman-Urdu or Urdu-script answer shares
+    almost no tokens with that context and would score ~0. When the
+    answer is not English (``language`` or ``detect_language(answer)``)
+    the lexical weak-sentence ratio must NOT reject the answer; only the
+    numeric grounding (numbers / sections / identifiers must still be
+    supported by the context) can fail. English answers are judged
+    exactly as before — weak lexical overlap still fails.
+    """
     if not isinstance(answer, str) or not answer.strip():
         return {"passed": False, "reason": "Generated answer is empty."}
 
     if not isinstance(context, str) or not context.strip():
         return {"passed": False, "reason": "Verification context is empty."}
+
+    lang = language or detect_language(answer)
+    enforce_lexical = normalize_language(lang) == LANG_EN
 
     context_tokens = tokenize(context)
     sentences = split_sentences(answer)
@@ -652,7 +668,7 @@ def check_grounding(
             "numeric_failures": numeric_failures,
         }
 
-    if meaningful_sentences:
+    if enforce_lexical and meaningful_sentences:
         weak_ratio = len(weak_sentences) / len(meaningful_sentences)
         if weak_ratio > 0.50:
             return {
@@ -813,12 +829,24 @@ def check_hallucination_warning(answer: str) -> dict:
 # ============================================================
 
 
-def verify_answer(question: str, answer: str, context: str) -> dict:
+def verify_answer(
+    question: str,
+    answer: str,
+    context: str,
+    language: str | None = None,
+) -> dict:
     """
     Run the complete FBR answer verification pipeline.
 
     Order: answer_size -> section_consistency -> grounding -> speculation.
     The answer is accepted only if all checks pass.
+
+    Language-aware grounding: the lexical (English-token) overlap check
+    is decisive only for English answers. For a non-English answer
+    (``language`` or ``detect_language(answer)``) the grounding check
+    still enforces numeric/section/identifier grounding, but a faithful
+    Roman-Urdu or Urdu-script answer is not rejected merely for having
+    no English token overlap with the English context.
     """
     checks = {}
 
@@ -837,7 +865,7 @@ def verify_answer(question: str, answer: str, context: str) -> dict:
     )
 
     checks["grounding"] = check_grounding(
-        answer=answer, context=context, question=question
+        answer=answer, context=context, question=question, language=language
     )
 
     checks["speculation"] = check_hallucination_warning(answer)

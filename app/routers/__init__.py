@@ -19,6 +19,8 @@ from app.routers.uploads import router as uploads_router
 from app.routers.assistant import router as assistant_router
 from app.routers.vault import router as vault_router
 from app.routers.business_reports import router as business_reports_router
+from app.routers.personalization import router as personalization_router
+from app.routers.quota import router as quota_router
 
 __all__ = [
     "auth_router",
@@ -35,4 +37,6 @@ __all__ = [
     "uploads_router",
     "assistant_router",
     "vault_router",
+    "personalization_router",
+    "quota_router",
 ]

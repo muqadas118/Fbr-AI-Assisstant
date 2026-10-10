@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/Button";
 import { Tag } from "@/components/ui/Tag";
 import { Field } from "@/components/ui/Field";
 import { Kv } from "@/components/ui/Kv";
+import { FileDrop } from "@/components/ui/FileDrop";
 import { useNotification } from "@/state/notifications";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -773,7 +774,7 @@ export function BusinessInvoicesPage() {
             <>
               <Card
                 title="Process a Business Invoice"
-                subtitle="Paste invoice text to validate, extract details, check input tax (ITC) eligibility, and detect duplicates"
+                subtitle="Paste invoice text or upload a file to validate, extract details, check input tax (ITC) eligibility, and detect duplicates"
                 testId="biz-process-card"
               >
                 <div className="inv-process">
@@ -790,6 +791,25 @@ export function BusinessInvoicesPage() {
                       placeholder="e.g. SINV-2024-001"
                       disabled={processing}
                       data-testid="biz-id-input"
+                    />
+                  </Field>
+
+                  <Field
+                    label="Invoice File (optional)"
+                    helperText="Upload a PDF, image, or spreadsheet invoice — it is extracted and processed server-side"
+                    data-testid="biz-file-field"
+                  >
+                    <FileDrop
+                      mode="invoice"
+                      invoiceId={invoiceId.trim() || undefined}
+                      onOutcome={(outcome) => {
+                        if (outcome.data.kind !== "invoice") return;
+                        setError(null);
+                        setTextError(null);
+                        setResult(outcome.data.response.result);
+                        notify("ok", "Business invoice processed from uploaded file.");
+                        void fetchDashboard();
+                      }}
                     />
                   </Field>
 

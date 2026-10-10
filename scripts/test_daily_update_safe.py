@@ -38,19 +38,16 @@ artifacts.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
-import os
 import shutil
 import sys
-import tempfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Import the daily_update module directly (no side effects).
-import importlib.util
-
 spec = importlib.util.spec_from_file_location(
     "daily_update", PROJECT_ROOT / "scripts" / "daily_update.py"
 )
@@ -311,7 +308,7 @@ def main() -> int:
     # ----------------------------------------------------------
     # Print results
     # ----------------------------------------------------------
-    total = len(RULTS := RESULTS)
+    total = len(RESULTS)
     passed = sum(1 for r in RESULTS if r["passed"])
     print()
     for r in RESULTS:

@@ -14,7 +14,6 @@ Deductions available:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 from app.calculations.income_tax import (
     IncomeTaxCalculator, IncomeTaxInput, FilingStatus, TaxYear
@@ -62,6 +61,9 @@ class PropertyTaxResult:
     combined_gross_income: float
     tax_payable: float
     effective_tax_rate: float
+    # Year whose slabs produced every figure below, so a caller can tell
+    # which Finance Act schedule was applied without echoing the inputs.
+    tax_year: TaxYear
     notes: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
 
@@ -97,25 +99,19 @@ class PropertyTaxCalculator:
             + inp.insurance_premium
             + inp.mortgage_interest
         )
+        # Single branch: actual repairs are claimed only when they exceed
+        # the deemed 1/3, otherwise the deemed 1/3 applies. (The other
+        # deductions are already part of actual_deductions, so they must
+        # not be added again — that double-count was fixed here.)
         if inp.repair_expenses > deemed_deduction:
-            # Can claim actual if higher than deemed
             actual_deductions += inp.repair_expenses
+            total_deductions = actual_deductions
             notes.append(f"Actual repair expenses (higher than deemed): PKR {inp.repair_expenses:,.2f}")
         else:
-            notes.append(f"Using deemed deduction (actual repairs PKR {inp.repair_expenses:,.2f} < deemed)")
-
-        # FIX: property repairs double-count - the old formula
-        # `max(deemed, actual_deductions) + (property_tax + insurance + mortgage)`
-        # double-counted the other deductions whenever actual repairs exceeded
-        # the deemed 1/3, because actual_deductions already includes them.
-        if inp.repair_expenses > deemed_deduction:
-            # Actual repairs claimed: actual_deductions = repairs + other deductions
-            total_deductions = actual_deductions
-        else:
-            # Deemed repairs apply: deemed 1/3 of rent + other deductions
             total_deductions = deemed_deduction + (
                 inp.property_tax_paid + inp.insurance_premium + inp.mortgage_interest
             )
+            notes.append(f"Using deemed deduction (actual repairs PKR {inp.repair_expenses:,.2f} < deemed)")
 
         taxable_property = max(0, inp.annual_rent_received - total_deductions)
         combined_gross = taxable_property + inp.other_income
@@ -142,6 +138,7 @@ class PropertyTaxCalculator:
             combined_gross_income=round(combined_gross, 2),
             tax_payable=income_result.tax_after_credits,
             effective_tax_rate=round(effective_rate, 2),
+            tax_year=inp.tax_year,
             notes=notes + income_result.notes,
             sources=sources + income_result.sources,
         )
@@ -149,30 +146,31 @@ class PropertyTaxCalculator:
     @staticmethod
     def format_result(result: PropertyTaxResult, currency: str = "PKR") -> str:
         lines = [
-            f"=== Property/Rental Income Tax ===",
-            f"",
-            f"--- Income ---",
+            "=== Property/Rental Income Tax ===",
+            f"Tax Year: {result.tax_year.value}",
+            "",
+            "--- Income ---",
             f"Annual Rent:             {currency} {result.annual_rent:>15,.2f}",
-            f"",
-            f"--- Deductions ---",
+            "",
+            "--- Deductions ---",
             f"Deemed (1/3 of rent):    {currency} {result.deemed_deductions:>15,.2f}",
             f"Actual Deductions:       {currency} {result.actual_deductions:>15,.2f}",
             f"Total Deductions:        {currency} {result.total_deductions:>15,.2f}",
-            f"",
-            f"--- Taxable Income ---",
+            "",
+            "--- Taxable Income ---",
             f"Taxable Property:        {currency} {result.taxable_property_income:>15,.2f}",
             f"Combined with Other:     {currency} {result.combined_gross_income:>15,.2f}",
-            f"",
-            f"--- Tax ---",
+            "",
+            "--- Tax ---",
             f"Tax Payable:             {currency} {result.tax_payable:>15,.2f}",
             f"Effective Tax Rate:      {result.effective_tax_rate:>14.2f}%",
-            f"",
-            f"--- Notes ---",
+            "",
+            "--- Notes ---",
         ]
         for note in result.notes:
             lines.append(f"  • {note}")
-        lines.append(f"")
-        lines.append(f"--- Sources ---")
+        lines.append("")
+        lines.append("--- Sources ---")
         for src in result.sources:
             lines.append(f"  📄 {src}")
         return "\n".join(lines)

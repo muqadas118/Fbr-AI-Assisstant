@@ -12,10 +12,45 @@ import os
 import secrets
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 logger = logging.getLogger("multi_user")
+
+
+def _utcnow() -> datetime:
+    """Timezone-aware UTC now (datetime.utcnow is deprecated in 3.12+)."""
+    return datetime.now(timezone.utc)
+
+
+def _parse_iso(value: str) -> datetime:
+    """Parse an ISO-8601 timestamp; naive values are treated as UTC."""
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _session_ttl_hours() -> int:
+    """Session lifetime in hours, configurable via FBR_SESSION_TTL_HOURS."""
+    raw = (os.environ.get("FBR_SESSION_TTL_HOURS") or "").strip()
+    if not raw:
+        return AuthManager.DEFAULT_SESSION_HOURS
+    try:
+        hours = int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid FBR_SESSION_TTL_HOURS=%r; using %d",
+            raw, AuthManager.DEFAULT_SESSION_HOURS,
+        )
+        return AuthManager.DEFAULT_SESSION_HOURS
+    if hours <= 0:
+        logger.warning(
+            "FBR_SESSION_TTL_HOURS must be positive (got %r); using %d",
+            raw, AuthManager.DEFAULT_SESSION_HOURS,
+        )
+        return AuthManager.DEFAULT_SESSION_HOURS
+    return hours
 
 
 def hash_password(password: str, salt: Optional[str] = None) -> str:
@@ -93,11 +128,17 @@ class AuthManager:
         user_id: str,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
-        duration_hours: int = DEFAULT_SESSION_HOURS,
+        duration_hours: Optional[int] = None,
     ) -> Session:
-        """Create a new session for a user."""
+        """Create a new session for a user.
+
+        `duration_hours` defaults to the configured TTL (FBR_SESSION_TTL_HOURS).
+        """
+        if duration_hours is None:
+            duration_hours = _session_ttl_hours()
+
         token = secrets.token_urlsafe(32)
-        now = datetime.utcnow()
+        now = _utcnow()
         expires = now + timedelta(hours=duration_hours)
 
         session = Session(
@@ -117,6 +158,8 @@ class AuthManager:
 
     def validate_token(self, token: str) -> Optional[Session]:
         """Validate a session token and return the session if valid."""
+        self.cleanup_expired_sessions()
+
         session_id = self.token_index.get(token)
         if not session_id:
             return None
@@ -126,9 +169,9 @@ class AuthManager:
             return None
 
         # Check expiry
-        expires_at = datetime.fromisoformat(session.expires_at)
-        if datetime.utcnow() > expires_at:
+        if _utcnow() > _parse_iso(session.expires_at):
             session.is_active = False
+            self.token_index.pop(session.token, None)
             return None
 
         return session
@@ -155,6 +198,7 @@ class AuthManager:
 
     def list_sessions(self, user_id: str) -> list[Session]:
         """List active sessions for a user."""
+        self.cleanup_expired_sessions()
         return [
             s for s in self.sessions.values()
             if s.user_id == user_id and s.is_active
@@ -176,7 +220,7 @@ class AuthManager:
         plain_key = secrets.token_urlsafe(32)
         key_hash = hashlib.sha256(plain_key.encode("utf-8")).hexdigest()
 
-        now = datetime.utcnow()
+        now = _utcnow()
         expires_at = None
         if expires_in_days:
             expires_at = (now + timedelta(days=expires_in_days)).isoformat()
@@ -205,12 +249,11 @@ class AuthManager:
 
         # Check expiry
         if api_key.expires_at:
-            expires_at = datetime.fromisoformat(api_key.expires_at)
-            if datetime.utcnow() > expires_at:
+            if _utcnow() > _parse_iso(api_key.expires_at):
                 api_key.is_active = False
                 return None
 
-        api_key.last_used_at = datetime.utcnow().isoformat()
+        api_key.last_used_at = _utcnow().isoformat()
         return api_key
 
     def revoke_api_key(self, key_id: str) -> bool:
@@ -223,12 +266,11 @@ class AuthManager:
 
     def cleanup_expired_sessions(self) -> int:
         """Remove expired sessions. Returns count removed."""
-        now = datetime.utcnow()
+        now = _utcnow()
         expired_ids = []
         for sid, session in self.sessions.items():
             if session.is_active:
-                expires_at = datetime.fromisoformat(session.expires_at)
-                if now > expires_at:
+                if now > _parse_iso(session.expires_at):
                     session.is_active = False
                     self.token_index.pop(session.token, None)
                     expired_ids.append(sid)

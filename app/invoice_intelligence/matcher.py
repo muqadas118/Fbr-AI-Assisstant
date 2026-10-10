@@ -9,9 +9,9 @@ Match invoices for ITC reconciliation:
 - Match delivery challan to invoice
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
-from datetime import date, datetime
+from datetime import datetime
 
 from app.invoice_intelligence.extractor import ExtractedInvoice
 
@@ -37,16 +37,32 @@ class InvoiceMatcher:
         invoice_list: list[ExtractedInvoice],
     ) -> Optional[MatchResult]:
         """
-        Find duplicate invoice based on:
+        Find duplicate invoice based on the invoice content:
+        - Same content key (seller + invoice number + total + date)
         - Same invoice number + same seller
-        - Same amount + same date
+        - Same amount + same date + similar seller
         """
         if not invoice.invoice_number or not invoice.seller_ntn:
             return None
 
+        invoice_key = invoice.content_key()
+
         for other in invoice_list:
-            if other.invoice_id == invoice.invoice_id:
+            # Skip only the very same record. Skipping on invoice_id used to
+            # hide genuine duplicates, because a re-submitted invoice shares
+            # the caller-supplied id with the stored one.
+            if other is invoice:
                 continue
+
+            # Identical content (vendor + number + total + date) = duplicate
+            if other.content_key() == invoice_key:
+                return MatchResult(
+                    is_match=True,
+                    match_type="exact",
+                    confidence=0.99,
+                    matched_invoice_id=other.invoice_id,
+                    reason="Same seller, invoice number, total and date",
+                )
 
             # Same seller + same invoice number = duplicate
             if (
@@ -114,12 +130,15 @@ class InvoiceMatcher:
             amount_score = 0.3
 
         # Date proximity
+        date_known = True
         try:
             d1 = datetime.strptime(purchase.invoice_date, "%d-%m-%Y")
             d2 = datetime.strptime(sales_invoice.invoice_date, "%d-%m-%Y")
             date_diff = abs((d1 - d2).days)
             date_score = max(0, 1 - date_diff / 30)  # 30-day window
         except (ValueError, TypeError):
+            # Unparseable or missing date: never report it as a 0-day match.
+            date_known = False
             date_score = 0.5
             date_diff = 0
 
@@ -139,7 +158,11 @@ class InvoiceMatcher:
             match_type="exact" if confidence > 0.9 else "fuzzy" if confidence > 0.6 else "partial",
             confidence=round(confidence, 3),
             matched_invoice_id=sales_invoice.invoice_id,
-            reason=f"Amount diff: {amount_diff:.0f}, Date diff: {date_diff} days",
+            reason=(
+                f"Amount diff: {amount_diff:.0f}, Date diff: {date_diff} days"
+                if date_known
+                else f"Amount diff: {amount_diff:.0f}, Date diff: unknown (unparseable date)"
+            ),
             amount_difference=amount_diff,
             date_difference_days=date_diff,
         )

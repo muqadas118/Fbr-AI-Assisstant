@@ -7,14 +7,11 @@ High-level API for invoice operations.
 
 import logging
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
-from app.invoice_intelligence.extractor import InvoiceExtractor, ExtractedInvoice
-from app.invoice_intelligence.validator import InvoiceValidator, ValidationResult
-from app.invoice_intelligence.matcher import InvoiceMatcher, MatchResult
-from app.invoice_intelligence.reconciler import InvoiceReconciler, ReconciliationReport
-from app.invoice_intelligence.analyzer import InvoiceAnalyzer, get_invoice_analyzer
+from app.invoice_intelligence.extractor import ExtractedInvoice
+from app.invoice_intelligence.analyzer import get_invoice_analyzer
 
 logger = logging.getLogger("invoice_intelligence")
 
@@ -25,7 +22,22 @@ class InvoiceAPI:
 
     def __init__(self):
         self.analyzer = get_invoice_analyzer()
+        # Keyed by the invoice content key, never by the caller-supplied
+        # invoice_id, so a re-sent invoice updates its own entry instead of
+        # overwriting an unrelated one.
         self.invoice_store: dict[str, ExtractedInvoice] = {}
+        # Every processed invoice, valid or rejected, so results are always
+        # reportable (validation errors included).
+        self.analysis_store: dict[str, dict] = {}
+
+    @staticmethod
+    def content_key(invoice: ExtractedInvoice) -> str:
+        """Content key (seller + number + total + date) used as the store key."""
+        return invoice.content_key()
+
+    def get_analysis(self, analysis_id: str) -> Optional[dict]:
+        """Retrieve a stored analysis payload, valid or rejected."""
+        return self.analysis_store.get(analysis_id)
 
     def process_invoice(
         self,
@@ -36,12 +48,15 @@ class InvoiceAPI:
         all_invoices = list(self.invoice_store.values())
         result = self.analyzer.analyze(text, invoice_id, all_invoices)
 
-        # Store if valid
-        if result.validation.is_valid:
-            self.invoice_store[result.invoice.invoice_id] = result.invoice
+        # Store every result, valid or not; a rejected invoice is unreportable
+        # if it is dropped here.
+        store_key = self.content_key(result.invoice)
+        self.invoice_store[store_key] = result.invoice
 
-        return {
+        payload = {
             "analysis_id": result.analysis_id,
+            "content_key": store_key,
+            "is_valid": result.validation.is_valid,
             "invoice": {
                 "id": result.invoice.invoice_id,
                 "number": result.invoice.invoice_number,
@@ -71,6 +86,9 @@ class InvoiceAPI:
             "summary": result.summary,
             "duration_ms": result.duration_ms,
         }
+        self.analysis_store[result.analysis_id] = payload
+
+        return payload
 
     def reconcile_period(
         self,

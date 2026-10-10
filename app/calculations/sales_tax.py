@@ -17,7 +17,6 @@ Handles:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 
 class SalesTaxType(str, Enum):
@@ -58,15 +57,6 @@ REDUCED_RATES = {
     "baby_food": 0.10,
 }
 
-# Exempt items (5th schedule - selected examples)
-EXEMPT_ITEMS = {
-    "milk", "fresh_fruits", "fresh_vegetables", "wheat", "rice", "flour",
-    "baby_milk", "newsprint", "books", "educational_materials",
-    "life_saving_drugs", "diagnostic_kits", "hearing_aids",
-    "agriculture_seeds", "fertilizer_basic", "poultry_feed",
-    "tractor_parts", "thresher", "agriculture_machinery",
-}
-
 # Service tax rates by province (PST/SST)
 PROVINCIAL_SERVICE_RATES = {
     "punjab": 0.16,      # 16% Punjab
@@ -97,14 +87,13 @@ class SalesTaxInput:
     purchases_value: float = 0.0
     purchases_category: str = "standard"
 
-    # Retail-specific
-    is_retail_supplier: bool = False
-    retail_margin: float = 0.0  # Margin for retail-stage tax
-
     # Imports
     import_value: float = 0.0
     import_category: str = "standard"
-    customs_duty: float = 0.0  # Customs duty paid (for additional GST)
+    # NOTE: `is_retail_supplier` and `customs_duty` were removed — both were
+    # declared but never read by any calculation path (retail-stage tax is
+    # selected by sales_tax_type=RETAIL; imports are taxed on import_value
+    # only), so accepting them silently ignored the caller's input.
 
     # Exemptions
     is_export: bool = False  # Zero-rated if export
@@ -113,9 +102,6 @@ class SalesTaxInput:
     # Services-specific
     service_category: str = "general"
     is_federal_service: bool = False  # Federal vs provincial
-
-    # Tax period
-    period_label: str = "Monthly"
 
 
 @dataclass
@@ -151,8 +137,6 @@ class SalesTaxCalculator:
             return False, "Purchases value cannot be negative."
         if inp.import_value < 0:
             return False, "Import value cannot be negative."
-        if inp.customs_duty < 0:
-            return False, "Customs duty cannot be negative."
         return True, ""
 
     @staticmethod
@@ -175,7 +159,12 @@ class SalesTaxCalculator:
             if inp.is_federal_service:
                 return FEDERAL_SERVICES_RATE, f"Federal service ({inp.service_category})"
             else:
-                rate = PROVINCIAL_SERVICE_RATES.get(inp.province.value, 0.16)
+                # `federal` (and any unmapped province) is not a
+                # provincial rate — fall back to the federal services
+                # rate, not to a provincial 16%.
+                rate = PROVINCIAL_SERVICE_RATES.get(
+                    inp.province.value, FEDERAL_SERVICES_RATE
+                )
                 return rate, f"{inp.province.value.title()} provincial service tax"
 
         # Goods
@@ -190,7 +179,7 @@ class SalesTaxCalculator:
         if inp.sales_tax_type == SalesTaxType.IMPORTS:
             if inp.import_category in REDUCED_RATES:
                 return REDUCED_RATES[inp.import_category], f"Reduced import rate ({inp.import_category})"
-            return STANDARD_GST_RATE, f"Standard import rate (18%)"
+            return STANDARD_GST_RATE, "Standard import rate (18%)"
 
         # Retail
         if inp.sales_tax_type == SalesTaxType.RETAIL:
@@ -325,33 +314,33 @@ class SalesTaxCalculator:
     def format_result(result: SalesTaxResult, currency: str = "PKR") -> str:
         """Format result as human-readable string."""
         lines = [
-            f"=== Sales Tax Calculation ===",
-            f"",
-            f"--- Output Tax (Sales) ---",
+            "=== Sales Tax Calculation ===",
+            "",
+            "--- Output Tax (Sales) ---",
             f"Sales Value:             {currency} {result.sales_value:>15,.2f}",
             f"Applicable Rate:         {result.applicable_rate * 100:>14.1f}%",
             f"Output Tax:              {currency} {result.output_tax:>15,.2f}",
-            f"",
-            f"--- Input Tax (Purchases) ---",
+            "",
+            "--- Input Tax (Purchases) ---",
             f"Purchases Value:         {currency} {result.purchases_value:>15,.2f}",
             f"Input Tax:               {currency} {result.input_tax:>15,.2f}",
-            f"",
-            f"--- Net Position ---",
+            "",
+            "--- Net Position ---",
             f"Net {'Payable' if result.net_payable >= 0 else 'Refundable'}:    "
             f"{currency} {abs(result.net_payable):>15,.2f}",
-            f"",
-            f"--- Additional Info ---",
+            "",
+            "--- Additional Info ---",
         ]
         if result.zero_rated_amount > 0:
             lines.append(f"Zero-Rated Amount:       {currency} {result.zero_rated_amount:>15,.2f}")
         if result.exempt_amount > 0:
             lines.append(f"Exempt Amount:           {currency} {result.exempt_amount:>15,.2f}")
-        lines.append(f"")
-        lines.append(f"--- Notes ---")
+        lines.append("")
+        lines.append("--- Notes ---")
         for note in result.notes:
             lines.append(f"  • {note}")
-        lines.append(f"")
-        lines.append(f"--- Sources ---")
+        lines.append("")
+        lines.append("--- Sources ---")
         for src in result.sources:
             lines.append(f"  📄 {src}")
         return "\n".join(lines)

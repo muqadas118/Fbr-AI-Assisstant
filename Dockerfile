@@ -30,5 +30,15 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
-# Run with uvicorn
-CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# NOTE: data/ is excluded from the image (.dockerignore: /data/), so the
+# FAISS index, metadata, chunks.json and auth stores are NOT baked in.
+# Seed them before first boot - either bind-mount the host ./data directory
+# (docker-compose.yml already maps ./data:/app/data) or populate /app/data
+# in the container with the corpus build scripts.
+
+# Run with uvicorn.
+# Single worker on purpose: each worker loads the embedding model and the
+# whole FAISS index into its own process, so --workers 4 multiplies RAM use
+# with no benefit for this retrieval-bound app (compose sets no memory
+# limits). Scale with more replicas instead of more workers.
+CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

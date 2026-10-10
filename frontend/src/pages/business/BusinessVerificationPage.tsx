@@ -118,14 +118,14 @@ function CompanyNtnTab() {
 
   const { show: notify } = useNotification();
 
-  const validate = (): boolean => {
+  const validate = useCallback((): boolean => {
     if (!ntn.trim()) {
       setNtnError("Company NTN / registration number is required");
       return false;
     }
     setNtnError(null);
     return true;
-  };
+  }, [ntn]);
 
   const submit = useCallback(async () => {
     if (!validate()) return;
@@ -149,7 +149,7 @@ function CompanyNtnTab() {
     } finally {
       setLoading(false);
     }
-  }, [ntn, regType, notify]);
+  }, [validate, ntn, regType, notify]);
 
   return (
     <div className="vault-tab">
@@ -180,8 +180,8 @@ function CompanyNtnTab() {
               ariaLabel="Registration type"
               options={[
                 { value: "ntn", label: "NTN" },
-                { value: "company", label: "Company" },
-                { value: "aop", label: "AOP" },
+                { value: "secp_company", label: "SECP Company" },
+                { value: "pra_registration", label: "PRA Registration" },
               ]}
             />
           </Field>
@@ -225,14 +225,14 @@ function SalesTaxTab() {
 
   const { show: notify } = useNotification();
 
-  const validate = (): boolean => {
+  const validate = useCallback((): boolean => {
     if (!stn.trim()) {
       setStnError("Sales Tax Registration Number is required");
       return false;
     }
     setStnError(null);
     return true;
-  };
+  }, [stn]);
 
   const submit = useCallback(async () => {
     if (!validate()) return;
@@ -240,7 +240,7 @@ function SalesTaxTab() {
     setResult(null);
     setLoading(true);
     try {
-      const resp = await api.verify.business(stn.trim(), "stn");
+      const resp = await api.verify.business(stn.trim(), "pra_registration");
       setResult(resp);
       if (resp.is_verified) {
         notify("ok", `Sales tax registration ${stn} verified.`);
@@ -256,7 +256,7 @@ function SalesTaxTab() {
     } finally {
       setLoading(false);
     }
-  }, [stn, notify]);
+  }, [validate, stn, notify]);
 
   return (
     <div className="vault-tab">
@@ -319,14 +319,14 @@ function VendorTab() {
 
   const { show: notify } = useNotification();
 
-  const validate = (): boolean => {
+  const validate = useCallback((): boolean => {
     if (!vendorNtn.trim()) {
       setVendorError("Vendor NTN is required");
       return false;
     }
     setVendorError(null);
     return true;
-  };
+  }, [vendorNtn]);
 
   const submit = useCallback(async () => {
     if (!validate()) return;
@@ -352,7 +352,7 @@ function VendorTab() {
     } finally {
       setLoading(false);
     }
-  }, [vendorNtn, notify]);
+  }, [validate, vendorNtn, notify]);
 
   const details = result?.details as Record<string, unknown> | undefined;
 
@@ -454,14 +454,14 @@ function AtlTab() {
 
   const { show: notify } = useNotification();
 
-  const validate = (): boolean => {
+  const validate = useCallback((): boolean => {
     if (!ntn.trim()) {
       setNtnError("Company NTN is required");
       return false;
     }
     setNtnError(null);
     return true;
-  };
+  }, [ntn]);
 
   const submit = useCallback(async () => {
     if (!validate()) return;
@@ -485,7 +485,7 @@ function AtlTab() {
     } finally {
       setLoading(false);
     }
-  }, [ntn, notify]);
+  }, [validate, ntn, notify]);
 
   return (
     <div className="vault-tab">
@@ -565,7 +565,7 @@ function OwnerCnicTab() {
 
   const { show: notify } = useNotification();
 
-  const validate = (): boolean => {
+  const validate = useCallback((): boolean => {
     const cleaned = cnic.replace(/\D/g, "");
     if (!cnic.trim() || cleaned.length < 10) {
       setCnicError("Enter a valid CNIC (e.g. 1234567890123)");
@@ -573,7 +573,7 @@ function OwnerCnicTab() {
     }
     setCnicError(null);
     return true;
-  };
+  }, [cnic]);
 
   const submit = useCallback(async () => {
     if (!validate()) return;
@@ -597,7 +597,7 @@ function OwnerCnicTab() {
     } finally {
       setLoading(false);
     }
-  }, [cnic, notify]);
+  }, [validate, cnic, notify]);
 
   return (
     <div className="vault-tab">

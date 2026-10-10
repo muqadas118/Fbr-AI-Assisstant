@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import argparse
 import gc
-import hashlib
 import importlib.util
 import json
 import math
@@ -839,7 +838,6 @@ def suite_c() -> None:
     sub("C4 status of the 3 historical warnings")
     import app.calculations.income_tax as income_tax_mod
     import app.calculations.property_tax as property_tax_mod
-    import app.calculations.sales_tax as sales_tax_mod
 
     # 1) dead `fixed` column
     bracket_fields = getattr(income_tax_mod.TaxBracket, "__dataclass_fields__", {})

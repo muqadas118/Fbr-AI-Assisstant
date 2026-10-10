@@ -483,6 +483,7 @@ export function BusinessReadinessPage() {
               <label className="readiness-checkbox">
                 <input
                   type="checkbox"
+                  aria-label="Business return filed"
                   checked={form.returnFiled}
                   onChange={handleChange("returnFiled")}
                   data-testid="biz-readiness-return-filed"
@@ -493,6 +494,7 @@ export function BusinessReadinessPage() {
               <label className="readiness-checkbox">
                 <input
                   type="checkbox"
+                  aria-label="Tax paid or withheld at source"
                   checked={form.taxPaid}
                   onChange={handleChange("taxPaid")}
                   data-testid="biz-readiness-tax-paid"
@@ -503,6 +505,7 @@ export function BusinessReadinessPage() {
               <label className="readiness-checkbox">
                 <input
                   type="checkbox"
+                  aria-label="WHT deposited with FBR"
                   checked={form.whtDeposited}
                   onChange={handleChange("whtDeposited")}
                   data-testid="biz-readiness-wht-deposited"
@@ -513,6 +516,7 @@ export function BusinessReadinessPage() {
               <label className="readiness-checkbox">
                 <input
                   type="checkbox"
+                  aria-label="Sales tax deposited with FBR"
                   checked={form.stDeposited}
                   onChange={handleChange("stDeposited")}
                   data-testid="biz-readiness-st-deposited"
@@ -523,6 +527,7 @@ export function BusinessReadinessPage() {
               <label className="readiness-checkbox">
                 <input
                   type="checkbox"
+                  aria-label="Business bank statements available"
                   checked={form.bankStatements}
                   onChange={handleChange("bankStatements")}
                   data-testid="biz-readiness-bank-statements"
@@ -533,6 +538,7 @@ export function BusinessReadinessPage() {
               <label className="readiness-checkbox">
                 <input
                   type="checkbox"
+                  aria-label="Form 16A (WHT certificate) received"
                   checked={form.form16A}
                   onChange={handleChange("form16A")}
                   data-testid="biz-readiness-form-16a"

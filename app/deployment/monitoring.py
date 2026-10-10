@@ -10,7 +10,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Callable
+from typing import Optional
 
 logger = logging.getLogger("deployment")
 

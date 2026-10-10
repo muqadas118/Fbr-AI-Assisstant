@@ -10,10 +10,8 @@ CGT on:
 - Holding period affects tax rate
 
 CGT Rates (TY 2025):
-- Property held > 4 years: 10% (filer), 15% (non-filer)
-- Property held 3-4 years: 10% (filer), 15% (non-filer)
-- Property held 2-3 years: 10% (filer), 15% (non-filer)
-- Property held 1-2 years: 10% (filer), 15% (non-filer)
+- Property held >= 1 year: 10% (filer), 15% (non-filer)
+  (the same rate is used for 1-2, 2-3, 3-4 and over 4 years)
 - Property held < 1 year: 15% (filer), 20% (non-filer)
 - Securities (PSX) held > 1 year: 12.5%
 - Securities held < 1 year: 15%
@@ -21,7 +19,6 @@ CGT Rates (TY 2025):
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 
 class AssetType(str, Enum):
@@ -146,31 +143,31 @@ class CapitalGainsCalculator:
     @staticmethod
     def format_result(result: CGTResult, currency: str = "PKR") -> str:
         lines = [
-            f"=== Capital Gains Tax Calculation ===",
+            "=== Capital Gains Tax Calculation ===",
             f"Asset: {result.asset_type}",
-            f"",
-            f"--- Cost Basis ---",
+            "",
+            "--- Cost Basis ---",
             f"Acquisition Cost:        {currency} {result.acquisition_cost:>15,.2f}",
             f"Improvement Cost:        {currency} {result.improvement_cost:>15,.2f}",
             f"Selling Expenses:        {currency} {result.selling_expenses:>15,.2f}",
             f"Total Cost Basis:        {currency} {result.cost_basis:>15,.2f}",
-            f"",
-            f"--- Gain Computation ---",
+            "",
+            "--- Gain Computation ---",
             f"Sale Value:              {currency} {result.sale_value:>15,.2f}",
             f"Less: Cost Basis:        {currency} {result.cost_basis:>15,.2f}",
             f"Capital Gain:            {currency} {result.gain_amount:>15,.2f}",
-            f"",
-            f"--- Tax Computation ---",
+            "",
+            "--- Tax Computation ---",
             f"Holding Period:          {result.holding_period:>14.2f} years",
             f"CGT Rate:                {result.applicable_rate * 100:>14.1f}%",
             f"CGT Payable:             {currency} {result.cgt_payable:>15,.2f}",
-            f"",
-            f"--- Notes ---",
+            "",
+            "--- Notes ---",
         ]
         for note in result.notes:
             lines.append(f"  • {note}")
-        lines.append(f"")
-        lines.append(f"--- Sources ---")
+        lines.append("")
+        lines.append("--- Sources ---")
         for src in result.sources:
             lines.append(f"  📄 {src}")
         return "\n".join(lines)

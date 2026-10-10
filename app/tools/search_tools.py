@@ -7,8 +7,10 @@ retrieval stack.
 - hybrid_search:   FBRHybridRetriever.search() (semantic FAISS +
                    BM25 hybrid retrieval)
 - metadata_filter: filtering over the EXISTING vector metadata
-                   (data/profile/vectorstore/metadata.json) using
-                   only fields that actually exist there.
+                    (the metadata file the canonical retriever
+                    loads, resolved from FBR_VECTORSTORE_METADATA /
+                    FBR_VECTORSTORE_INDEX or the project default)
+                    using only fields that actually exist there.
 
 No new retrieval system is created. All heavy resources are lazy
 singletons shared across tools (one FAISS load, one embedding
@@ -23,15 +25,14 @@ from typing import Any
 
 from app.tools.base import BaseTool, ToolError
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
+# Same cap as the canonical app.rag_engine.MAX_QUESTION_LENGTH.
 _MAX_QUERY_LENGTH = 1000
 _MAX_TOP_K = 50
 _DEFAULT_TOP_K = 5
 _MAX_METADATA_LIMIT = 200
 
 # Fields that ACTUALLY exist in the project's vector metadata
-# (verified against data/profile/vectorstore/metadata.json).
+# (verified against the canonical metadata file).
 ALLOWED_METADATA_FILTERS = {
     "document_type",
     "source",
@@ -41,6 +42,73 @@ ALLOWED_METADATA_FILTERS = {
     "publication_date",
     "effective_date",
 }
+
+# Pointers to the canonical vectorstore configuration, resolved
+# lazily so building the tool registry stays cheap.
+INDEX_NOT_BUILT_HINT = (
+    "Build it with scripts/build_vector_index.py, or point "
+    "FBR_VECTORSTORE_INDEX / FBR_VECTORSTORE_METADATA at an existing "
+    "index and metadata file."
+)
+
+
+def _vectorstore_paths() -> tuple[Path, Path]:
+    """
+    Resolve the vectorstore index / metadata paths from the SAME
+    configuration the canonical retriever uses
+    (app.hybrid_retriever.resolve_vectorstore_paths).
+    """
+
+    from app.hybrid_retriever import resolve_vectorstore_paths
+
+    return resolve_vectorstore_paths()
+
+
+def load_vector_metadata() -> list:
+    """
+    Load the vector metadata records the canonical retriever uses.
+
+    Distinguishes "index not built" (index or metadata file missing,
+    raised as an actionable ToolError) from "no matches" (records
+    loaded, filter matched nothing), which the caller reports as an
+    empty result set instead of an error.
+    """
+
+    index_path, metadata_path = _vectorstore_paths()
+
+    if not index_path.exists():
+        raise ToolError(
+            "Vector index not built: no FAISS index at "
+            f"{index_path}. {INDEX_NOT_BUILT_HINT}"
+        )
+
+    if not metadata_path.exists():
+        raise ToolError(
+            "Vector index not built: no metadata file at "
+            f"{metadata_path}. {INDEX_NOT_BUILT_HINT}"
+        )
+
+    with open(metadata_path, "r", encoding="utf-8") as file:
+        records = json.load(file)
+
+    if not isinstance(records, list):
+        raise ToolError("Vector metadata file is malformed.")
+
+    return records
+
+
+def _shared_retriever_or_index_error():
+    """
+    Fetch the shared retriever, translating a missing vectorstore
+    into an actionable "index not built" ToolError.
+    """
+
+    try:
+        return shared_hybrid_retriever()
+    except FileNotFoundError as error:
+        raise ToolError(
+            f"Vector index not built: {error}. {INDEX_NOT_BUILT_HINT}"
+        ) from error
 
 
 # ============================================================
@@ -129,7 +197,15 @@ class RAGSearchTool(BaseTool):
         }
 
     def execute(self, payload: dict) -> Any:
-        response = shared_rag_engine().answer(
+        try:
+            engine = shared_rag_engine()
+        except FileNotFoundError as error:
+            raise ToolError(
+                f"Vector index not built: {error}. "
+                f"{INDEX_NOT_BUILT_HINT}"
+            ) from error
+
+        response = engine.answer(
             payload["query"],
             top_k=payload["top_k"],
         )
@@ -163,7 +239,7 @@ class HybridSearchTool(BaseTool):
         }
 
     def execute(self, payload: dict) -> Any:
-        results = shared_hybrid_retriever().search(
+        results = _shared_retriever_or_index_error().search(
             payload["query"],
             top_k=payload["top_k"],
         )
@@ -236,22 +312,7 @@ class MetadataFilterTool(BaseTool):
         return {"filters": clean_filters, "limit": limit}
 
     def execute(self, payload: dict) -> Any:
-        metadata_path = (
-            PROJECT_ROOT
-            / "data"
-            / "profile"
-            / "vectorstore"
-            / "metadata.json"
-        )
-
-        if not metadata_path.exists():
-            raise ToolError("Vector metadata file is not available.")
-
-        with open(metadata_path, "r", encoding="utf-8") as file:
-            records = json.load(file)
-
-        if not isinstance(records, list):
-            raise ToolError("Vector metadata file is malformed.")
+        records = load_vector_metadata()
 
         filters = payload["filters"]
 

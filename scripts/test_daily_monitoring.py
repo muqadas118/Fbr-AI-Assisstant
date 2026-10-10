@@ -81,7 +81,7 @@ def main() -> int:
                 (PROJECT_ROOT / "data" / "raw" / "b.pdf", "CHANGED"),
             ]
 
-            report = daily_update.write_run_report(
+            daily_update.write_run_report(
                 "success",
                 changed=changed,
                 discovery_stats={
@@ -141,7 +141,7 @@ def main() -> int:
         ), mock.patch.object(
             daily_update, "RUN_REPORT_FILE", failed_report_path
         ):
-            failed_report = daily_update.write_run_report(
+            daily_update.write_run_report(
                 "failed",
                 errors=["Processing pipeline failed."],
             )

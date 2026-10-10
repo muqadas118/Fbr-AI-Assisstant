@@ -74,6 +74,37 @@ export interface AssistantToolRun {
   data: unknown;
 }
 
+/** Language an answer is written in (mirrors the user's language when "auto"). */
+export type AnswerLanguage = "en" | "roman_ur" | "ur";
+
+/** Requested reply language — "auto" mirrors the user's own language. */
+export type ResponseLanguage = "auto" | AnswerLanguage;
+
+/** Body of POST /assistant/ask and /assistant/ask/stream. */
+export interface AssistantAskRequest {
+  query: string;
+  /** Optional; server defaults to "auto" when omitted. */
+  response_language?: ResponseLanguage;
+}
+
+/** One daily-quota bucket (messages or uploads) for the current local day. */
+export interface QuotaBucket {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
+/** Canonical shape served by GET /quota and echoed in assistant responses. */
+export interface QuotaSnapshot {
+  enabled: boolean;
+  user_id: string;
+  date: string;
+  timezone: string;
+  reset_at: string;
+  messages: QuotaBucket;
+  uploads: QuotaBucket;
+}
+
 export interface AssistantAskResponse {
   question: string;
   answer: string;
@@ -82,6 +113,52 @@ export interface AssistantAskResponse {
   verification: VerificationResult;
   grounded: boolean;
   mode: string;
+  /** Language the answer was written in (absent on older backends). */
+  answer_language?: AnswerLanguage;
+  /** Present when the personalization feature is active for this answer. */
+  personalization?: AssistantPersonalization;
+  /** Daily-quota snapshot after this request's consumption (when enabled). */
+  quota?: QuotaSnapshot;
+}
+
+/** One suggested next step derived from the user's own question history. */
+export interface Recommendation {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  action_label: string;
+  action_path: string;
+  /** Numeric priority emitted by the recommender (higher = shown first). */
+  priority: number;
+  source: string;
+}
+
+export interface PersonalizationProfileSummary {
+  top_domains: Array<[string, number]>;
+  total_interactions: number;
+}
+
+export interface AssistantPersonalization {
+  enabled: boolean;
+  recommendations: Recommendation[];
+  profile_summary: PersonalizationProfileSummary | null;
+}
+
+export interface PersonalizationProfile {
+  user_id: string;
+  enabled: boolean;
+  signals: Record<string, unknown>;
+  top_domains: Array<[string, number]>;
+  total_interactions: number;
+  last_active: string | null;
+}
+
+/** Payload for POST /personalization/feedback. */
+export interface AssistantFeedback {
+  message_id: string;
+  rating: -1 | 1;
+  comment?: string;
 }
 
 export interface HealthResponse {
@@ -106,6 +183,23 @@ export class NetworkError extends Error {
     super(message);
     this.name = "NetworkError";
   }
+}
+
+// ---------------------------------------------------------------------------
+// Assistant reply-language (mirrors the chat header selector).
+//
+// The assistant "ask" transports are wired through thin page wrappers that
+// call api.assistantAsk/assistantAskStream with just (query[, file]). Rather
+// than thread a selector value through every embedding, the chat sets this
+// module-level default and each ask call picks it up (an explicit
+// `responseLanguage` argument always wins). Defaults to "auto".
+// ---------------------------------------------------------------------------
+
+let assistantResponseLanguage: ResponseLanguage = "auto";
+
+/** Set the default reply language used by the assistant ask transports. */
+export function setAssistantResponseLanguage(language: ResponseLanguage): void {
+  assistantResponseLanguage = language;
 }
 
 // ============================================================================
@@ -584,6 +678,24 @@ export interface TeamDashboard {
   }>;
 }
 
+/** Shape returned by POST /team/invite. */
+export interface TeamInviteResponse {
+  invitation_id: string;
+  email: string;
+  role: string;
+  status: string;
+  expires_at: string;
+}
+
+/** Shape returned by POST /workspaces/create. */
+export interface CreatedWorkspace {
+  workspace_id: string;
+  name: string;
+  type: string;
+  ntn?: string;
+  created_at?: string;
+}
+
 // ============================================================================
 // Business Report Types
 // ============================================================================
@@ -602,9 +714,19 @@ export interface BusinessReportResponse {
 // API Client Implementation
 // ============================================================================
 
-function readEnvString(name: string, fallback: string): string {
-  const value = (import.meta.env as unknown as Record<string, string | undefined>)[name];
-  return value && value.length > 0 ? value : fallback;
+function readApiBaseUrl(): string {
+  const value = (import.meta.env as unknown as Record<string, string | undefined>)[
+    "VITE_API_BASE_URL"
+  ];
+  if (value && value.length > 0) return value.replace(/\/$/, "");
+  // Localhost is a DEV-only fallback. In production a missing env var must
+  // fail loudly instead of baking 127.0.0.1 into the built bundle.
+  if ((import.meta.env as unknown as Record<string, unknown>).DEV) {
+    return "http://127.0.0.1:8000";
+  }
+  throw new Error(
+    "VITE_API_BASE_URL is not set — configure the API origin for this deployment.",
+  );
 }
 
 function readEnvNumber(name: string, fallback: number): number {
@@ -623,16 +745,18 @@ export interface ApiClientConfig {
 
 export function getApiConfig(): ApiClientConfig {
   return {
-    baseUrl: readEnvString("VITE_API_BASE_URL", "http://127.0.0.1:8000").replace(/\/$/, ""),
+    baseUrl: readApiBaseUrl(),
     timeoutMs: readEnvNumber("VITE_API_TIMEOUT_MS", DEFAULT_TIMEOUT_MS),
   };
 }
 
 // ============================================================================
-// Auth token injection (Supabase JWT -> Bearer header).
-// Does NOT change any of the 44 leaf method signatures: the central
+// Auth token injection (opaque backend session token -> Bearer header).
+// Does NOT change any of the leaf method signatures: the central
 // request() helper awaits the getter and merges the header.
-// Wire once at startup: setAuthTokenGetter(getAccessToken).
+// Wire once at startup: setAuthTokenGetter(getStoredAuthToken) — see
+// main.tsx. The backend issues its own opaque session tokens; no
+// Supabase (or other external) auth provider is involved.
 // ============================================================================
 
 export type AuthTokenGetter = () => Promise<string | null>;
@@ -660,7 +784,7 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 async function request<T>(
-  method: "GET" | "POST" | "PATCH" | "DELETE",
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
   path: string,
   init: { body?: unknown } = {},
   config: ApiClientConfig = getApiConfig(),
@@ -917,6 +1041,16 @@ export const api = {
   },
 
   // ---------------------------------------------------------------------------
+  // Daily quota (per-user messages + chat file uploads)
+  // ---------------------------------------------------------------------------
+  quota: {
+    /** Read-only snapshot of today's message/upload budget for this user. */
+    get(): Promise<QuotaSnapshot> {
+      return request<QuotaSnapshot>("GET", "/quota");
+    },
+  },
+
+  // ---------------------------------------------------------------------------
   // Q&A
   // ---------------------------------------------------------------------------
   answer(query: string): Promise<AnswerResponse> {
@@ -934,19 +1068,24 @@ export const api = {
    * grounds the answer in the FBR corpus. Optional file upload (PDF/
    * image/text) is read by the backend pipeline before answering.
    */
-  assistantAsk(query: string, file?: File | null): Promise<AssistantAskResponse> {
+  assistantAsk(
+    query: string,
+    file?: File | null,
+    responseLanguage?: ResponseLanguage,
+  ): Promise<AssistantAskResponse> {
+    const response_language = responseLanguage ?? assistantResponseLanguage;
     if (file) {
       return uploadRequest<AssistantAskResponse>(
         "/assistant/ask",
         file,
-        { query },
+        { query, response_language },
         { ...getApiConfig(), timeoutMs: ANSWER_TIMEOUT_MS },
       );
     }
     return request<AssistantAskResponse>(
       "POST",
       "/assistant/ask",
-      { body: { query } },
+      { body: { query, response_language } satisfies AssistantAskRequest },
       { ...getApiConfig(), timeoutMs: ANSWER_TIMEOUT_MS },
     );
   },
@@ -963,8 +1102,11 @@ export const api = {
     handlers: {
       onMeta?: (meta: Partial<AssistantAskResponse>) => void;
       onDelta?: (chunk: string) => void;
+      onPersonalization?: (personalization: AssistantAskResponse["personalization"]) => void;
     },
+    responseLanguage?: ResponseLanguage,
   ): Promise<AssistantAskResponse> {
+    const response_language = responseLanguage ?? assistantResponseLanguage;
     const config = getApiConfig();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ANSWER_TIMEOUT_MS);
@@ -975,7 +1117,7 @@ export const api = {
         response = await fetch(`${config.baseUrl}/assistant/ask/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "text/event-stream", ...auth },
-          body: JSON.stringify({ query }),
+          body: JSON.stringify({ query, response_language } satisfies AssistantAskRequest),
           signal: controller.signal,
         });
       } catch (err) {
@@ -994,7 +1136,7 @@ export const api = {
           if (response.status === 401) unauthorizedHandler?.();
           throw new ApiError("POST /assistant/ask/stream failed", response.status, detail);
         }
-        return this.assistantAsk(query);
+        return this.assistantAsk(query, null, responseLanguage);
       }
 
       const reader = response.body.getReader();
@@ -1028,6 +1170,17 @@ export const api = {
             if (replacement) text = replacement;
             handlers.onMeta?.(meta);
           } catch { /* ignore malformed verification */ }
+        } else if (eventName === "personalization") {
+          // Same payload as AssistantAskResponse.personalization — merged
+          // into the meta so callers can read it off the settled response.
+          try {
+            const p = JSON.parse(data) as AssistantAskResponse["personalization"];
+            if (p) {
+              meta = { ...meta, personalization: p };
+              handlers.onMeta?.(meta);
+            }
+            handlers.onPersonalization?.(p);
+          } catch { /* ignore malformed personalization event */ }
         }
         eventName = "message";
       };
@@ -1066,6 +1219,10 @@ export const api = {
         },
         grounded: meta.grounded ?? false,
         mode: meta.mode ?? "stream",
+        // Carried on the `meta` SSE event by the backend; absent on older ones.
+        ...(meta.answer_language ? { answer_language: meta.answer_language } : {}),
+        ...(meta.personalization ? { personalization: meta.personalization } : {}),
+        ...(meta.quota ? { quota: meta.quota } : {}),
       } satisfies AssistantAskResponse;
     } finally {
       clearTimeout(timer);
@@ -1077,10 +1234,6 @@ export const api = {
   // ---------------------------------------------------------------------------
   calculate(calcType: string, inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     return request("POST", "/calculate", { body: { calc_type: calcType, inputs } });
-  },
-
-  getCalculationTypes(): Promise<Record<string, unknown>> {
-    return request("GET", "/calculate/types");
   },
 
   // ---------------------------------------------------------------------------
@@ -1137,10 +1290,6 @@ export const api = {
         body: { event_id: eventId, recipient, channels: channels || ["email", "push"] },
       });
     },
-
-    getTypes(): Promise<{ event_types: string[]; categories: string[]; priorities: string[] }> {
-      return request("GET", "/calendar/types");
-    },
   },
 
   // ---------------------------------------------------------------------------
@@ -1188,10 +1337,6 @@ export const api = {
       is_concealment?: boolean;
     }): Promise<Record<string, unknown>> {
       return request("POST", "/tax/health/penalties", { body: data });
-    },
-
-    getScoreGuide(): Promise<Record<string, unknown>> {
-      return request("GET", "/tax/health/score-guide");
     },
   },
 
@@ -1271,10 +1416,6 @@ export const api = {
     }): Promise<ReconciliationReport> {
       return request<ReconciliationReport>("POST", "/invoices/reconcile", { body: data || {} });
     },
-
-    export(format = "json"): Promise<Record<string, unknown> | string> {
-      return request("GET", `/invoices/export?format=${format}`);
-    },
   },
 
   // ---------------------------------------------------------------------------
@@ -1316,10 +1457,6 @@ export const api = {
   // Business Reports (Report Generate — business workspace)
   // ---------------------------------------------------------------------------
   businessReports: {
-    getTypes(): Promise<{ report_types: string[]; default: string; formats: string[] }> {
-      return request("GET", "/business/reports/types");
-    },
-
     generate(data: {
       report_type?: string;
       title: string;
@@ -1334,6 +1471,36 @@ export const api = {
   },
 
   // ---------------------------------------------------------------------------
+  // Personalization (self-learning profile + per-account recommendations)
+  // ---------------------------------------------------------------------------
+  personalization: {
+    getProfile(): Promise<PersonalizationProfile> {
+      return request<PersonalizationProfile>("GET", "/personalization/profile");
+    },
+
+    getRecommendations(limit = 5): Promise<Recommendation[]> {
+      const qs = new URLSearchParams({ limit: String(limit) }).toString();
+      return request<Recommendation[]>("GET", `/personalization/recommendations?${qs}`);
+    },
+
+    dismissRecommendation(id: string): Promise<{ dismissed: boolean }> {
+      return request("POST", `/personalization/recommendations/${encodeURIComponent(id)}/dismiss`);
+    },
+
+    sendFeedback(payload: AssistantFeedback): Promise<{ recorded: boolean }> {
+      return request("POST", "/personalization/feedback", { body: payload });
+    },
+
+    deleteMyData(): Promise<{ deleted: number }> {
+      return request("DELETE", "/personalization/me/data");
+    },
+
+    setPersonalization(enabled: boolean): Promise<{ enabled: boolean }> {
+      return request("PUT", "/personalization/me/personalization", { body: { enabled } });
+    },
+  },
+
+  // ---------------------------------------------------------------------------
   // Vault (persistent per-user document storage)
   // ---------------------------------------------------------------------------
   vault: {
@@ -1343,14 +1510,6 @@ export const api = {
 
     create(payload: { filename: string; doc_type: string; content?: string; secure?: boolean }): Promise<VaultDocument> {
       return request("POST", "/vault/documents", { body: payload });
-    },
-
-    get(docId: string): Promise<VaultDocument> {
-      return request("GET", `/vault/documents/${encodeURIComponent(docId)}`);
-    },
-
-    update(docId: string, payload: { filename?: string; doc_type?: string; content?: string }): Promise<VaultDocument> {
-      return request("PATCH", `/vault/documents/${encodeURIComponent(docId)}`, { body: payload });
     },
 
     remove(docId: string): Promise<{ deleted: boolean; id: string }> {
@@ -1372,16 +1531,8 @@ export const api = {
       return request("POST", "/monitor/subscribe", { body: data });
     },
 
-    unsubscribe(userId: string): Promise<{ user_id: string; unsubscribed: boolean }> {
-      return request("DELETE", `/monitor/unsubscribe/${userId}`);
-    },
-
     getDashboard(userId: string): Promise<MonitorDashboard> {
       return request<MonitorDashboard>("GET", `/monitor/dashboard/${userId}`);
-    },
-
-    getEvent(eventId: string): Promise<Record<string, unknown>> {
-      return request("GET", `/monitor/event/${eventId}`);
     },
 
     acknowledgeEvent(eventId: string): Promise<{ event_id: string; status: string }> {
@@ -1390,10 +1541,6 @@ export const api = {
 
     resolveEvent(eventId: string): Promise<{ event_id: string; status: string }> {
       return request("POST", `/monitor/event/${eventId}/resolve`);
-    },
-
-    getEventTypes(): Promise<{ event_types: string[]; severities: string[] }> {
-      return request("GET", "/monitor/event-types");
     },
 
     /** Simulate a new FBR notice (demo/testing) — event lands in the inbox. */
@@ -1425,14 +1572,6 @@ export const api = {
       return request("POST", "/team/register", { body: data });
     },
 
-    login(email: string, password: string): Promise<Record<string, unknown>> {
-      return request("POST", "/team/login", { body: { email, password } });
-    },
-
-    logout(token: string): Promise<{ success: boolean }> {
-      return request("POST", "/team/logout", { body: { token } });
-    },
-
     getRoles(): Promise<Record<string, unknown>> {
       return request("GET", "/team/roles");
     },
@@ -1444,6 +1583,16 @@ export const api = {
     getUserDashboard(userId: string): Promise<UserDashboard> {
       return request<UserDashboard>("GET", `/team/user-dashboard/${userId}`);
     },
+
+    /** Invite a user to a team (the caller must already belong to it). */
+    invite(data: {
+      team_id: string;
+      email: string;
+      role: string;
+      invited_by?: string;
+    }): Promise<TeamInviteResponse> {
+      return request<TeamInviteResponse>("POST", "/team/invite", { body: data });
+    },
   },
 
   // ---------------------------------------------------------------------------
@@ -1454,19 +1603,15 @@ export const api = {
       return request("GET", `/workspaces/${userId}`);
     },
 
-    getHealth(): Promise<{ status: string; service: string; version: string }> {
-      return request("GET", "/workspaces/health");
-    },
-
-    /** Create a personal or business workspace (a real team under the hood). */
+    /** Create a workspace (a team under the hood) for the authenticated user. */
     createWorkspace(data: {
-      user_id: string;
+      user_id?: string;
       name: string;
       workspace_type: "personal" | "business";
       ntn?: string;
       description?: string;
-    }): Promise<{ workspace_id: string; name: string; type: string; created_at?: string }> {
-      return request("POST", "/workspaces/create", { body: data });
+    }): Promise<CreatedWorkspace> {
+      return request<CreatedWorkspace>("POST", "/workspaces/create", { body: data });
     },
   },
 };

@@ -20,7 +20,7 @@ All heavy resources load lazily inside execute(), so building
 the registry is cheap.
 """
 
-from app.tools.base import BaseTool, ToolError, ToolResult
+from app.tools.base import BaseTool as BaseTool, ToolError as ToolError, ToolResult as ToolResult
 from app.tools.document_tools import (
     AnomalyDetectionTool,
     DocumentParserTool,

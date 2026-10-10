@@ -11,16 +11,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
-from datetime import datetime, timedelta
+from datetime import date, timedelta
 
 from app.notice_analyzer import (
     NoticeClassifier, NoticeType,
-    NoticeExtractor, ExtractedInfo,
-    DeadlineCalculator,
+    NoticeExtractor, DeadlineCalculator,
     ActionPlanGenerator,
     AppealGuideGenerator,
     NoticeAnalyzer, get_notice_analyzer,
 )
+from app.notice_analyzer.analyzer import AUDIT_LOG_MAX_ENTRIES
 
 
 class TestNoticeClassifier(unittest.TestCase):
@@ -103,6 +103,24 @@ class TestNoticeClassifier(unittest.TestCase):
         result = NoticeClassifier.classify("hello")
         self.assertEqual(result.notice_type, NoticeType.UNKNOWN)
 
+    def test_single_keyword_hit_low_confidence(self):
+        # One generic keyword is weak evidence - floored at 0.35
+        result = NoticeClassifier.classify("A penalty has been imposed here.")
+        self.assertEqual(result.notice_type, NoticeType.PENALTY_182)
+        self.assertLessEqual(result.confidence, 0.35)
+
+    def test_section_reference_high_confidence(self):
+        result = NoticeClassifier.classify(
+            "PENALTY NOTICE\nUnder Section 182 of the Income Tax Ordinance, 2001"
+        )
+        self.assertGreater(result.confidence, 0.5)
+
+    def test_us_abbreviation_not_read_as_section(self):
+        result = NoticeClassifier.classify(
+            "U.S. tax treaty and us citizens. We used and used it."
+        )
+        self.assertNotIn("section", result.matched_signals)
+
 
 class TestNoticeExtractor(unittest.TestCase):
     """Test notice information extraction."""
@@ -122,10 +140,54 @@ class TestNoticeExtractor(unittest.TestCase):
         info = NoticeExtractor.extract(text)
         self.assertIsNotNone(info.notice_id)
 
+    def test_notice_id_requires_a_digit(self):
+        # "Notice not served" must not yield a notice id of "t"
+        text = "The notice has not been served on the address given."
+        info = NoticeExtractor.extract(text)
+        self.assertIsNone(info.notice_id)
+
     def test_extract_date(self):
         text = "Dated: 15-03-2024"
         info = NoticeExtractor.extract(text)
         self.assertEqual(info.issue_date, "2024-03-15")
+
+    def test_extract_taxpayer_name(self):
+        text = "Taxpayer Name: M/s. Ahmed Khan Trading Co.\nNTN: 1234567-8"
+        info = NoticeExtractor.extract(text)
+        self.assertIn("Ahmed Khan", info.taxpayer_name)
+
+    def test_taxpayer_name_absent_stays_none(self):
+        # No labeled cue -> None, never a guessed/fabricated name
+        text = "NTN: 1234567-8\nUnder Section 114 of the Income Tax Ordinance"
+        info = NoticeExtractor.extract(text)
+        self.assertIsNone(info.taxpayer_name)
+
+    def test_no_labeled_deadline_is_not_invented(self):
+        # Only an issue/tax-year date in the document
+        text = """
+        SHOW CAUSE NOTICE
+        Dated: 01-03-2024
+        For Tax Year 2024, hearing was held on 10-04-2024.
+        Under Section 114(3) of the Income Tax Ordinance, 2001
+        """
+        info = NoticeExtractor.extract(text)
+        self.assertIsNone(info.deadline)
+        self.assertIsNone(info.deadline_days)
+
+    def test_labeled_deadline_within_n_days(self):
+        text = """
+        SHOW CAUSE NOTICE
+        Dated: 01-03-2024
+        You must respond within 14 days of this notice.
+        """
+        info = NoticeExtractor.extract(text)
+        self.assertEqual(info.deadline, "2024-03-15")
+        self.assertEqual(info.deadline_days, 14)
+
+    def test_labeled_deadline_by_date(self):
+        text = "Dated: 01-03-2024\nYou are required to respond by 20-03-2024."
+        info = NoticeExtractor.extract(text)
+        self.assertEqual(info.deadline, "2024-03-20")
 
     def test_extract_amounts(self):
         text = """
@@ -169,30 +231,51 @@ class TestDeadlineCalculator(unittest.TestCase):
     """Test deadline calculation."""
 
     def test_future_deadline(self):
-        future_date = (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d")
-        info = DeadlineCalculator.calculate(NoticeType.SHOW_CAUSE_114, future_date)
+        future_date = (date.today() + timedelta(days=10)).strftime("%Y-%m-%d")
+        info = DeadlineCalculator.calculate(NoticeType.SHOW_CAUSE_114, None, future_date)
         self.assertIsNotNone(info.deadline_date)
         self.assertGreater(info.days_remaining, 0)
         self.assertFalse(info.is_overdue)
 
+    def test_deadline_due_today_is_not_overdue(self):
+        today = date.today().strftime("%Y-%m-%d")
+        info = DeadlineCalculator.calculate(NoticeType.SHOW_CAUSE_114, None, today)
+        self.assertFalse(info.is_overdue)
+        self.assertEqual(info.days_remaining, 0)
+
     def test_overdue(self):
-        past_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        info = DeadlineCalculator.calculate(NoticeType.SHOW_CAUSE_114, past_date)
+        past_date = (date.today() - timedelta(days=30)).strftime("%Y-%m-%d")
+        info = DeadlineCalculator.calculate(NoticeType.SHOW_CAUSE_114, None, past_date)
         self.assertTrue(info.is_overdue)
         self.assertEqual(info.urgency_level, "critical")
 
     def test_urgent(self):
-        # Issue date 13 days ago, SCN has 14 days response
-        # So 1 day remaining
-        date_13_days_ago = (datetime.now() - timedelta(days=13)).strftime("%Y-%m-%d")
-        info = DeadlineCalculator.calculate(NoticeType.SHOW_CAUSE_114, date_13_days_ago)
+        # Deadline stated in the notice as 1 day from today
+        tomorrow = (date.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+        info = DeadlineCalculator.calculate(NoticeType.SHOW_CAUSE_114, None, tomorrow)
         self.assertLessEqual(info.days_remaining, 1)
         self.assertIn(info.urgency_level, ["critical", "high"])
+
+    def test_no_stated_deadline_is_not_invented(self):
+        # Issue date alone must NOT be turned into a fake response period
+        info = DeadlineCalculator.calculate(
+            NoticeType.SHOW_CAUSE_114, "2024-03-01"
+        )
+        self.assertIsNone(info.deadline_date)
+        self.assertIsNone(info.days_remaining)
+        self.assertEqual(info.urgency_level, "unknown")
 
     def test_no_issue_date(self):
         info = DeadlineCalculator.calculate(NoticeType.SHOW_CAUSE_114, None)
         self.assertIsNone(info.deadline_date)
+        self.assertIsNone(info.days_remaining)
         self.assertEqual(info.urgency_level, "unknown")
+
+    def test_days_given_from_stated_dates(self):
+        info = DeadlineCalculator.calculate(
+            NoticeType.SHOW_CAUSE_114, "2024-03-01", "2024-03-15"
+        )
+        self.assertEqual(info.days_given, 14)
 
 
 class TestActionPlanGenerator(unittest.TestCase):
@@ -244,6 +327,17 @@ class TestAppealGuideGenerator(unittest.TestCase):
         self.assertTrue(guide.is_appealable)
         # Prosecution has shorter response time
         self.assertLessEqual(guide.time_limit_days, 14)
+
+    def test_appealability_agrees_with_classifier(self):
+        # Single source of truth: the guide must never contradict the
+        # top-level classification's is_appealable
+        for notice_type in NoticeType:
+            guide = AppealGuideGenerator.generate(notice_type)
+            self.assertEqual(
+                guide.is_appealable,
+                notice_type in NoticeClassifier.APPEALABLE_TYPES,
+                msg=f"appealability mismatch for {notice_type.value}",
+            )
 
     def test_format_guide(self):
         guide = AppealGuideGenerator.generate(NoticeType.ASSESSMENT_122)
@@ -317,6 +411,41 @@ class TestNoticeAnalyzer(unittest.TestCase):
         result = self.analyzer.analyze("")
         self.assertEqual(result.notice_type, "unknown")
         self.assertEqual(result.confidence, 0.0)
+
+    def test_audit_log_is_bounded(self):
+        analyzer = NoticeAnalyzer()
+        for _ in range(AUDIT_LOG_MAX_ENTRIES + 50):
+            analyzer.analyze("SHOW CAUSE NOTICE under Section 114 NTN: 1234567-8")
+        self.assertEqual(len(analyzer.audit_log), AUDIT_LOG_MAX_ENTRIES)
+
+    def test_unstated_deadline_reported_unknown(self):
+        # No labeled response date anywhere in the notice
+        text = """
+        SHOW CAUSE NOTICE
+        Notice No: FBR/IT/2024/12345
+        Dated: 01-03-2024
+        Under Section 114(3) of the Income Tax Ordinance, 2001
+        You are required to show cause why proceedings should not be
+        initiated against you for Tax Year 2024.
+        """
+        result = self.analyzer.analyze(text)
+        self.assertIsNone(result.deadline_date)
+        self.assertIsNone(result.days_remaining)
+        self.assertEqual(result.urgency_level, "unknown")
+        self.assertIn("deadline could not be determined", result.summary)
+
+    def test_due_today_is_not_overdue(self):
+        # A notice whose response deadline is TODAY is due today, not overdue
+        today = date.today().strftime("%d-%m-%Y")
+        text = (
+            "SHOW CAUSE NOTICE\nDated: " + today + "\n"
+            "Under Section 114(3) of the Income Tax Ordinance, 2001\n"
+            "You must respond by " + today + "."
+        )
+        result = self.analyzer.analyze(text)
+        self.assertEqual(result.days_remaining, 0)
+        self.assertNotIn("DEADLINE PASSED", result.summary)
+        self.assertNotIn("OVERDUE", result.formatted_text)
 
 
 if __name__ == "__main__":

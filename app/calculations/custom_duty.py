@@ -15,7 +15,6 @@ Real implementation would query Pakistan Customs tariff database.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 
 class HSCategory(str, Enum):
@@ -151,8 +150,17 @@ class CustomDutyCalculator:
         return True, ""
 
     @staticmethod
+    def is_non_filer(filer_status: str) -> bool:
+        """True when the importer is a non-filer.
+
+        Anything that is not exactly "filer" is treated as a non-filer
+        (conservative: the higher WHT rate applies).
+        """
+        return str(filer_status).strip().lower() != "filer"
+
+    @staticmethod
     def calculate(inp: CustomDutyInput) -> CustomDutyResult:
-        valid, error = CustomDutyCalculator.validate_inp(inp) if False else CustomDutyCalculator.validate_input(inp)
+        valid, error = CustomDutyCalculator.validate_input(inp)
         if not valid:
             raise ValueError(error)
 
@@ -177,6 +185,19 @@ class CustomDutyCalculator:
         # Step 3: WHT Section 148 on (CIF + CD + ST)
         wht_base = st_base + st
         wht_rate = rates["wht"]
+        # filer_status is documented as affecting WHT: the tariff table
+        # publishes only the filer rate, so a non-filer is charged
+        # double it — the same doubling convention withholding_tax.py
+        # uses for Sections 150/151 (filer 15% -> non-filer 30%).
+        # Assumption: personal (non-commercial) imports pay the same
+        # Section 148 rate; this simplified model has no separate
+        # personal-import rate.
+        if CustomDutyCalculator.is_non_filer(inp.filer_status):
+            wht_rate = wht_rate * 2
+            notes.append(
+                f"Non-filer importer: WHT rate {rates['wht'] * 100:.0f}% doubled to "
+                f"{wht_rate * 100:.0f}% (Section 148)"
+            )
         wht = wht_base * wht_rate
         notes.append(f"WHT (Section 148) @ {wht_rate * 100:.0f}% on (CIF+CD+ST): PKR {wht:,.2f}")
 
@@ -210,29 +231,29 @@ class CustomDutyCalculator:
     @staticmethod
     def format_result(result: CustomDutyResult, currency: str = "PKR") -> str:
         lines = [
-            f"=== Custom/Import Duty Calculation ===",
-            f"",
-            f"--- Base Value ---",
+            "=== Custom/Import Duty Calculation ===",
+            "",
+            "--- Base Value ---",
             f"CIF Value:               {currency} {result.cif_value:>15,.2f}",
-            f"",
-            f"--- Duties & Taxes ---",
+            "",
+            "--- Duties & Taxes ---",
             f"Customs Duty:            {currency} {result.customs_duty:>15,.2f}",
             f"Sales Tax:               {currency} {result.sales_tax:>15,.2f}",
             f"WHT (Section 148):       {currency} {result.wht_148:>15,.2f}",
             f"Additional CD:           {currency} {result.additional_cd:>15,.2f}",
             f"Regulatory Duty:         {currency} {result.regulatory_duty:>15,.2f}",
-            f"",
-            f"--- Total ---",
+            "",
+            "--- Total ---",
             f"Total Duty:              {currency} {result.total_duty:>15,.2f}",
             f"Landed Cost:             {currency} {result.landed_cost:>15,.2f}",
             f"Effective Duty Rate:     {result.effective_rate:>14.2f}%",
-            f"",
-            f"--- Notes ---",
+            "",
+            "--- Notes ---",
         ]
         for note in result.notes:
             lines.append(f"  • {note}")
-        lines.append(f"")
-        lines.append(f"--- Sources ---")
+        lines.append("")
+        lines.append("--- Sources ---")
         for src in result.sources:
             lines.append(f"  📄 {src}")
         return "\n".join(lines)

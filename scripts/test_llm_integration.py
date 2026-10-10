@@ -24,8 +24,6 @@ Coverage:
 
 from __future__ import annotations
 
-import json
-import re
 import sys
 import traceback
 from pathlib import Path

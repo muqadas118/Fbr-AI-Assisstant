@@ -16,12 +16,11 @@ Dedicated to salaried individuals with:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 from enum import Enum
 
 from app.calculations.income_tax import (
     IncomeTaxCalculator, IncomeTaxInput, IncomeTaxResult,
-    FilingStatus, TaxYear, SALARIED_SLABS_TY2025, SALARIED_SLABS_TY2024
+    FilingStatus, TaxYear
 )
 
 
@@ -95,6 +94,9 @@ class SalaryTaxResult:
     annual_tax: float
     monthly_tax: float
     income_tax_result: IncomeTaxResult
+    # Year whose slabs produced every figure below, so a caller can tell
+    # which Finance Act schedule was applied without echoing the inputs.
+    tax_year: TaxYear
     exemption_breakdown: list[dict] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
@@ -144,8 +146,53 @@ class SalaryTaxCalculator:
         return round(exemption, 2), ""
 
     @staticmethod
+    def validate_input(inp: SalaryTaxInput) -> tuple[bool, str]:
+        """Validate salary tax input (same pattern as the other calculators).
+
+        Negative allowances are rejected: an exemption computed with
+        min() would otherwise go negative and INCREASE taxable income.
+        """
+        if inp.basic_salary < 0:
+            return False, "Basic salary cannot be negative."
+        if inp.house_rent_received < 0:
+            return False, "House rent allowance cannot be negative."
+        if inp.medical_allowance < 0:
+            return False, "Medical allowance cannot be negative."
+        if inp.transport_allowance < 0:
+            return False, "Transport allowance cannot be negative."
+        if inp.conveyance_allowance < 0:
+            return False, "Conveyance allowance cannot be negative."
+        if inp.special_allowances < 0:
+            return False, "Special allowances cannot be negative."
+        if inp.bonuses_annual < 0:
+            return False, "Bonuses cannot be negative."
+        if inp.overtime_annual < 0:
+            return False, "Overtime cannot be negative."
+        if inp.other_allowances < 0:
+            return False, "Other allowances cannot be negative."
+        if inp.rent_paid_annual < 0:
+            return False, "Rent paid cannot be negative."
+        if inp.provident_fund_employee < 0:
+            return False, "Provident fund contribution cannot be negative."
+        if inp.eobi_contribution < 0:
+            return False, "EOBI contribution cannot be negative."
+        if inp.zakat_paid < 0:
+            return False, "Zakat cannot be negative."
+        if inp.donations < 0:
+            return False, "Donations cannot be negative."
+        if inp.investment_in_equity < 0:
+            return False, "Investment in equity cannot be negative."
+        if inp.tuition_fees < 0:
+            return False, "Tuition fees cannot be negative."
+        return True, ""
+
+    @staticmethod
     def calculate(input_data: SalaryTaxInput) -> SalaryTaxResult:
         """Calculate full salary tax with exemptions and deductions."""
+        valid, error = SalaryTaxCalculator.validate_input(input_data)
+        if not valid:
+            raise ValueError(error)
+
         notes = []
         exemption_breakdown = []
         sources = [
@@ -278,6 +325,7 @@ class SalaryTaxCalculator:
             annual_tax=round(annual_tax, 2),
             monthly_tax=monthly_tax,
             income_tax_result=income_result,
+            tax_year=input_data.tax_year,
             exemption_breakdown=exemption_breakdown,
             notes=notes,
             sources=sources,
@@ -287,41 +335,42 @@ class SalaryTaxCalculator:
     def format_result(result: SalaryTaxResult, currency: str = "PKR") -> str:
         """Format as human-readable report."""
         lines = [
-            f"=== Salary Tax Calculation (FBR Compliant) ===",
-            f"",
-            f"--- Annual Gross Salary ---",
+            "=== Salary Tax Calculation (FBR Compliant) ===",
+            f"Tax Year: {result.tax_year.value}",
+            "",
+            "--- Annual Gross Salary ---",
             f"Gross Salary (Annual):    {currency} {result.annual_gross:>15,.2f}",
-            f"",
-            f"--- Exemptions (Tax-Free) ---",
+            "",
+            "--- Exemptions (Tax-Free) ---",
             f"  HRA Exemption:          {currency} {result.hra_exemption:>15,.2f}",
             f"  Medical Exemption:      {currency} {result.medical_exemption:>15,.2f}",
             f"  Transport Exemption:    {currency} {result.transport_exemption:>15,.2f}",
             f"  Conveyance Exemption:   {currency} {result.conveyance_exemption:>15,.2f}",
             f"  Total Exemptions:       {currency} {result.annual_exemptions:>15,.2f}",
-            f"",
-            f"--- Deductions (From Taxable Income) ---",
+            "",
+            "--- Deductions (From Taxable Income) ---",
             f"  Provident Fund:         {currency} {result.pf_deduction:>15,.2f}",
             f"  EOBI Contribution:      {currency} {result.eobi_deduction:>15,.2f}",
             f"  Zakat:                  {currency} {result.zakat_deduction:>15,.2f}",
-            f"",
-            f"--- Tax Computation ---",
+            "",
+            "--- Tax Computation ---",
             f"  Taxable Income:         {currency} {result.taxable_income:>15,.2f}",
             f"  Annual Tax:             {currency} {result.annual_tax:>15,.2f}",
             f"  Monthly Tax (Avg):      {currency} {result.monthly_tax:>15,.2f}",
             f"  Effective Tax Rate:     {result.income_tax_result.effective_tax_rate:>14.2f}%",
-            f"",
-            f"--- Exemption Details ---",
+            "",
+            "--- Exemption Details ---",
         ]
         for ex in result.exemption_breakdown:
             lines.append(f"  ✓ {ex['type']} ({ex['section']}): {currency} {ex['amount']:,.2f}")
             if ex.get("note"):
                 lines.append(f"      {ex['note']}")
-        lines.append(f"")
-        lines.append(f"--- Notes ---")
+        lines.append("")
+        lines.append("--- Notes ---")
         for note in result.notes:
             lines.append(f"  • {note}")
-        lines.append(f"")
-        lines.append(f"--- Sources ---")
+        lines.append("")
+        lines.append("--- Sources ---")
         for src in result.sources:
             lines.append(f"  📄 {src}")
         return "\n".join(lines)

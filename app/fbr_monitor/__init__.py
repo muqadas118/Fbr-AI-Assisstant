@@ -1,20 +1,21 @@
 """
-Live FBR Monitoring - Production-Grade
-====================================
+Live FBR Monitoring
+==================
 
-Real-time monitoring of FBR activities for taxpayers:
-- Monitor new notices on IRIS portal
-- Track correspondence
-- Check return acknowledgment status
-- Watch for new SROs/circulars
-- Audit alerts
-- Tax rate changes
-- Policy updates
-- Compliance deadline reminders
-- Webhook notifications
-- Email alerts
-- Slack/Teams integration
-- Historical monitoring data
+In-memory FBR monitoring for taxpayers.
+
+Everything here lives in this process: the subscription store, detected
+events, audit log and webhook deliveries are bounded in-memory
+collections, so they are lost on restart. Nothing polls the IRIS portal —
+events only enter through detect_event(), which the env-gated simulate
+route and any future background worker call. Webhook delivery is a real
+HTTP POST to the endpoint URL unless FBR_MONITOR_SIMULATE_DELIVERY=1 is
+set, which records the delivery as SIMULATED instead. No email and no
+Slack/Teams integration exist.
+
+The router endpoints are owner-scoped: a subscription, event or webhook
+may only be read or mutated through the identity that owns it, and
+simulated notices are gated behind FBR_MONITOR_ALLOW_SIMULATE.
 """
 
 from app.fbr_monitor.monitor_engine import (

@@ -180,6 +180,7 @@ export function BusinessSettingsPage() {
               <label className="settings-form__checkbox">
                 <input
                   type="checkbox"
+                  aria-label="Enable email notifications"
                   checked={form.emailNotifications}
                   onChange={handleChange("emailNotifications")}
                   data-testid="biz-settings-email-notifications"
@@ -192,6 +193,7 @@ export function BusinessSettingsPage() {
               <label className="settings-form__checkbox">
                 <input
                   type="checkbox"
+                  aria-label="Enable push notifications"
                   checked={form.pushNotifications}
                   onChange={handleChange("pushNotifications")}
                   data-testid="biz-settings-push-notifications"
@@ -204,6 +206,7 @@ export function BusinessSettingsPage() {
               <label className="settings-form__checkbox">
                 <input
                   type="checkbox"
+                  aria-label="Enable team alerts"
                   checked={form.teamAlerts}
                   onChange={handleChange("teamAlerts")}
                   data-testid="biz-settings-team-alerts"

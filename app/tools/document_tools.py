@@ -25,12 +25,14 @@ scripts, not a package) — no logic is duplicated.
 from __future__ import annotations
 
 import importlib.util
-import json
 from pathlib import Path
 from typing import Any
 
 from app.tools.base import BaseTool, ToolError
-from app.tools.search_tools import shared_hybrid_retriever
+from app.tools.search_tools import (
+    load_vector_metadata,
+    shared_hybrid_retriever,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -370,22 +372,9 @@ class AnomalyDetectionTool(BaseTool):
         return {"scope": "metadata"}
 
     def execute(self, payload: dict) -> Any:
-        metadata_path = (
-            PROJECT_ROOT
-            / "data"
-            / "profile"
-            / "vectorstore"
-            / "metadata.json"
-        )
-
-        if not metadata_path.exists():
-            raise ToolError("Vector metadata file is not available.")
-
-        with open(metadata_path, "r", encoding="utf-8") as file:
-            records = json.load(file)
-
-        if not isinstance(records, list):
-            raise ToolError("Vector metadata file is malformed.")
+        # Same metadata file the canonical retriever uses (path
+        # resolved through app.hybrid_retriever, never hardcoded).
+        records = load_vector_metadata()
 
         anomalies: list[dict] = []
 

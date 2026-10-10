@@ -213,7 +213,6 @@ def main() -> int:
     # ------------------------------------------------------------------
     # Verification Center — truth contract
     # ------------------------------------------------------------------
-    verify_unavailable = ("unavailable", "not verified", "is_verified\":false")
     probe("verify/ntn honest-unavailable",
           expect_http_with(200, "unavailable"), "POST", "/verify/ntn",
           json={"ntn": "1234567"})

@@ -5,6 +5,7 @@ Invoice Extractor - Production-Grade
 Extract structured data from invoices (sales & purchase).
 """
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from typing import Optional
@@ -65,6 +66,27 @@ class ExtractedInvoice:
     extraction_quality: float = 0.0
     raw_text: str = ""
     notes: list[str] = field(default_factory=list)
+
+    def content_key(self) -> str:
+        """
+        Stable key built from the invoice content itself (seller NTN +
+        invoice number + total + date), not from the caller-supplied
+        invoice_id, so a re-sent invoice maps to the same key and two
+        records with identical content are recognised as duplicates.
+        """
+        if not self.invoice_number and not self.seller_ntn:
+            # Extraction failed: key on the raw text so distinct inputs
+            # do not collide on an empty identity.
+            return hashlib.sha1(
+                (self.raw_text or "")[:2000].encode("utf-8", "replace")
+            ).hexdigest()
+        raw = "|".join([
+            self.seller_ntn or "",
+            self.invoice_number or "",
+            f"{self.total:.2f}",
+            self.invoice_date or "",
+        ])
+        return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
 class InvoiceExtractor:

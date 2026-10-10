@@ -5,8 +5,9 @@ Penalty Calculator - Production-Grade
 Calculates estimated penalties for non-compliance.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
+from typing import Optional
 
 
 class PenaltyType(str, Enum):
@@ -64,23 +65,58 @@ class PenaltyCalculator:
     def calculate_itr_penalty(
         tax_assessed: float,
         days_late: int,
+        days_late_payment: int = 0,
         is_concealment: bool = False,
+        late_payment_base: Optional[float] = None,
     ) -> list[PenaltyBreakdown]:
-        """Calculate ITR late filing/payment penalties."""
+        """
+        Calculate ITR late filing/payment penalties.
+
+        Every component is conditional on actual lateness: an on-time filer
+        with nothing outstanding gets no breakdown at all. The previous
+        version charged the flat late-filing fee unconditionally, so even a
+        perfectly compliant taxpayer was billed PKR 5,000+.
+
+        `tax_assessed` is the tax that is still unpaid (it drives the default
+        surcharge and concealment penalty). `late_payment_base` is the amount
+        that was outstanding while payment was late and defaults to
+        `tax_assessed`; pass the gross assessed amount when a late payment
+        was eventually made, so the delay is still charged for.
+        """
         penalties = []
         rates = PenaltyCalculator.RATES[PenaltyType.LATE_FILING]
 
-        # Base fee
-        base = min(rates["base_fee"] + (days_late * rates["per_day_fee"]), rates["max_penalty"])
-        base = max(base, rates["min_penalty"])
-        penalties.append(PenaltyBreakdown(
-            penalty_type=PenaltyType.LATE_FILING,
-            description=f"Late filing penalty ({days_late} days @ PKR 500/day)",
-            base_amount=tax_assessed,
-            penalty_rate=0,
-            penalty_amount=base,
-            notes="Flat fee under Section 114(4)",
-        ))
+        # Late filing fee - only when the return was actually filed late
+        if days_late > 0:
+            base = min(rates["base_fee"] + (days_late * rates["per_day_fee"]), rates["max_penalty"])
+            base = max(base, rates["min_penalty"])
+            penalties.append(PenaltyBreakdown(
+                penalty_type=PenaltyType.LATE_FILING,
+                description=f"Late filing penalty ({days_late} days @ PKR 500/day)",
+                base_amount=tax_assessed,
+                penalty_rate=0,
+                penalty_amount=base,
+                notes="Flat fee under Section 114(4)",
+            ))
+
+        # Late payment default surcharge - only when payment was actually late
+        if days_late_payment > 0:
+            late_base = tax_assessed if late_payment_base is None else late_payment_base
+            if late_base > 0:
+                rates_lp = PenaltyCalculator.RATES[PenaltyType.LATE_PAYMENT]
+                per_annum = rates_lp["surcharge_rate"]
+                surcharge = late_base * per_annum * days_late_payment / 365
+                penalties.append(PenaltyBreakdown(
+                    penalty_type=PenaltyType.LATE_PAYMENT,
+                    description=(
+                        f"Late payment default surcharge ({days_late_payment} days "
+                        f"@ {per_annum * 100:.0f}% per annum)"
+                    ),
+                    base_amount=late_base,
+                    penalty_rate=per_annum * 100,
+                    penalty_amount=surcharge,
+                    notes="Section 205, ITO 2001",
+                ))
 
         # Default surcharge if tax unpaid
         if tax_assessed > 0:
@@ -170,13 +206,20 @@ class PenaltyCalculator:
     ) -> dict:
         """Estimate all penalties at once."""
         breakdown = []
+        unpaid = max(tax_assessed - tax_paid, 0)
 
         # ITR penalties
         if days_late_itr > 0 or tax_assessed > 0:
             itr_penalties = PenaltyCalculator.calculate_itr_penalty(
-                tax_assessed=max(tax_assessed - tax_paid, 0),
+                tax_assessed=unpaid,
                 days_late=days_late_itr,
+                days_late_payment=days_late_payment,
                 is_concealment=is_concealment,
+                # The default surcharge runs on everything that was
+                # outstanding while payment was late - the unpaid balance plus
+                # any amount that was eventually paid late (capped at what was
+                # assessed), not just the balance still owed today.
+                late_payment_base=tax_assessed if days_late_payment > 0 else None,
             )
             breakdown.extend(itr_penalties)
 

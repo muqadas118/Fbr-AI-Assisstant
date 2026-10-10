@@ -25,7 +25,6 @@ Run:  python scripts/test_full_app_final.py
 
 from __future__ import annotations
 
-import math
 import os
 import sys
 from pathlib import Path
@@ -70,7 +69,7 @@ def approx(got: float, want: float, tol: float = 0.01) -> bool:
 # IMPORTS UNDER TEST
 # ============================================================
 
-from app.calculations.engine import TaxCalculationEngine, get_tax_engine
+from app.calculations.engine import TaxCalculationEngine
 from app.calculations.income_tax import TaxBracket
 from app.tools import DEFAULT_REGISTRY, TOOL_NAMES
 from app.tools.base import ToolResult
@@ -766,7 +765,6 @@ print(f"  (app import took {_import_s:.2f}s)")
 check("app import light (no retriever load at import time)", _import_s < 10.0,
       f"{_import_s:.2f}s")
 
-import httpx  # noqa: E402
 
 from fastapi.testclient import TestClient  # noqa: E402
 

@@ -43,14 +43,12 @@ from app.tools.knowledge_tools import CalculationEngineTool, RuleEngineTool
 from app.tools.output_tools import NotificationTool, ReportGeneratorTool
 from app.tools.registry import ToolRegistry
 from app.tools.search_tools import (
-    HybridSearchTool,
     MetadataFilterTool,
     RAGSearchTool,
     shared_rag_engine,
 )
 from app.tools.web_tools import WebResearchTool
 
-from app.agents.base import SpecializedAgent
 from app.agents.calculation_agent import CalculationAgent
 from app.agents.customs_agent import CustomsAgent
 from app.agents.income_tax_agent import IncomeTaxAgent
@@ -1288,13 +1286,6 @@ def test_end_to_end_workflow() -> None:
     from app.verification_layer import PLACEHOLDER_ANSWER
 
     orchestrator = _orch()
-
-    e2e_context = (
-        "Sales Tax Act 1990 section 3 prescribes a 17% rate on taxable supplies. "
-        "Income Tax Ordinance 2001 section 114 sets the return-filing window. "
-        "Customs Act 1969 governs import duties. The FBR notifies changes via "
-        "official SROs and tariff valuations on its public portal."
-    )
 
     def _fake_llm(question: str, context: str) -> str:
         return (

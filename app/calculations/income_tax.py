@@ -111,6 +111,13 @@ COMPANY_RATES_TY2025 = {
     "small_company": 0.20,    # 20% for small companies (turnover < 250M)
 }
 
+# Corporate rates per tax year. Only the tabulated years are listed:
+# a tax year without a table must raise (never silently borrow another
+# year's Finance Act rates).
+CORPORATE_RATES_BY_YEAR: dict[TaxYear, dict] = {
+    TaxYear.TY_2025: COMPANY_RATES_TY2025,
+}
+
 # Salaried Individuals (TY 2026) - Finance Act 2025 rates
 # (First Schedule, Part I: salary > 75% of taxable income; effective
 # for tax year 2026, i.e. FY 2025-26). Verified against PwC Worldwide
@@ -167,6 +174,10 @@ TAX_CREDITS = {
     "donations_limit_individual": 0.30,
     "donations_limit_company": 0.20,
     "investment_pak_equity": 0.10,  # 10% rebate for investment in Pakistan Equity (Section 62)
+    # Section 62 equity credit is capped at 15% of the tax before
+    # credits — the single rule applied on BOTH the corporate and the
+    # individual/AOP branches below.
+    "investment_pak_equity_max_share": 0.15,  # 15% of tax before credits
     "education_expense_max": 200_000,  # Max education expense for employed persons
     "tuition_fee_max_dependent": 150_000,  # Max per child for tuition fees
     "tuition_fee_max_children": 4,
@@ -215,6 +226,9 @@ class IncomeTaxResult:
     tax_credits_applied: float
     tax_after_credits: float
     effective_tax_rate: float
+    # Year whose slabs produced every figure below, so a caller can tell
+    # which Finance Act schedule was applied without echoing the inputs.
+    tax_year: TaxYear
     slab_breakdown: list[dict] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
@@ -317,19 +331,28 @@ class IncomeTaxCalculator:
         notes = []
         sources = [
             f"FBR Finance Act {inp.tax_year.value}",
-            f"Income Tax Ordinance 2001 (Section 149 - Return of Income)",
+            "Income Tax Ordinance 2001 (Section 149 - Return of Income)",
         ]
 
         # ============================================================
         # COMPANY TAX (flat rate, no slabs)
         # ============================================================
         if inp.filing_status in (FilingStatus.COMPANY_PUBLIC, FilingStatus.COMPANY_PRIVATE):
+            # Per-year corporate rates: years without a tabulated
+            # table raise instead of silently using another year's
+            # rates.
+            company_rates = CORPORATE_RATES_BY_YEAR.get(inp.tax_year)
+            if company_rates is None:
+                raise ValueError(
+                    f"No corporate tax rates defined for tax year {inp.tax_year.value}. "
+                    f"Supported: {', '.join(y.value for y in CORPORATE_RATES_BY_YEAR)}."
+                )
             if inp.is_small_company:
-                rate = COMPANY_RATES_TY2025["small_company"]
+                rate = company_rates["small_company"]
                 notes.append("Small company rate (turnover < PKR 250M) applied: 20%")
             else:
                 key = "company_public" if inp.filing_status == FilingStatus.COMPANY_PUBLIC else "company_private"
-                rate = COMPANY_RATES_TY2025[key]
+                rate = company_rates[key]
                 notes.append(f"Corporate tax rate applied: {rate * 100:.0f}%")
 
             taxable_income = inp.gross_income
@@ -343,7 +366,13 @@ class IncomeTaxCalculator:
             # Tax credits
             credits = 0.0
             if inp.investment_in_equity > 0:
-                credit = min(inp.investment_in_equity * TAX_CREDITS["investment_pak_equity"], tax_before_credits * 0.50)
+                # Section 62 equity credit: 10% of the investment,
+                # capped at 15% of the tax before credits — the same
+                # cap the individual/AOP branch applies below.
+                credit = min(
+                    inp.investment_in_equity * TAX_CREDITS["investment_pak_equity"],
+                    tax_before_credits * TAX_CREDITS["investment_pak_equity_max_share"],
+                )
                 credits += credit
                 notes.append(f"Investment in equity credit: PKR {credit:,.2f}")
 
@@ -376,6 +405,7 @@ class IncomeTaxCalculator:
                 tax_credits_applied=credits,
                 tax_after_credits=round(tax_after_credits, 2),
                 effective_tax_rate=round(effective_rate, 2),
+                tax_year=inp.tax_year,
                 slab_breakdown=[{
                     "type": "corporate",
                     "rate": f"{rate * 100:.0f}%",
@@ -407,6 +437,7 @@ class IncomeTaxCalculator:
                 medical_exempt = min(inp.medical_allowance, STANDARD_DEDUCTIONS["medical_allowance_max"])
                 if medical_exempt > 0:
                     notes.append(f"Medical allowance exemption: PKR {medical_exempt:,.2f}")
+                    deductions += medical_exempt
             if inp.tuition_fees > 0:
                 max_per_child = TAX_CREDITS["tuition_fee_max_dependent"]
                 max_children = TAX_CREDITS["tuition_fee_max_children"]
@@ -434,10 +465,12 @@ class IncomeTaxCalculator:
 
         # Tax credits (against final tax)
         credits = 0.0
-        if inp.investment_in_equity > 0 and inp.filing_status != FilingStatus.SALARIED:
-            # Section 62: 10% of investment, max 15% of tax
+        if inp.investment_in_equity > 0:
+            # Section 62: 10% of investment, capped at 15% of the tax
+            # before credits (the same cap used by the corporate branch
+            # and by salary_tax.py, which forwards this value).
             credit = inp.investment_in_equity * TAX_CREDITS["investment_pak_equity"]
-            max_credit = tax_before_credits * 0.15
+            max_credit = tax_before_credits * TAX_CREDITS["investment_pak_equity_max_share"]
             credit = min(credit, max_credit)
             credits += credit
             notes.append(f"Investment in equity credit: PKR {credit:,.2f} (Section 62)")
@@ -463,7 +496,9 @@ class IncomeTaxCalculator:
                 notes.append("Donations credit: PKR 0.00 (no taxable income for Section 61 credit)")
 
         tax_after_credits = max(0, tax_before_credits - credits)
-        effective_rate = (tax_after_credits / inp.gross_income * 100) if inp.gross_income > 0 else 0
+        # Denominator matches the taxable-income base above, which
+        # includes include_other_sources.
+        effective_rate = (tax_after_credits / gross * 100) if gross > 0 else 0
 
         return IncomeTaxResult(
             taxable_income=taxable_income,
@@ -473,6 +508,7 @@ class IncomeTaxCalculator:
             tax_credits_applied=round(credits, 2),
             tax_after_credits=round(tax_after_credits, 2),
             effective_tax_rate=round(effective_rate, 2),
+            tax_year=inp.tax_year,
             slab_breakdown=breakdown,
             notes=notes,
             sources=sources,
@@ -482,13 +518,14 @@ class IncomeTaxCalculator:
     def format_result(result: IncomeTaxResult, currency: str = "PKR") -> str:
         """Format result as human-readable string."""
         lines = [
-            f"=== Income Tax Calculation (FBR Official) ===",
-            f"",
+            "=== Income Tax Calculation (FBR Official) ===",
+            f"Tax Year: {result.tax_year.value}",
+            "",
             f"Gross Income:            {currency} {result.gross_income:>15,.2f}",
             f"Total Deductions:        {currency} {result.total_deductions:>15,.2f}",
             f"Taxable Income:          {currency} {result.taxable_income:>15,.2f}",
-            f"",
-            f"--- Tax Slab Breakdown ---",
+            "",
+            "--- Tax Slab Breakdown ---",
         ]
         for i, slab in enumerate(result.slab_breakdown, 1):
             if "slab" in slab:
@@ -505,18 +542,18 @@ class IncomeTaxCalculator:
                 )
 
         lines.extend([
-            f"",
+            "",
             f"Tax Before Credits:      {currency} {result.tax_before_credits:>15,.2f}",
             f"Tax Credits Applied:     {currency} {result.tax_credits_applied:>15,.2f}",
             f"Final Tax Payable:       {currency} {result.tax_after_credits:>15,.2f}",
             f"Effective Tax Rate:      {result.effective_tax_rate:>14.2f}%",
-            f"",
-            f"--- Notes ---",
+            "",
+            "--- Notes ---",
         ])
         for note in result.notes:
             lines.append(f"  • {note}")
-        lines.append(f"")
-        lines.append(f"--- Sources ---")
+        lines.append("")
+        lines.append("--- Sources ---")
         for src in result.sources:
             lines.append(f"  📄 {src}")
         return "\n".join(lines)

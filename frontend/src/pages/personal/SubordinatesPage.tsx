@@ -13,8 +13,6 @@ import { useNotification } from "@/state/notifications";
 import { useAuth } from "@/state/auth";
 import type {
   TeamDashboard,
-  TeamMember,
-  VerificationResponse,
 } from "@/lib/api";
 
 interface AddSubordinateForm {
@@ -33,13 +31,6 @@ interface InviteForm {
   role: string;
 }
 
-interface MemberVerification {
-  ntn: string;
-  ntnStatus?: VerificationResponse;
-  filerStatus?: VerificationResponse;
-  loading: boolean;
-}
-
 const EMPTY_FORM: AddSubordinateForm = {
   name: "",
   email: "",
@@ -53,7 +44,7 @@ const EMPTY_FORM: AddSubordinateForm = {
 
 const EMPTY_INVITE: InviteForm = {
   email: "",
-  role: "subordinate",
+  role: "accountant",
 };
 
 /** Shape of one role entry from GET /team/roles. */
@@ -67,18 +58,6 @@ function memberRoleVariant(role: string): "accent" | "warn" | "default" {
   if (r === "owner" || r === "admin") return "accent";
   if (r === "manager") return "warn";
   return "default";
-}
-
-function VerificationBadge({ label, result }: { label: string; result?: VerificationResponse }) {
-  if (!result) return null;
-  return (
-    <div className="sub__verif-row">
-      <span className="sub__verif-label">{label}</span>
-      <Tag variant={result.is_verified ? "ok" : "err"}>
-        {result.is_verified ? "Verified" : "Not Verified"}
-      </Tag>
-    </div>
-  );
 }
 
 export function SubordinatesPage() {
@@ -106,7 +85,6 @@ export function SubordinatesPage() {
   const [inviteErrors, setInviteErrors] = useState<Partial<Record<keyof InviteForm, string>>>({});
   const [error, setError] = useState<string | null>(null);
   const [activeMemberId, setActiveMemberId] = useState<string | null>(null);
-  const [memberVerifications, setMemberVerifications] = useState<Record<string, MemberVerification>>({});
 
   // Fetch roles on mount
   useEffect(() => {
@@ -206,23 +184,28 @@ export function SubordinatesPage() {
   const handleInvite = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateInviteForm()) return;
+    if (!teamId.trim()) {
+      notify("warn", "Load a team first — an invitation needs a team ID.");
+      return;
+    }
     setInviting(true);
     try {
-      // Team invitation endpoint — uses register with invitation flow
-      const tempPassword = `${crypto.randomUUID().slice(0, 12)}Tmp!1`;
-      await api.team.register({
+      // Real invitation: POST /team/invite. No throwaway account is created —
+      // the invitee accepts through the invitation email/flow instead.
+      const invitation = await api.team.invite({
+        team_id: teamId.trim(),
         email: inviteForm.email.trim(),
-        password: tempPassword,
-        name: inviteForm.email.split("@")[0],
-        role: inviteForm.role || "subordinate",
+        role: inviteForm.role || "accountant",
       });
-      notify("ok", `Invitation sent to ${inviteForm.email}`);
+      notify("ok", `Invitation sent to ${invitation.email} (status: ${invitation.status}).`);
       setInviteForm(EMPTY_INVITE);
       setInviteErrors({});
-      if (teamId) void fetchTeamDashboard(teamId);
+      void fetchTeamDashboard(teamId.trim());
     } catch (err) {
       if (err instanceof ApiError) {
         notify("err", `Invitation failed: ${err.detail}`);
+      } else if (err instanceof NetworkError) {
+        notify("err", "Network error — invitation failed.");
       } else {
         notify("err", "An unexpected error occurred.");
       }
@@ -230,42 +213,6 @@ export function SubordinatesPage() {
       setInviting(false);
     }
   }, [inviteForm, validateInviteForm, teamId, fetchTeamDashboard, notify]);
-
-  const handleVerifyMember = useCallback(async (member: TeamMember, memberNtn?: string) => {
-    if (!memberNtn) {
-      notify("warn", "No NTN on record for this member.");
-      return;
-    }
-    setMemberVerifications((prev) => ({
-      ...prev,
-      [member.id]: {
-        ...prev[member.id],
-        ntn: memberNtn,
-        loading: true,
-      },
-    }));
-    try {
-      const [ntnResult, filerResult] = await Promise.allSettled([
-        api.verify.ntn(memberNtn),
-        api.verify.filer(memberNtn),
-      ]);
-      setMemberVerifications((prev) => ({
-        ...prev,
-        [member.id]: {
-          ntn: memberNtn,
-          ntnStatus: ntnResult.status === "fulfilled" ? ntnResult.value : undefined,
-          filerStatus: filerResult.status === "fulfilled" ? filerResult.value : undefined,
-          loading: false,
-        },
-      }));
-    } catch {
-      notify("err", "Verification check failed.");
-      setMemberVerifications((prev) => ({
-        ...prev,
-        [member.id]: { ...prev[member.id], loading: false, ntn: memberNtn },
-      }));
-    }
-  }, [notify]);
 
   const memberJoinedDate = (joinedAt: string) => {
     try {
@@ -482,7 +429,10 @@ export function SubordinatesPage() {
                     onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value }))}
                     data-testid="sub-invite-role-select"
                   >
-                    <option value="subordinate">Subordinate</option>
+                    {/* Values must match the backend UserRole enum
+                        (admin|manager|accountant|viewer|guest) — POST /team/invite
+                        rejects anything else with 400. */}
+                    <option value="accountant">Accountant</option>
                     <option value="manager">Manager</option>
                     <option value="admin">Admin</option>
                     <option value="viewer">Viewer</option>
@@ -616,43 +566,19 @@ export function SubordinatesPage() {
                               <span className="sub__detail-label">Role</span>
                               <Tag variant={memberRoleVariant(member.role)}>{member.role}</Tag>
                             </div>
-                            <div className="sub__verif-section">
-                              <h5 className="sub__verif-title">Credential Verification</h5>
-                              {memberVerifications[member.id]?.loading ? (
-                                <Loading label="Verifying…" testId={`sub-verif-loading-${member.id}`} />
-                              ) : (
-                                <>
-                                  <VerificationBadge
-                                    label="NTN Status"
-                                    result={memberVerifications[member.id]?.ntnStatus}
-                                  />
-                                  <VerificationBadge
-                                    label="Filer Status"
-                                    result={memberVerifications[member.id]?.filerStatus}
-                                  />
-                                  {memberVerifications[member.id]?.ntn && (
-                                    <div className="sub__verif-check">
-                                      <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => handleVerifyMember(
-                                          member,
-                                          memberVerifications[member.id]?.ntn,
-                                        )}
-                                        data-testid={`sub-verify-${member.id}`}
-                                      >
-                                        Re-verify Credentials
-                                      </Button>
-                                    </div>
-                                  )}
-                                  {!memberVerifications[member.id] && (
-                                    <p className="sub__verif-hint">
-                                      No NTN on record for this member. Add an NTN to enable verification.
-                                    </p>
-                                  )}
-                                </>
-                              )}
-                            </div>
+                            {/* Credential verification is intentionally absent:
+                                the backend TeamMember row (GET /team/dashboard/{id})
+                                carries only team_id / user_id / role / joined_at /
+                                is_active — no NTN — and no authed endpoint exposes
+                                another member's NTN (GET /team/user-dashboard/{id}
+                                is restricted to the caller). Without an NTN there is
+                                nothing to send to /verify/ntn, so the old block
+                                could never render a result. */}
+                            <p className="sub__verif-hint">
+                              Credential verification needs the member's NTN, which the
+                              team API does not return — verify NTNs from the
+                              Verification Centre instead.
+                            </p>
                           </div>
                         )}
                       </div>

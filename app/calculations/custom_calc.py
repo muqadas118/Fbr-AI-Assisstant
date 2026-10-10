@@ -127,7 +127,7 @@ class CustomCalculator:
             else:
                 result = 0
                 notes.append(f"Condition not met: {inp.base_value} <= {threshold}")
-                notes.append(f"Result: 0")
+                notes.append("Result: 0")
             steps.append({"step": "Conditional", "result": result})
 
         elif inp.calc_type == CustomCalcType.FORMULA:
@@ -151,17 +151,17 @@ class CustomCalculator:
     @staticmethod
     def format_result(result: CustomCalcResult, currency: str = "PKR") -> str:
         lines = [
-            f"=== Custom Calculation ===",
+            "=== Custom Calculation ===",
             f"Type: {result.calc_type}",
-            f"",
+            "",
             f"Result: {currency} {result.result:>15,.2f}",
-            f"",
-            f"--- Steps ---",
+            "",
+            "--- Steps ---",
         ]
         for step in result.intermediate_steps:
             lines.append(f"  Step {step.get('step', '')}: {step.get('operation', step.get('result'))}")
-        lines.append(f"")
-        lines.append(f"--- Notes ---")
+        lines.append("")
+        lines.append("--- Notes ---")
         for note in result.notes:
             lines.append(f"  • {note}")
         return "\n".join(lines)

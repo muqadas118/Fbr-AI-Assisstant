@@ -11,11 +11,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import unittest
 
 from app.tax_health import (
-    TaxHealthEngine, TaxHealthProfile,
-    HealthIssue, IssueSeverity,
-    RiskAnalyzer, RiskFactor, RiskLevel,
-    PenaltyCalculator, PenaltyBreakdown, PenaltyType,
-    TaxHealthAPI, get_tax_health_api,
+    TaxHealthEngine, RiskAnalyzer, RiskLevel,
+    PenaltyCalculator, PenaltyType,
+    get_tax_health_api,
 )
 
 
@@ -224,10 +222,38 @@ class TestTaxHealthAPI(unittest.TestCase):
             "itr_filed": False,
             "tax_outstanding": 500000,
             "notices_count": 2,
+            # Intended API: an explicit business age (years operating).
+            "business_age_years": 1,
         }
         result = self.api.analyze_risk(data)
         self.assertEqual(result["risk_level"], "critical")
         self.assertGreater(len(result["factors"]), 0)
+        codes = [f["code"] for f in result["factors"]]
+        self.assertIn("RISK008", codes)
+
+    def test_analyze_risk_without_business_age(self):
+        # business_age_years defaults to None ("unknown"): the analyzer must
+        # skip the new-business check instead of raising TypeError: None < 2.
+        data = {
+            "itr_filed": False,
+            "tax_outstanding": 500000,
+            "notices_count": 2,
+        }
+        result = self.api.analyze_risk(data)
+        self.assertEqual(result["risk_level"], "critical")
+        self.assertGreater(len(result["factors"]), 0)
+        codes = [f["code"] for f in result["factors"]]
+        self.assertNotIn("RISK008", codes)
+
+    def test_analyze_risk_mature_business(self):
+        data = {
+            "itr_filed": True,
+            "tax_outstanding": 0,
+            "business_age_years": 10,
+        }
+        result = self.api.analyze_risk(data)
+        self.assertEqual(result["risk_level"], "low")
+        self.assertEqual(len(result["factors"]), 0)
 
 
 if __name__ == "__main__":

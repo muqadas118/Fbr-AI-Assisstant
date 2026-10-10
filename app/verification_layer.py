@@ -36,6 +36,23 @@ PLACEHOLDER_ANSWER = (
     "The retrieved evidence does not support a verified answer."
 )
 
+# Side-channel keys for the retrieved chunk text. The canonical
+# FBRRAGEngine deliberately keeps chunk text OUT of the public
+# `sources` payload (see rag_engine._serialize_provenance) and
+# ships it alongside the response instead:
+#
+#   evidence_chunks: [{"chunk_id": str, "text": str}, ...]
+#       per-chunk text, matched to sources by chunk_id
+#       (positional order is used as a fallback).
+#   evidence_text:   str
+#       already-joined chunk text, for callers that only have a
+#       single evidence string.
+#
+# Both are optional: sources may still carry their own "text" /
+# "chunk_text" fields, which remain the preferred input.
+EVIDENCE_CHUNKS_KEY = "evidence_chunks"
+EVIDENCE_TEXT_KEY = "evidence_text"
+
 
 def _stringify_chunk_id(value: Any) -> str:
     return str(value or "").strip()
@@ -45,16 +62,64 @@ def _stringify_source_path(value: Any) -> str:
     return str(value or "").strip()
 
 
-def _normalize_provenance(retrieved_sources: Iterable[dict]) -> list[dict]:
+def _source_evidence_text(source: dict) -> str:
+    """Chunk text carried by a provenance record.
+
+    Accepts the inline fields ("text" / "chunk_text") and the
+    internal "_evidence_text" attached by _normalize_provenance from
+    the `evidence_chunks` side channel.
+    """
+
+    return str(
+        source.get("text")
+        or source.get("chunk_text")
+        or source.get("_evidence_text")
+        or ""
+    )
+
+
+def _normalize_provenance(
+    retrieved_sources: Iterable[dict],
+    evidence_chunks: Iterable[dict] | None = None,
+) -> list[dict]:
     """Return a deep, immutable, deterministically ordered copy of the
     retrieved sources. Any later mutation by the generator cannot
-    affect the verification layer."""
+    affect the verification layer.
+
+    Chunk text that must not be part of the public `sources` payload
+    is attached to the snapshot as the internal "_evidence_text" field
+    via the `evidence_chunks` side channel (matched by chunk_id,
+    falling back to positional order).
+    """
+
+    evidence_by_chunk_id: dict[str, str] = {}
+    evidence_by_position: dict[int, str] = {}
+
+    for position, chunk in enumerate(evidence_chunks or []):
+        if not isinstance(chunk, dict):
+            continue
+        text = _source_evidence_text(chunk)
+        if not text:
+            continue
+        chunk_id = _stringify_chunk_id(chunk.get("chunk_id"))
+        if chunk_id:
+            evidence_by_chunk_id[chunk_id] = text
+        else:
+            evidence_by_position[position] = text
 
     snapshot: list[dict] = []
     for index, source in enumerate(retrieved_sources or []):
         if not isinstance(source, dict):
             continue
         cloned = copy.deepcopy(source)
+        chunk_id = _stringify_chunk_id(cloned.get("chunk_id"))
+        evidence = (
+            evidence_by_chunk_id.get(chunk_id)
+            or evidence_by_position.get(index)
+            or ""
+        )
+        if evidence:
+            cloned["_evidence_text"] = evidence
         cloned["_verified_index"] = index
         cloned["_immutable"] = True
         snapshot.append(cloned)
@@ -79,26 +144,6 @@ def _digit_ratio(text: str) -> float:
         return 0.0
     digits = sum(ch.isdigit() for ch in text)
     return digits / max(1, len(text))
-
-
-def _looks_like_unsupported_numeric_claim(answer: str) -> bool:
-    """Detect dense numeric runs that look like fabricated legal/tax
-    figures (e.g. '15%', 'Rs 2,500,000') which are not present in the
-    retrieved evidence. Conservative: a run of 4+ consecutive digits is
-    treated as a candidate figure and must appear in the evidence."""
-
-    if not answer:
-        return False
-    for match in re.finditer(r"\d[\d,.]{2,}", answer):
-        candidate = match.group(0)
-        if _digit_ratio(candidate) < 0.5:
-            continue
-        if not any(ch.isdigit() for ch in candidate):
-            continue
-        if len(re.sub(r"[^\d]", "", candidate)) < 3:
-            continue
-        return True
-    return False
 
 
 def _collect_unsupported_numeric_claims(
@@ -142,11 +187,7 @@ def _detect_numeric_conflicts(retrieved_sources: list[dict]) -> list[str]:
 
     buckets: dict[str, set[str]] = {}
     for source in retrieved_sources:
-        text = str(
-            source.get("text")
-            or source.get("chunk_text")
-            or ""
-        )
+        text = _source_evidence_text(source)
         if not text:
             continue
         for match in pattern.finditer(text):
@@ -239,19 +280,44 @@ def _collect_unsupported_lexical_claims(
     return claims
 
 
-def _build_evidence_text(retrieved_sources: list[dict]) -> str:
+def _build_evidence_text(
+    retrieved_sources: list[dict],
+    rag_response: dict | None = None,
+) -> str:
+    """Join the retrieved chunk text used for claim grounding.
+
+    Contract: the canonical FBRRAGEngine keeps chunk text out of the
+    public `sources` payload, so text is expected through one of
+
+    1. the inline "text" / "chunk_text" fields of each source, or
+    2. the `evidence_chunks` side channel (attached as
+       "_evidence_text" by _normalize_provenance), or
+    3. the `evidence_text` side channel (one joined string).
+
+    Anything else yields "" and every numeric claim is treated as
+    unsupported, so callers that strip source text MUST pass one of
+    the side channels.
+    """
+
     parts: list[str] = []
     for source in retrieved_sources:
         if not isinstance(source, dict):
             continue
-        text = str(
-            source.get("text")
-            or source.get("chunk_text")
-            or ""
-        )
+        text = _source_evidence_text(source)
         if text:
             parts.append(text)
-    return "\n".join(parts)
+
+    if parts:
+        return "\n".join(parts)
+
+    if isinstance(rag_response, dict):
+        side_channel = str(
+            rag_response.get(EVIDENCE_TEXT_KEY, "") or ""
+        ).strip()
+        if side_channel:
+            return side_channel
+
+    return ""
 
 
 def _validate_provenance_consistency(
@@ -521,6 +587,15 @@ def verify_rag_response(rag_response: dict) -> dict:
       - conflicts: list of conflicting evidence items
       - provenance_hash: SHA-256 of the immutable retrieved snapshot
       - reason: short deterministic explanation
+
+    Evidence contract: `sources` MUST NOT carry the chunk text when
+    the caller needs to keep it out of the public payload. In that
+    case the chunk text is passed alongside the response, either as
+      - `evidence_chunks`: [{"chunk_id": ..., "text": ...}, ...]
+        (per chunk, matched to sources by chunk_id), or
+      - `evidence_text`: one joined evidence string.
+    See _build_evidence_text() for the full contract; the canonical
+    FBRRAGEngine emits `evidence_chunks` exactly for this reason.
     """
 
     if not isinstance(rag_response, dict):
@@ -536,7 +611,8 @@ def verify_rag_response(rag_response: dict) -> dict:
         }
 
     raw_sources = rag_response.get("sources", []) or []
-    retrieved_sources = _normalize_provenance(raw_sources)
+    evidence_chunks = rag_response.get(EVIDENCE_CHUNKS_KEY, []) or []
+    retrieved_sources = _normalize_provenance(raw_sources, evidence_chunks)
     provenance_hash = _hash_provenance_snapshot(retrieved_sources)
 
     provenance_errors, provenance_warnings, provenance_summary = (
@@ -549,7 +625,7 @@ def verify_rag_response(rag_response: dict) -> dict:
     )
 
     answer = str(rag_response.get("answer", "") or "").strip()
-    evidence_text = _build_evidence_text(retrieved_sources)
+    evidence_text = _build_evidence_text(retrieved_sources, rag_response)
 
     unsupported_numeric = _collect_unsupported_numeric_claims(
         answer, evidence_text
@@ -588,9 +664,7 @@ def verify_rag_response(rag_response: dict) -> dict:
     if not answer:
         rag_failed_checks.append("empty_answer")
 
-    if _looks_like_unsupported_numeric_claim(answer) and (
-        unsupported_numeric
-    ):
+    if unsupported_numeric:
         rag_failed_checks.append("unsupported_numeric_claim")
     if unsupported_lexical and len(unsupported_lexical) > 6:
         rag_failed_checks.append("unsupported_lexical_claim")

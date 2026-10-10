@@ -1,5 +1,5 @@
 ﻿import { Suspense, lazy } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
 import { RequireAuth } from "@/components/shell/RequireAuth";
 import { Loading } from "@/components/shell/Loading";
@@ -46,6 +46,20 @@ const BusinessResearchPage = lazy(() => import("@/pages/personal/ResearchPage").
 // sidebar entry, shared by both workspaces.
 const PersonalWorkspaceHubPage = lazy(() => import("@/pages/workspace/WorkspaceHubPage").then((m) => ({ default: m.WorkspaceHubPage })));
 const BusinessWorkspaceHubPage = lazy(() => import("@/pages/workspace/WorkspaceHubPage").then((m) => ({ default: m.WorkspaceHubPage })));
+
+function NotFoundPage() {
+  return (
+    <div className="state state--full" data-testid="not-found">
+      <div className="state__body" style={{ textAlign: "center" }}>
+        <h1 className="state__title">404 — Page not found</h1>
+        <p>The page you are looking for does not exist or has moved.</p>
+        <Link className="btn btn--primary btn--md" to="/">
+          Back to home
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 export function App() {
   return (
@@ -124,7 +138,8 @@ export function App() {
             <Route path="workspaces" element={<Navigate to="/business/workspace?tab=workspaces" replace />} />
             <Route path="settings" element={<BusinessSettingsPage />} />
           </Route>
-          <Route path="*" element={<LandingPage />} />
+          {/* Unknown URLs get a real 404 instead of the marketing page. */}
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

@@ -25,12 +25,13 @@ No new frameworks. Reuses:
 
 from __future__ import annotations
 
+import os
 import re
-from pathlib import Path
 from typing import Any
 
 from app.answer_generator import verify_answer
 from app.hybrid_retriever import FBRHybridRetriever
+from app.language import localize, resolve_language
 from app.llm import generate_answer
 
 
@@ -38,10 +39,25 @@ from app.llm import generate_answer
 # RAG ENGINE CONFIGURATION
 # ============================================================
 
+# Single source of truth for the question-length cap enforced by
+# the engine, the CLI entry points and query understanding
+# (app/query_understanding.py imports this constant).
 MAX_QUESTION_LENGTH = 1000
 MIN_QUESTION_LENGTH = 3
 DEFAULT_TOP_K = 5
 MAX_CONTEXT_CHARS = 16000
+
+# Minimum semantic similarity of a single retrieved chunk for it to
+# count as evidence on its own. Override with
+# FBR_MIN_SEMANTIC_EVIDENCE_SCORE.
+MIN_SEMANTIC_EVIDENCE_SCORE = float(
+    os.environ.get("FBR_MIN_SEMANTIC_EVIDENCE_SCORE", "0.20")
+)
+
+# Side-channel keys used to hand the retrieved chunk text to the
+# verification layer without putting it in the public `sources`
+# payload (see app.verification_layer.verify_rag_response).
+EVIDENCE_CHUNKS_KEY = "evidence_chunks"
 
 
 # ============================================================
@@ -272,7 +288,9 @@ def _has_sufficient_evidence(question_analysis: dict, records: list[dict]) -> bo
     if any(record.get("exact_match") for record in records):
         return True
 
-    if max(float(record.get("semantic_score", 0.0)) for record in records) >= 0.20:
+    if max(float(record.get("semantic_score", 0.0)) for record in records) >= (
+        MIN_SEMANTIC_EVIDENCE_SCORE
+    ):
         return True
 
     recognized_intent = any(
@@ -449,6 +467,11 @@ def _assemble_context(records: list[dict]) -> str:
 def _serialize_provenance(records: list[dict]) -> list[dict]:
     """
     Build a clean, public-facing provenance list (no internal text).
+
+    The chunk text is deliberately NOT part of this payload; it is
+    returned next to the response through `_serialize_evidence_chunks`
+    so that app.verification_layer.verify_rag_response can still ground
+    the answer in the retrieved text.
     """
 
     public = []
@@ -477,6 +500,26 @@ def _serialize_provenance(records: list[dict]) -> list[dict]:
     return public
 
 
+def _serialize_evidence_chunks(records: list[dict]) -> list[dict]:
+    """
+    Build the evidence side channel (chunk text kept out of the
+    public `sources` payload).
+
+    Each entry carries the chunk_id plus the chunk text so
+    verify_rag_response() can ground the answer's numeric and
+    lexical claims; entries are ordered exactly like the
+    corresponding `sources` entries.
+    """
+
+    return [
+        {
+            "chunk_id": record["chunk_id"],
+            "text": record["text"],
+        }
+        for record in records
+    ]
+
+
 # ============================================================
 # NO-EVIDENCE RESPONSE
 # ============================================================
@@ -495,8 +538,8 @@ class FBRRAGEngine:
     Canonical Phase 7 RAG engine.
 
     Composes the validated Phase 6 FAISS index, the canonical
-    chunks, the OpenRouter-backed LLM, and the existing grounded
-    verification pipeline.
+    chunks, the provider-agnostic LLM client, and the existing
+    grounded verification pipeline.
     """
 
     def __init__(self, retriever: FBRHybridRetriever | None = None):
@@ -522,6 +565,7 @@ class FBRRAGEngine:
         self,
         question: str,
         top_k: int = DEFAULT_TOP_K,
+        language: str | None = None,
     ) -> dict:
         """
         Run the full RAG pipeline for a single user question.
@@ -531,7 +575,9 @@ class FBRRAGEngine:
         - question_analysis
         - context (assembled LLM context, may be empty)
         - answer (LLM answer or no-evidence answer)
-        - sources (provenance list, may be empty)
+        - sources (provenance list, may be empty; no chunk text)
+        - evidence_chunks (chunk text side channel for the
+          verification layer; kept out of `sources` on purpose)
         - verification (grounded-answer verification result)
         - grounded (bool, True iff verification passed)
         """
@@ -545,6 +591,7 @@ class FBRRAGEngine:
                 "context": "",
                 "answer": str(e),
                 "sources": [],
+                EVIDENCE_CHUNKS_KEY: [],
                 "verification": {
                     "passed": False,
                     "reason": str(e),
@@ -553,6 +600,8 @@ class FBRRAGEngine:
                 },
                 "grounded": False,
             }
+
+        lang = resolve_language(question, preferred=language)
 
         question_analysis = _analyze_question(question)
         ambiguous = _detect_ambiguous_section_query(question)
@@ -573,7 +622,7 @@ class FBRRAGEngine:
                 for record in provenance
                 if record.get("law_tag")
             })
-            answer_text = _AMBIGUOUS_SECTION_ANSWER
+            answer_text = localize("ambiguous_section", lang)
             verification = {
                 "passed": True,
                 "reason": (
@@ -593,6 +642,7 @@ class FBRRAGEngine:
                 "context": "",
                 "answer": answer_text,
                 "sources": _serialize_provenance(provenance),
+                EVIDENCE_CHUNKS_KEY: _serialize_evidence_chunks(provenance),
                 "verification": verification,
                 "grounded": True,
                 "ambiguous_section": True,
@@ -603,8 +653,9 @@ class FBRRAGEngine:
                 "question": question,
                 "question_analysis": question_analysis,
                 "context": "",
-                "answer": _NO_EVIDENCE_ANSWER,
+                "answer": localize("no_evidence", lang),
                 "sources": [],
+                EVIDENCE_CHUNKS_KEY: [],
                 "verification": {
                     "passed": True,
                     "reason": "Retrieved evidence was insufficient or out of domain.",
@@ -619,8 +670,9 @@ class FBRRAGEngine:
                 "question": question,
                 "question_analysis": question_analysis,
                 "context": "",
-                "answer": _NO_EVIDENCE_ANSWER,
+                "answer": localize("no_evidence", lang),
                 "sources": [],
+                EVIDENCE_CHUNKS_KEY: [],
                 "verification": {
                     "passed": True,
                     "reason": "No evidence to verify.",
@@ -637,8 +689,9 @@ class FBRRAGEngine:
                 "question": question,
                 "question_analysis": question_analysis,
                 "context": "",
-                "answer": _NO_EVIDENCE_ANSWER,
+                "answer": localize("no_evidence", lang),
                 "sources": _serialize_provenance(provenance),
+                EVIDENCE_CHUNKS_KEY: _serialize_evidence_chunks(provenance),
                 "verification": {
                     "passed": True,
                     "reason": "Empty context after assembly.",
@@ -652,14 +705,16 @@ class FBRRAGEngine:
             answer = generate_answer(
                 question=question,
                 context=context,
+                language=lang,
             )
         except Exception as e:  # noqa: BLE001
             return {
                 "question": question,
                 "question_analysis": question_analysis,
                 "context": context,
-                "answer": _NO_EVIDENCE_ANSWER,
+                "answer": localize("no_evidence", lang),
                 "sources": _serialize_provenance(provenance),
+                EVIDENCE_CHUNKS_KEY: _serialize_evidence_chunks(provenance),
                 "verification": {
                     "passed": False,
                     "reason": f"LLM error: {e}",
@@ -673,12 +728,13 @@ class FBRRAGEngine:
             question=question,
             answer=answer,
             context=context,
+            language=lang,
         )
 
         final_answer = answer
 
         if not verification["passed"]:
-            final_answer = _NO_EVIDENCE_ANSWER
+            final_answer = localize("no_evidence", lang)
 
         return {
             "question": question,
@@ -686,6 +742,7 @@ class FBRRAGEngine:
             "context": context,
             "answer": final_answer,
             "sources": _serialize_provenance(provenance),
+            EVIDENCE_CHUNKS_KEY: _serialize_evidence_chunks(provenance),
             "verification": verification,
             "grounded": bool(verification["passed"]),
         }
@@ -693,7 +750,12 @@ class FBRRAGEngine:
     # Retrieval-only variant (used by the streaming assistant endpoint)
     # ------------------------------------------------------------------
 
-    def ground(self, question: str, top_k: int = DEFAULT_TOP_K) -> dict:
+    def ground(
+        self,
+        question: str,
+        top_k: int = DEFAULT_TOP_K,
+        language: str | None = None,
+    ) -> dict:
         """Retrieve + assemble context WITHOUT any LLM call.
 
         The streaming endpoint needs meta (sources) to reach the client
@@ -702,7 +764,9 @@ class FBRRAGEngine:
         first SSE byte). This returns the same retrieval/grounding
         metadata plus `sufficient` so the caller can decide whether a
         generation is worthwhile at all. No-evidence and ambiguous-
-        section cases skip the LLM exactly as answer() does.
+        section cases skip the LLM exactly as answer() does. Chunk
+        text is returned through the same `evidence_chunks` side
+        channel as answer() (never inside `sources`).
         """
         try:
             question = _validate_question(question)
@@ -712,6 +776,7 @@ class FBRRAGEngine:
                 "question_analysis": {},
                 "context": "",
                 "sources": [],
+                EVIDENCE_CHUNKS_KEY: [],
                 "verification": {
                     "passed": False,
                     "reason": str(e),
@@ -722,6 +787,8 @@ class FBRRAGEngine:
                 "sufficient": False,
                 "skip_llm_answer": str(e),
             }
+
+        lang = resolve_language(question, preferred=language)
 
         question_analysis = _analyze_question(question)
         ambiguous = _detect_ambiguous_section_query(question)
@@ -746,6 +813,7 @@ class FBRRAGEngine:
                 "question_analysis": question_analysis,
                 "context": "",
                 "sources": sources,
+                EVIDENCE_CHUNKS_KEY: _serialize_evidence_chunks(provenance),
                 "verification": {
                     "passed": True,
                     "reason": (
@@ -761,20 +829,21 @@ class FBRRAGEngine:
                 },
                 "grounded": True,
                 "sufficient": True,
-                "skip_llm_answer": _AMBIGUOUS_SECTION_ANSWER,
+                "skip_llm_answer": localize("ambiguous_section", lang),
             }
 
         if not _has_sufficient_evidence(question_analysis, provenance) or not provenance:
             reason = (
-                "Retrieved evidence was insufficient or out of domain."
+                "No evidence to verify."
                 if not provenance
-                else "No evidence to verify."
+                else "Retrieved evidence was insufficient or out of domain."
             )
             return {
                 "question": question,
                 "question_analysis": question_analysis,
                 "context": "",
                 "sources": [],
+                EVIDENCE_CHUNKS_KEY: [],
                 "verification": {
                     "passed": True,
                     "reason": reason,
@@ -783,7 +852,7 @@ class FBRRAGEngine:
                 },
                 "grounded": True,
                 "sufficient": False,
-                "skip_llm_answer": _NO_EVIDENCE_ANSWER,
+                "skip_llm_answer": localize("no_evidence", lang),
             }
 
         context = _assemble_context(provenance)
@@ -793,6 +862,7 @@ class FBRRAGEngine:
                 "question_analysis": question_analysis,
                 "context": "",
                 "sources": sources,
+                EVIDENCE_CHUNKS_KEY: _serialize_evidence_chunks(provenance),
                 "verification": {
                     "passed": True,
                     "reason": "Empty context after assembly.",
@@ -801,7 +871,7 @@ class FBRRAGEngine:
                 },
                 "grounded": True,
                 "sufficient": False,
-                "skip_llm_answer": _NO_EVIDENCE_ANSWER,
+                "skip_llm_answer": localize("no_evidence", lang),
             }
 
         return {
@@ -809,6 +879,7 @@ class FBRRAGEngine:
             "question_analysis": question_analysis,
             "context": context,
             "sources": sources,
+            EVIDENCE_CHUNKS_KEY: _serialize_evidence_chunks(provenance),
             "verification": None,  # filled after generation by the caller
             "grounded": False,
             "sufficient": True,

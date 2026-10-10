@@ -96,6 +96,13 @@ class BusinessVerifier:
 
     def verify_vendor(self, vendor_ntn: str) -> VendorVerification:
         """Verify vendor/supplier before doing business."""
+        if not vendor_ntn or not vendor_ntn.strip():
+            return VendorVerification(
+                vendor_ntn=vendor_ntn or "",
+                is_registered=False,
+                warnings=["Vendor NTN is empty"],
+            )
+
         last_digit = int(vendor_ntn[-1]) if vendor_ntn[-1].isdigit() else 0
 
         is_registered = last_digit != 5

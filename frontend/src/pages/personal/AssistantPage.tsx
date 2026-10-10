@@ -2,8 +2,12 @@ import { useCallback } from "react";
 import { api, type AssistantAskResponse } from "@/lib/api";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
 import { AssistantChat } from "@/components/assistant/AssistantChat";
+import { useChatActive } from "@/state/chatActive";
 
 export function AssistantPage() {
+  // While a conversation exists the big header collapses and the chat grows
+  // into the freed space — exactly like ChatGPT's sending view.
+  const chatActive = useChatActive((st) => st.active);
   // Smart mode: the AI plans and runs every backend tool (calculators,
   // verification, notices, documents, invoices, calendar, health) and
   // grounds the answer in the official FBR corpus. Attachments (text,
@@ -26,17 +30,20 @@ export function AssistantPage() {
   return (
     <ErrorBoundary>
       <section className="page page--assistant">
-        <header className="page__header">
-          <div>
-            <div className="page__eyebrow page-eyebrow eyebrow">FBR · AI Assistant</div>
-            <h2 className="page__title">AI Tax Assistant</h2>
-            <p className="page__subtitle">
-              Ask natural-language questions about FBR tax and compliance. The assistant uses
-              every backend tool for you — calculators, verification, notice and document
-              analysis — and grounds every answer in official FBR law (router + RAG + verification).
-            </p>
-          </div>
-        </header>
+        {chatActive ? null : (
+          <header className="page__header">
+            <div>
+              <div className="page__eyebrow page-eyebrow eyebrow">FBR · AI Assistant</div>
+              <h2 className="page__title">AI Tax Assistant</h2>
+              <p className="page__subtitle">
+                Ask natural-language questions about FBR tax and compliance. The assistant uses
+                every backend tool for you — calculators, verification, notice and document
+                analysis — and grounds every answer in official FBR law (router + RAG +
+                verification).
+              </p>
+            </div>
+          </header>
+        )}
 
         <AssistantChat
           variant="personal"
@@ -45,8 +52,7 @@ export function AssistantPage() {
           loggedIn={true}
           inputLabel="Ask a question"
           inputPlaceholder="e.g. Calculate income tax on Rs 2,500,000 for tax year 2026"
-          emptyTitle="Ask your first question"
-          emptyDescription="No questions yet. Ask anything about FBR tax, filing obligations, notice types, or compliance timelines — or attach a document and let the AI analyze it."
+          emptyDescription="Ask anything about FBR tax, filing obligations, notice types, or compliance timelines — or attach a document and let the AI analyze it."
         />
       </section>
     </ErrorBoundary>

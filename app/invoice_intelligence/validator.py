@@ -13,7 +13,6 @@ Validates invoice data against FBR rules:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from app.invoice_intelligence.extractor import ExtractedInvoice
 

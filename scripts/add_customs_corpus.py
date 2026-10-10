@@ -42,6 +42,10 @@ import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -250,7 +254,7 @@ def append_chunks(new_chunks: list[dict]) -> None:
     temporary = CHUNKS_FILE.with_suffix(".json.tmp")
     temporary.write_bytes(updated)
     os.replace(temporary, CHUNKS_FILE)
-    print(f"[chunk] chunks.json updated")
+    print("[chunk] chunks.json updated")
 
 
 def count_existing_vectors() -> int:

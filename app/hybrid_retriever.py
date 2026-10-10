@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from pathlib import Path
 
@@ -9,6 +10,83 @@ from sentence_transformers import SentenceTransformer
 
 
 MODEL_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+
+# ============================================================
+# CANONICAL PATHS / MODEL DEFAULTS (single source of truth)
+# ============================================================
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+VECTORSTORE_DIRNAME = "vectorstore"
+INDEX_FILENAME = "fbr_faiss.index"
+METADATA_FILENAME = "metadata.json"
+CHUNKS_RELATIVE_PARTS = (
+    "data",
+    "profile",
+    "source_docs",
+    "chunks",
+    "chunks.json",
+)
+
+# Environment overrides. These are the only names other modules
+# (retriever, tools) need to know to point at a different index.
+INDEX_PATH_ENV = "FBR_VECTORSTORE_INDEX"
+METADATA_PATH_ENV = "FBR_VECTORSTORE_METADATA"
+CHUNKS_PATH_ENV = "FBR_CHUNKS_PATH"
+EMBEDDING_MODEL_ENV = "FBR_EMBEDDING_MODEL"
+
+DEFAULT_INDEX_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "profile"
+    / VECTORSTORE_DIRNAME
+    / INDEX_FILENAME
+)
+
+DEFAULT_METADATA_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "profile"
+    / VECTORSTORE_DIRNAME
+    / METADATA_FILENAME
+)
+
+DEFAULT_CHUNKS_PATH = PROJECT_ROOT.joinpath(*CHUNKS_RELATIVE_PARTS)
+
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_MAX_SEQ_LENGTH = 256
+
+
+def resolve_vectorstore_paths(index_path=None, metadata_path=None):
+    """
+    Resolve the canonical FAISS index / metadata paths.
+
+    Precedence: explicit argument > environment override
+    (FBR_VECTORSTORE_INDEX / FBR_VECTORSTORE_METADATA) > project
+    default. Shared by every retriever and metadata tool so the
+    vectorstore location is never hardcoded in more than one place.
+    """
+
+    index = index_path if index_path is not None else os.environ.get(
+        INDEX_PATH_ENV, ""
+    )
+    index = Path(index) if index else DEFAULT_INDEX_PATH
+
+    metadata = (
+        metadata_path
+        if metadata_path is not None
+        else os.environ.get(METADATA_PATH_ENV, "")
+    )
+    metadata = Path(metadata) if metadata else DEFAULT_METADATA_PATH
+
+    return index, metadata
+
+
+def default_chunks_path():
+    """Canonical chunks.json path (FBR_CHUNKS_PATH to override)."""
+
+    override = os.environ.get(CHUNKS_PATH_ENV, "")
+    return Path(override) if override else DEFAULT_CHUNKS_PATH
 
 
 class FBRHybridRetriever:
@@ -21,31 +99,18 @@ class FBRHybridRetriever:
         self,
         index_path=None,
         metadata_path=None,
-        embedding_model="sentence-transformers/all-MiniLM-L6-v2",
+        embedding_model=None,
     ):
-        project_root = Path(__file__).resolve().parent.parent
+        index_path, metadata_path = resolve_vectorstore_paths(
+            index_path,
+            metadata_path,
+        )
 
-        if index_path is None:
-            index_path = (
-                project_root
-                / "data"
-                / "profile"
-                / "vectorstore"
-                / "fbr_faiss.index"
+        if embedding_model is None:
+            embedding_model = os.environ.get(
+                EMBEDDING_MODEL_ENV,
+                EMBEDDING_MODEL_NAME,
             )
-        else:
-            index_path = Path(index_path)
-
-        if metadata_path is None:
-            metadata_path = (
-                project_root
-                / "data"
-                / "profile"
-                / "vectorstore"
-                / "metadata.json"
-            )
-        else:
-            metadata_path = Path(metadata_path)
 
         # ========================================================
         # LOAD FAISS
@@ -129,7 +194,7 @@ class FBRHybridRetriever:
             revision=MODEL_REVISION,
             local_files_only=True,
         )
-        self.model.max_seq_length = 256
+        self.model.max_seq_length = EMBEDDING_MAX_SEQ_LENGTH
 
         # ========================================================
         # BUILD BM25
@@ -138,7 +203,7 @@ class FBRHybridRetriever:
         print("Building BM25 index...")
 
         self.documents = []
-        chunks_path = project_root / "data" / "profile" / "source_docs" / "chunks" / "chunks.json"
+        chunks_path = default_chunks_path()
         with open(chunks_path, "r", encoding="utf-8") as f:
             chunks = json.load(f)
         if len(chunks) != len(self.metadata):
@@ -361,12 +426,16 @@ class FBRHybridRetriever:
         if section_number is None:
             return None
 
+        # Law-intent terms deliberately EXCLUDE "fbr": FBR is the
+        # umbrella regulator, not a specific law. Kept in sync with
+        # rag_engine._detect_ambiguous_section_query()'s law_terms so
+        # both agree that "FBR section 177 rate" is AMBIGUOUS rather
+        # than an Income Tax Ordinance section query.
         ordinance_terms = [
             "income tax ordinance",
             "income tax",
             "ordinance 2001",
             "ordinance, 2001",
-            "fbr",
         ]
 
         is_ordinance_query = any(
@@ -611,6 +680,7 @@ class FBRHybridRetriever:
         self,
         query,
         max_chunks=8,
+        exact_results=None,
     ):
         """
         Retrieve the complete section continuation.
@@ -620,6 +690,11 @@ class FBRHybridRetriever:
         2. Keep the same document_id.
         3. Follow sequential vector_ids.
         4. Stop when the next section heading is detected.
+
+        `exact_results` may be supplied by search(), which has already
+        run the (O(len(section_entries))) exact-section scan for this
+        query — passing it avoids scanning the whole section index a
+        second time.
         """
 
         section_number = self._extract_section_query(
@@ -629,10 +704,11 @@ class FBRHybridRetriever:
         if section_number is None:
             return []
 
-        exact_results = self._exact_section_search(
-            query,
-            top_k=1,
-        )
+        if exact_results is None:
+            exact_results = self._exact_section_search(
+                query,
+                top_k=1,
+            )
 
         if not exact_results:
             return []
@@ -937,6 +1013,7 @@ class FBRHybridRetriever:
             self._get_section_continuation(
                 query,
                 max_chunks=8,
+                exact_results=exact_results,
             )
         )
 
@@ -947,7 +1024,23 @@ class FBRHybridRetriever:
 
         if continuation_results:
 
-            return continuation_results
+            # Keep the primary exact-section hit (it seeds the
+            # continuation) instead of dropping it, then append the
+            # remaining continuation chunks without duplicates.
+            merged = []
+            used = set()
+
+            for item in list(exact_results) + list(continuation_results):
+
+                idx = item.get("index")
+
+                if idx in used:
+                    continue
+
+                used.add(idx)
+                merged.append(item)
+
+            return merged[:top_k]
 
         # ========================================================
         # NORMAL HYBRID SEARCH

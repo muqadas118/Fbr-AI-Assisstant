@@ -29,7 +29,6 @@ Run from project root:
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import sys
@@ -354,7 +353,6 @@ def test_no_evidence_fallback() -> None:
 
     engine = FBRRAGEngine()
     # Hand-crafted empty results
-    response = engine.answer.__wrapped__ if hasattr(engine.answer, "__wrapped__") else None
 
     # Directly check the no-evidence path
     results: list = []

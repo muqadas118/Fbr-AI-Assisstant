@@ -46,8 +46,15 @@ class FilerStatusChecker:
         """Check filer status by NTN."""
         ntn_clean = ntn.replace("-", "").strip()
 
+        if not ntn_clean or not ntn_clean.isdigit():
+            return FilerInfo(
+                ntn=ntn_clean,
+                status=FilerStatus.UNKNOWN,
+                notes=["Invalid NTN format"],
+            )
+
         # Use deterministic logic
-        last_digit = int(ntn_clean[-1]) if ntn_clean[-1].isdigit() else 0
+        last_digit = int(ntn_clean[-1])
 
         if last_digit in (1, 2, 6, 7):
             status = FilerStatus.FILER
@@ -91,10 +98,14 @@ class FilerStatusChecker:
                 notes=["Invalid CNIC format"],
             )
 
-        # Use last digit of CNIC as indicator
-        last_digit = int(cnic_clean[-1])
-        ntn_synthetic = f"7{last_digit}12345"
-        return self.check_by_ntn(ntn_synthetic)
+        # A CNIC cannot be resolved to an NTN or a filing history without an
+        # official FBR lookup, so no status is asserted here.
+        return FilerInfo(
+            ntn="",
+            cnic=cnic,
+            status=FilerStatus.UNKNOWN,
+            notes=["CNIC-to-NTN resolution requires an FBR lookup (not available)"],
+        )
 
 
 # Singleton

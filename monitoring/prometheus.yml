@@ -2,8 +2,9 @@
 # Referenced by docker-compose.yml (prometheus service). Without this file
 # `docker compose up` fails on a missing bind mount.
 #
-# The /metrics endpoint is mounted in Phase B (app/deployment/metrics.py).
-# Until then this target will show as DOWN, which is the honest state.
+# The /metrics endpoint exists in app/api.py but is only mounted when the
+# deployment opts in with FBR_METRICS_ENABLED=true. Without that env var the
+# fbr-api target will show as DOWN, which is the honest state.
 
 global:
   scrape_interval: 30s

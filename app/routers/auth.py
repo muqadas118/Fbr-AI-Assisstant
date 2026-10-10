@@ -172,10 +172,10 @@ async def login(request: Request, payload: LoginRequest) -> dict:
 
     user_data = result["user"]
     logger.info("Login for %s", user_data["email"])
-    # api.login() already created a fresh AuthManager session for this
-    # user; fetch it (the most recent active one) for its opaque token.
-    sessions = api.auth.list_sessions(user_data["id"])
-    token = sessions[-1].token if sessions else ""
+    # api.login() already created a fresh AuthManager session for this user
+    # and returns it with the opaque token - no session-registry lookup.
+    session = result.get("session") or {}
+    token = session.get("token") or ""
     if not token:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -184,7 +184,7 @@ async def login(request: Request, payload: LoginRequest) -> dict:
     return {
         "user": user_data,
         "token": token,
-        "expires_at": sessions[-1].expires_at,
+        "expires_at": session.get("expires_at"),
         "token_type": "bearer",
     }
 

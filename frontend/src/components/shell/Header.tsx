@@ -27,7 +27,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
     : findPersonalSection(location.pathname);
 
   return (
-    <header className="app-header" role="banner">
+    <header className="app-header">
       <button
         type="button"
         className="app-header__menu"

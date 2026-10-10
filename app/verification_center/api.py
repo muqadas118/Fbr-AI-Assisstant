@@ -10,13 +10,14 @@ TRUTH CONTRACT (see app/common/unavailable.py and .env.example):
   verification source is configured (FBR_VERIFICATION_MODE=off, the
   default), every verify_* method returns an explicit Unavailable
   result: is_verified=False, confidence=0.0, no taxpayer name,
-  no registration dates, no filing history. Simulated lookup
-  classes remain importable for future backed modes but are NOT
-  consulted in the default configuration.
+  no registration dates, no filing history. The simulated lookup
+  classes are not attached to the live API surface unless
+  FBR_VERIFICATION_SIMULATE=1 is set explicitly.
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
+import os
 from typing import Optional
 
 from app.common.unavailable import verification_unavailable
@@ -59,10 +60,15 @@ class VerificationAPI:
     """Unified API for all verifications (honest-unavailable by default)."""
 
     def __init__(self):
-        # Kept for backed modes (atl/iris); never consulted when mode=off.
-        self.ntn_verifier = get_ntn_verifier()
-        self.filer_checker = get_filer_status_checker()
-        self.business_verifier = get_business_verifier()
+        # The simulated lookup modules are NOT part of the live API surface:
+        # fabricated data must be one explicit env flag away, never one
+        # attribute access away. FBR_VERIFICATION_SIMULATE=1 re-enables them
+        # for local development only; the honest "unavailable" path stays the
+        # default for every configuration.
+        if os.environ.get("FBR_VERIFICATION_SIMULATE", "").strip() == "1":
+            self.ntn_verifier = get_ntn_verifier()
+            self.filer_checker = get_filer_status_checker()
+            self.business_verifier = get_business_verifier()
 
     # ------------------------------------------------------------
     # Honest unavailable result
@@ -138,15 +144,6 @@ class VerificationAPI:
                 responses.append(handler(req.value))
             elif req.type == VerificationType.BUSINESS:
                 responses.append(self.verify_business(req.value))
-            else:
-                responses.append(
-                    VerificationResponse(
-                        request_type=req.type,
-                        value=req.value,
-                        is_verified=False,
-                        message="Unknown verification type",
-                    )
-                )
         return responses
 
 

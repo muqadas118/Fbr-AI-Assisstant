@@ -17,7 +17,6 @@ Key sections:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 
 class FEDCategory(str, Enum):
@@ -66,7 +65,10 @@ class FEDInput:
     """Input for FED calculation."""
     category: FEDCategory
     value: float  # Price/value in PKR
-    quantity: float = 0.0  # For per-unit/per-kg calculations
+    # Quantity for per-unit (non ad-valorem) categories. Unit
+    # convention: number of taxed units — THOUSANDS of sticks for
+    # `per_1000_sticks` and KILOGRAMS for `per_kg`.
+    quantity: float = 0.0
     description: str = ""
 
 
@@ -93,6 +95,14 @@ class FederalExciseCalculator:
             return False, "Quantity cannot be negative."
         if inp.category not in FED_RATES:
             return False, f"Unknown FED category: {inp.category}"
+        if FED_RATES[inp.category]["basis"] != "ad_valorem" and inp.quantity < 1:
+            # Per-unit FED is quantity x rate with `value` ignored, so
+            # a zero quantity would silently return 0 FED.
+            return False, (
+                f"Quantity must be at least 1 for the {inp.category.value} category "
+                f"({FED_RATES[inp.category]['basis']}); the FED value is computed "
+                "from quantity only, `value` is used for ad-valorem categories."
+            )
         return True, ""
 
     @staticmethod
@@ -135,20 +145,20 @@ class FederalExciseCalculator:
     @staticmethod
     def format_result(result: FEDResult, currency: str = "PKR") -> str:
         lines = [
-            f"=== Federal Excise Duty (FED) ===",
+            "=== Federal Excise Duty (FED) ===",
             f"Category: {result.category}",
             f"Basis: {result.basis}",
-            f"",
+            "",
             f"Value/Quantity:          {currency} {result.value:>15,.2f}",
             f"Rate Applied:            {result.rate:>15}",
             f"FED Payable:             {currency} {result.fed_amount:>15,.2f}",
-            f"",
-            f"--- Notes ---",
+            "",
+            "--- Notes ---",
         ]
         for note in result.notes:
             lines.append(f"  • {note}")
-        lines.append(f"")
-        lines.append(f"--- Sources ---")
+        lines.append("")
+        lines.append("--- Sources ---")
         for src in result.sources:
             lines.append(f"  📄 {src}")
         return "\n".join(lines)

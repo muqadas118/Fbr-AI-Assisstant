@@ -2,22 +2,16 @@
 Notice Deadline Calculator - Production-Grade
 ==============================================
 
-Calculates response deadlines for different notice types per FBR rules.
+Calculates response deadlines for FBR notices.
 
-Standard response periods:
-- Show Cause Notice: 14-30 days
-- Assessment Order: 30 days (appeal period)
-- Demand Notice: 30 days
-- Recovery Notice: 15-30 days
-- Penalty Notice: 30 days
-- Audit Notice: 14 days
-- Enquiry Notice: 7-14 days
-- Intimation: 15 days
-- Wealth Statement: 30 days
+RULE: a deadline is only ever derived from a response date that is LABELED
+in the notice itself (e.g. "respond by 15-03-2024", "within 14 days of this
+notice"). No response period is invented for a notice type - if the notice
+does not state one, the deadline is reported as unknown rather than guessed.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime
 from typing import Optional
 
 from app.notice_analyzer.classifier import NoticeType
@@ -29,81 +23,32 @@ class DeadlineInfo:
     issue_date: Optional[str]
     deadline_date: Optional[str]
     days_remaining: Optional[int]
-    days_given: int
+    days_given: Optional[int]
     is_overdue: bool
-    urgency_level: str  # "critical", "high", "medium", "low"
+    urgency_level: str  # "critical", "high", "medium", "low", "unknown"
     next_action: str
     notes: list
-
-
-# Standard response periods (in days)
-RESPONSE_PERIODS = {
-    NoticeType.SHOW_CAUSE_114: 14,
-    NoticeType.SHOW_CAUSE_122: 14,
-    NoticeType.SHOW_CAUSE_161: 14,
-    NoticeType.SHOW_CAUSE_GENERAL: 14,
-
-    NoticeType.ASSESSMENT_120: 30,
-    NoticeType.ASSESSMENT_121: 30,
-    NoticeType.ASSESSMENT_122: 30,
-    NoticeType.PROVISIONAL_ASSESSMENT: 30,
-    NoticeType.BEST_JUDGMENT: 30,
-    NoticeType.AMENDED_ASSESSMENT: 30,
-
-    NoticeType.DEMAND_137: 30,
-    NoticeType.RECOVERY_138: 15,
-    NoticeType.ARREARS_NOTICE: 30,
-
-    NoticeType.PENALTY_182: 30,
-    NoticeType.PENALTY_184: 30,
-    NoticeType.PENALTY_GENERAL: 30,
-
-    NoticeType.AUDIT_214C: 14,
-    NoticeType.AUDIT_SELECTION: 14,
-    NoticeType.ENQUIRY_176: 7,
-
-    NoticeType.INTIMATION_143: 15,
-    NoticeType.RECTIFICATION: 30,
-    NoticeType.REVISION: 30,
-    NoticeType.AMENDMENT: 30,
-
-    NoticeType.REFUND_NOTICE: 60,
-    NoticeType.WEALTH_STATEMENT: 30,
-    NoticeType.COMPLIANCE_NOTICE: 14,
-
-    NoticeType.APPEAL_ORDER: 0,  # Already decided
-    NoticeType.STAY_ORDER: 0,
-
-    NoticeType.PROSECUTION: 14,
-    NoticeType.SURVEY: 7,
-    NoticeType.ATTACHMENT: 7,
-    NoticeType.SEIZURE: 7,
-    NoticeType.AUCTION: 7,
-    NoticeType.SEALING: 7,
-
-    NoticeType.INFORMATION_REQUEST: 14,
-    NoticeType.RECONCILIATION: 14,
-    NoticeType.ADJUSTMENT: 14,
-}
 
 
 class DeadlineCalculator:
     """Calculates notice response deadlines."""
 
     @staticmethod
-    def calculate(notice_type: NoticeType, issue_date_str: Optional[str]) -> DeadlineInfo:
+    def calculate(
+        notice_type: NoticeType,
+        issue_date_str: Optional[str],
+        deadline_date_str: Optional[str] = None,
+    ) -> DeadlineInfo:
         """
         Calculate deadline for a notice.
 
         Args:
             notice_type: Classified notice type
             issue_date_str: Issue date in YYYY-MM-DD format
+            deadline_date_str: Response deadline stated in the notice
+                (YYYY-MM-DD). When absent, no deadline is invented.
         """
         notes = []
-
-        # Get response period
-        days_given = RESPONSE_PERIODS.get(notice_type, 30)
-        notes.append(f"Standard response period: {days_given} days")
 
         # Parse issue date
         issue_date = None
@@ -113,14 +58,26 @@ class DeadlineCalculator:
             except ValueError:
                 notes.append(f"Could not parse issue date: {issue_date_str}")
 
-        # Calculate deadline
-        if issue_date:
-            deadline_date = issue_date + timedelta(days=days_given)
-            deadline_str = deadline_date.strftime("%Y-%m-%d")
+        # Parse the response deadline stated in the notice itself
+        deadline_date = None
+        if deadline_date_str:
+            try:
+                deadline_date = datetime.strptime(deadline_date_str, "%Y-%m-%d")
+            except ValueError:
+                notes.append(f"Could not parse response deadline: {deadline_date_str}")
 
-            # Calculate days remaining
-            today = datetime.now()
-            days_remaining = (deadline_date - today).days
+        # Calculate deadline
+        if deadline_date:
+            deadline_str = deadline_date.strftime("%Y-%m-%d")
+            # Days allowed = gap between the stated deadline and the issue date;
+            # reported only when the issue date is actually known.
+            days_given = (deadline_date - issue_date).days if issue_date else None
+            notes.append(f"Response deadline stated in notice: {deadline_str}")
+
+            # Compare calendar dates so a notice due TODAY is due today, not
+            # overdue (the deadline lands at midnight, timestamps would lie).
+            today = date.today()
+            days_remaining = (deadline_date.date() - today).days
             is_overdue = days_remaining < 0
 
             if is_overdue:
@@ -141,10 +98,11 @@ class DeadlineCalculator:
         else:
             deadline_str = None
             days_remaining = None
+            days_given = None
             is_overdue = False
             urgency = "unknown"
-            next_action = "Issue date not found - cannot calculate deadline"
-            notes.append("Provide issue date to calculate deadline")
+            next_action = "No response deadline stated in notice - deadline could not be determined"
+            notes.append("Deadline could not be determined: no response date labeled in the notice")
 
         return DeadlineInfo(
             issue_date=issue_date_str,

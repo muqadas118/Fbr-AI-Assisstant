@@ -13,7 +13,6 @@ For profit on debt (interest, profit on bank deposits):
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 
 class IncomeSource(str, Enum):
@@ -23,19 +22,12 @@ class IncomeSource(str, Enum):
     MUTUAL_FUND = "mutual_fund"
 
 
-class TaxMethod(str, Enum):
-    WHT = "wht"  # Withholding only (final tax)
-    NORMAL = "normal"  # Add to normal income
-
-
 @dataclass
 class DividendTaxInput:
     """Input for dividend/interest tax calculation."""
     income_source: IncomeSource
     gross_income: float
     filer_status: str = "filer"  # "filer" or "non_filer"
-    tax_method: TaxMethod = TaxMethod.WHT
-    other_income: float = 0.0  # For normal tax method
 
 
 @dataclass
@@ -46,7 +38,11 @@ class DividendTaxResult:
     rate_applied: float
     tax_payable: float
     net_income: float
-    tax_method: str
+    # Dividend / profit on debt is always charged as WHT at source
+    # (final tax); the "add to normal income" method was never
+    # implemented in this calculator, so the dead TaxMethod /
+    # other_income inputs were removed.
+    tax_method: str = "wht"
     notes: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
 
@@ -106,7 +102,7 @@ class DividendTaxCalculator:
             rate_applied=rate,
             tax_payable=round(tax, 2),
             net_income=round(net, 2),
-            tax_method=inp.tax_method.value,
+            tax_method="wht",
             notes=notes,
             sources=sources,
         )
@@ -116,18 +112,18 @@ class DividendTaxCalculator:
         lines = [
             f"=== {result.income_source.replace('_', ' ').title()} Tax ===",
             f"Tax Method: {result.tax_method}",
-            f"",
+            "",
             f"Gross Income:            {currency} {result.gross_income:>15,.2f}",
             f"Rate Applied:            {result.rate_applied * 100:>14.1f}%",
             f"Tax Payable:             {currency} {result.tax_payable:>15,.2f}",
             f"Net Income:              {currency} {result.net_income:>15,.2f}",
-            f"",
-            f"--- Notes ---",
+            "",
+            "--- Notes ---",
         ]
         for note in result.notes:
             lines.append(f"  • {note}")
-        lines.append(f"")
-        lines.append(f"--- Sources ---")
+        lines.append("")
+        lines.append("--- Sources ---")
         for src in result.sources:
             lines.append(f"  📄 {src}")
         return "\n".join(lines)
