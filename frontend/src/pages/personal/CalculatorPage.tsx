@@ -411,16 +411,18 @@ export function CalculatorPage() {
                 {result.summary ? (
                   <div className="calc-structured" data-testid="calc-structured">
                     <h4 className="calc-structured__title">{result.summary.title}</h4>
-                    <table className="rt__table calc-structured__table">
-                      <tbody>
-                        {result.summary.fields.map((f) => (
-                          <tr key={f.label} className={f.strong ? "calc-structured__strong" : undefined}>
-                            <th scope="row">{f.label}</th>
-                            <td>{f.value}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="rt__table-wrap">
+                      <table className="rt__table calc-structured__table">
+                        <tbody>
+                          {result.summary.fields.map((f) => (
+                            <tr key={f.label} className={f.strong ? "calc-structured__strong" : undefined}>
+                              <th scope="row">{f.label}</th>
+                              <td>{f.value}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                     {result.summary.slabs.length > 0 ? (
                       <>
                         <h5 className="calc-structured__sub">Tax Slab Breakdown</h5>

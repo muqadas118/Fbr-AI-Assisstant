@@ -10,16 +10,20 @@
     "crest crest"
     "side  main";
   height: 100vh;
+  height: 100dvh; /* mobile URL-bar-safe (vh above as the fallback) */
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--c-paper);
 }
+/* Desktop collapse = 64px icon rail (the rail CSS already lives on
+   .sidebar--collapsed). Hiding the sidebar entirely made the nav
+   unreachable, so the collapse keeps it as an icon rail. */
 .app-shell--collapsed {
-  grid-template-columns: 1fr;
+  grid-template-columns: var(--w-sidebar-collapsed) 1fr;
   grid-template-areas:
     "crest crest"
-    "main main";
+    "side  main";
 }
-.app-shell--collapsed .sidebar { display: none; }
 .app-shell__column {
   grid-area: main;
   display: flex;
@@ -39,7 +43,37 @@
       "crest"
       "main";
   }
-  .app-shell .sidebar { display: none; }
+  /* Off-canvas drawer — the only nav surface on phones/tablets. The header
+     toggle opens it (app-shell--nav-open); a click-away backdrop closes it. */
+  .app-shell .sidebar {
+    display: flex;
+    position: fixed;
+    top: var(--w-crest);
+    left: 0;
+    bottom: 0;
+    width: min(86vw, var(--w-sidebar));
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 200ms ease;
+  }
+  .app-shell--nav-open .sidebar {
+    transform: none;
+    box-shadow: 0 14px 44px rgba(8, 42, 33, 0.3);
+  }
+  .app-shell__nav-backdrop {
+    display: none;
+    position: fixed;
+    inset: var(--w-crest) 0 0 0;
+    z-index: 35;
+    border: 0;
+    padding: 0;
+    background: rgba(8, 42, 33, 0.45);
+    cursor: pointer;
+  }
+  .app-shell--nav-open .app-shell__nav-backdrop { display: block; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .sidebar { transition: none; }
 }
 
 /* Crest band — slim 3px gradient strip atop AppShell ---------------- */
@@ -194,7 +228,8 @@
 
 @media (max-width: 600px) {
   .app-header__btn-label { display: none; }
-  .app-header__notif { padding-inline: 8px; }
+  /* Icon-only header buttons keep a 32px hit target. */
+  .app-header__notif { min-width: 32px; min-height: 32px; justify-content: center; padding-inline: 8px; }
   /* Keep the page title visible: give it a floor, let labels ellipsize. */
   .app-header__title-block { flex: 1 1 60px; min-width: 60px; }
   .app-header__right { flex-shrink: 1; min-width: 0; }
@@ -959,6 +994,12 @@ table { border-collapse: collapse; }
 .toast__msg { flex: 1; }
 .toast__close { background: transparent; color: inherit; border: 0; padding: 0; font-size: 16px; line-height: 1; }
 
+/* On phones the toast spans the width above the composer (never covers it
+   edge-to-edge with the old 380px bottom-right box). */
+@media (max-width: 600px) {
+  .toast { left: var(--s-4); right: var(--s-4); max-width: none; bottom: calc(var(--s-4) + env(safe-area-inset-bottom, 0px)); }
+}
+
 /* Verification panel ---------------------------------------------- */
 
 .verification__head { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-2); flex-wrap: wrap; }
@@ -1031,13 +1072,21 @@ table { border-collapse: collapse; }
 .kv__key, .kv__k { color: var(--c-text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; padding-top: 2px; }
 .kv__value, .kv__v { color: var(--c-text); }
 
+@media (max-width: 880px) {
+  /* The chat is a flex-fill column on mobile: no fixed 100vh height, no
+     520px floor — otherwise the page and the message list both scroll. */
+  .chat { height: auto; min-height: 0; }
+}
+
 /* Chat ------------------------------------------------------------ */
 
 .chat {
   display: flex;
   flex-direction: column;
   position: relative;
+  /* dvh (mobile URL-bar-safe) first, vh as the fallback for older engines. */
   height: calc(100vh - var(--w-crest) - var(--w-header) - 2 * var(--s-5));
+  height: calc(100dvh - var(--w-crest) - var(--w-header) - 2 * var(--s-5));
   min-height: 520px;
   background: var(--c-surface);
   border: 1px solid var(--c-line);
@@ -1126,7 +1175,7 @@ table { border-collapse: collapse; }
 
 /* Live cap hint (typed amount exceeds the engine's 1T ceiling) ------ */
 
-.calc-cap-hint { margin: calc(var(--s-2) * -1) 0 var(--s-3); font-size: 12.5px; line-height: 1.6; color: var(--c-text-muted); background: #faf6ea; border: 1px solid var(--c-gold); border-radius: var(--r-2); padding: var(--s-2) var(--s-3); }
+.calc-cap-hint { margin: calc(var(--s-2) * -1) 0 var(--s-3); font-size: 12.5px; line-height: 1.6; color: var(--c-text-muted); background: #faf6ea; border: 1px solid var(--c-gold); border-radius: var(--r-2); padding: var(--s-2) var(--s-3); grid-column: 1 / -1; }
 
 /* Tax Reducer ------------------------------------------------------ */
 
@@ -1383,7 +1432,9 @@ table { border-collapse: collapse; }
   .health-score-hero { flex-direction: column; align-items: flex-start; gap: var(--s-3); }
   .health-score-hero__grade { font-size: 52px; }
   .health-score-hero__score-value { font-size: 34px; }
-  .vault-table th:nth-child(n+4), .vault-table td:nth-child(n+4) { display: none; }
+  /* Keep the Actions column reachable — only the middle columns collapse. */
+  .vault-table th:nth-child(n+4):not(:last-child),
+  .vault-table td:nth-child(n+4):not(:last-child) { display: none; }
   .crest-band__service { display: none; }
 }
 

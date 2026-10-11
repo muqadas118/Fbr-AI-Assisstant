@@ -137,6 +137,8 @@ function AnalyzeSection({
 
   const handleAnalyzeUpload = useCallback((outcome: UploadOutcome) => {
     if (outcome.data.kind !== "analyze") return;
+    // A prior paste failure must not stay on screen after a good upload.
+    setError(null);
     const { analysis, meta } = outcome.data.response;
     onAnalyze({
       id: `doc-${Date.now()}`,

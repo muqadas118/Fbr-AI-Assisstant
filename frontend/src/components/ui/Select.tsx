@@ -16,6 +16,8 @@ interface SelectProps {
   placeholder?: string;
   ariaLabel?: string;
   className?: string;
+  /** Set by <Field> so its label can point at the trigger. */
+  id?: string;
 }
 
 function normalize(options: Array<SelectOption | string>): SelectOption[] {
@@ -27,7 +29,7 @@ function normalize(options: Array<SelectOption | string>): SelectOption[] {
  * The open list is fully styled (rounded boundary, padded options) —
  * something the OS-rendered native popup cannot do.
  */
-export function Select({ value, onChange, options, testId, placeholder, ariaLabel, className }: SelectProps) {
+export function Select({ value, onChange, options, testId, placeholder, ariaLabel, className, id }: SelectProps) {
   const items = useMemo(() => normalize(options), [options]);
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(() =>
@@ -110,6 +112,7 @@ export function Select({ value, onChange, options, testId, placeholder, ariaLabe
     <div ref={rootRef} className={clsx("cselect", open && "cselect--open", className)}>
       <button
         type="button"
+        id={id}
         className="cselect__trigger"
         aria-haspopup="listbox"
         aria-expanded={open}

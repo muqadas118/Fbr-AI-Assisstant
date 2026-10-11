@@ -407,8 +407,9 @@ export function BusinessMonitorPage() {
                 </div>
               </div>
 
-              {/* Tabs */}
-              <div className="inbox__tabs" role="tablist" aria-label="Compliance filters" data-testid="biz-monitor-tabs">
+              {/* Tabs — page__tabs gives the strip the shared pill chassis
+                  (identical to the personal Inbox tabs). */}
+              <div className="inbox__tabs page__tabs" role="tablist" aria-label="Compliance filters" data-testid="biz-monitor-tabs">
                 {TABS.map((tab) => (
                   <button
                     key={tab.id}

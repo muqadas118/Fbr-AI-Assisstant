@@ -92,6 +92,7 @@ function CollapsibleText({ title, text, initiallyOpen = false }: {
   return (
     <div className="notice-collapse">
       <button
+        type="button"
         className="notice-collapse__toggle"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}

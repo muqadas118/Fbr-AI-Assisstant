@@ -8,6 +8,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   loading?: boolean;
+  /**
+   * Defaults to "button". Pass `type="submit"` for form submits — the rest
+   * spread allows it, but declaring it keeps contract mistakes visible.
+   */
+  type?: "button" | "submit" | "reset";
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -19,6 +24,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       disabled,
       children,
       className,
+      type = "button",
       ...rest
     },
     ref,
@@ -26,7 +32,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
-        type="button"
+        type={type}
         disabled={disabled || loading}
         className={clsx(
           "btn",

@@ -28,10 +28,6 @@ export function LoginPage() {
     return <div className="auth-wrap auth-wrap--loading" role="status">Restoring your secure session…</div>;
   }
 
-  if (token) {
-    return <Navigate to="/personal/overview" replace />;
-  }
-
   const stateFrom = (location.state as { from?: string } | null)?.from;
   const queryFrom = new URLSearchParams(location.search).get("returnTo");
   const requestedFrom = stateFrom ?? queryFrom;
@@ -39,6 +35,20 @@ export function LoginPage() {
     requestedFrom && requestedFrom.startsWith("/") && !requestedFrom.startsWith("//")
       ? requestedFrom
       : null;
+
+  if (token) {
+    // Same workspace-aware destination as the post-submit path — otherwise a
+    // business-allocated user lands in the RequireAuth workspace gate.
+    const preferred = useAuth.getState().user?.preferred_workspace;
+    const destination =
+      from ??
+      (preferred === "business"
+        ? "/business/overview"
+        : preferred === "personal"
+          ? "/personal/overview"
+          : "/onboarding");
+    return <Navigate to={destination} replace />;
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

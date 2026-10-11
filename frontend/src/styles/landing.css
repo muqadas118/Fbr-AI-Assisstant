@@ -6,7 +6,11 @@
   --landing-ivory: #faf8f3;
   --landing-line: #dfe5dc;
   min-height: 100vh;
-  overflow: hidden;
+  min-height: 100dvh; /* mobile URL-bar-safe; vh above is the fallback */
+  /* Only clip the decorative scene on x — overflow:hidden here made the
+     whole page a non-focusable scroll container (Space/arrows dead). */
+  overflow-x: clip;
+  overflow-y: auto;
   background: var(--landing-ivory);
   color: var(--landing-ink);
 }
@@ -253,7 +257,7 @@
   50% { transform: translate3d(0, -9px, 0) rotate(1deg); }
 }
 
-.auth-wrap--loading { display: grid; place-items: center; min-height: 100vh; color: var(--c-text-muted); }
+.auth-wrap--loading { display: grid; place-items: center; min-height: 100vh; min-height: 100dvh; color: var(--c-text-muted); }
 
 @media (max-width: 800px) {
   .landing-nav { padding: 17px 20px; }

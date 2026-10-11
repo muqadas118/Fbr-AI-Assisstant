@@ -515,11 +515,27 @@
   color: var(--c-text-muted);
 }
 
-/* Collapse (raw notice text) */
+/* Collapse (raw notice text) — styled like the rest of the design system
+   (was a bare native button: grey UA chrome inside a cream card). */
 .notice-collapse__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   width: 100%;
+  padding: var(--s-3) var(--s-4);
+  border: 0;
+  border-bottom: 1px solid var(--c-line);
+  background: transparent;
+  font-family: var(--f-body);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-primary);
   text-align: left;
+  cursor: pointer;
+  transition: background var(--t-fast) ease;
 }
+.notice-collapse__toggle:hover { background: var(--c-primary-soft); }
+.notice-collapse__toggle:focus-visible { outline: 2px solid var(--c-primary); outline-offset: -2px; }
 .notice-collapse__body {
   margin-top: var(--s-3);
 }
@@ -656,6 +672,12 @@
 @media (max-width: 720px) {
   .inv-dashboard {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* Stats stack on phones — four cramped columns is worse than a vertical list. */
+@media (max-width: 600px) {
+  .inv-dashboard {
+    grid-template-columns: 1fr;
   }
 }
 

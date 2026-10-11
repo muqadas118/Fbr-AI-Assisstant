@@ -745,6 +745,7 @@ export function HealthPage() {
           {tabs.map((tab) => (
             <button
               key={tab.id}
+              type="button"
               role="tab"
               aria-selected={activeTab === tab.id}
               className={clsx("tab-btn", activeTab === tab.id && "tab-btn--active")}

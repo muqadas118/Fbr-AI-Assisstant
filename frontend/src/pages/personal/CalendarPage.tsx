@@ -471,8 +471,9 @@ export function CalendarPage() {
             />
           ) : null}
 
-          {/* ── Filters ── */}
-          <div className="cal-filters card" data-testid="cal-filters">
+          {/* ── Filters ── (bare wrapper like the business calendar — the
+              toolbar already has its own border) */}
+          <div className="cal-filters" data-testid="cal-filters">
             <div className="cal-filters__row">
               <span className="cal-filters__label">Filter:</span>
               <Field label="Priority" data-testid="cal-filter-priority">

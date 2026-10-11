@@ -108,11 +108,13 @@ function QuickActionCard({
         <p className="qaction__desc">{description}</p>
       </div>
       {href ? (
-        <Link to={href} className="qaction__link btn btn--ghost btn--sm">
+        /* Secondary, not ghost: a bordered button inside a bordered card
+           reads as an action instead of a bare text link. */
+        <Link to={href} className="qaction__link btn btn--secondary btn--sm">
           Open
         </Link>
       ) : (
-        <Button variant="ghost" size="sm" onClick={onClick}>
+        <Button variant="secondary" size="sm" onClick={onClick}>
           Open
         </Button>
       )}
@@ -294,8 +296,8 @@ export function OverviewPage() {
           />
         )}
 
-        {/* ── Tax Status Snapshot ── */}
-        <section className="overview__snapshot card" aria-label="Tax status snapshot" data-testid="overview-snapshot">
+        {/* ── Tax Status Snapshot ── (no `card`: the gradient strip carries its own chrome) */}
+        <section className="overview__snapshot" aria-label="Tax status snapshot" data-testid="overview-snapshot">
           <div className="snapshot__score-block">
             <div className="snapshot__eyebrow eyebrow">Compliance Score</div>
             <div className="snapshot__score-row">

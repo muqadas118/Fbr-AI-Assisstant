@@ -141,6 +141,9 @@
     margin-left: 0;
     width: 100%;
   }
+  /* Buttons stay compact (right-aligned) instead of stretching full-width —
+     every other page keeps its header buttons at their natural width. */
+  .page--calendar .page__header-actions .btn { align-self: flex-end; width: auto; }
   .page--calendar .page__header-actions .cselect { min-width: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1101,6 +1104,11 @@
 .chat__clear-side:hover { background: var(--c-paper-2); color: var(--c-text); border-color: var(--c-line-strong); }
 .chat__clear-side:focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }
 
+/* Touch devices have no hover: keep Copy visible so it stays reachable. */
+@media (hover: none) {
+  .chat__copy { opacity: 1; }
+}
+
 /* Reduced motion: show answers instantly, no caret, no entrance,
    static thinking dots (no bounce / shimmer). */
 @media (prefers-reduced-motion: reduce) {
@@ -1223,7 +1231,8 @@
 .chat__composer-send:active:not(:disabled) { transform: scale(0.94); }
 .chat__composer-send:disabled {
   background: var(--c-line-strong);
-  color: var(--c-text-faint);
+  /* Keep the send glyph legible against the muted fill (contrast ~2.9:1). */
+  color: var(--c-text-muted);
   box-shadow: none;
   cursor: not-allowed;
 }
@@ -1355,6 +1364,8 @@
   animation: overview-pulse 2.2s ease-out infinite;
 }
 .page--overview .page__header-controls .btn {
+  /* Match the type-pill's ~30px box so the header row reads as one line. */
+  min-height: 30px;
   transition: transform 180ms ease, box-shadow 180ms ease;
 }
 .page--overview .page__header-controls .btn:hover {
@@ -1427,6 +1438,7 @@
 }
 .research-form__actions {
   display: flex;
+  align-items: center;
   gap: var(--s-2);
 }
 /* Suggested questions: frosted-glass pills. */
@@ -1642,6 +1654,7 @@
   overflow: hidden;
   max-width: none;
   min-height: calc(100vh - 140px);
+  min-height: calc(100dvh - 140px); /* mobile URL-bar-safe */
   padding: 56px 20px;
 }
 

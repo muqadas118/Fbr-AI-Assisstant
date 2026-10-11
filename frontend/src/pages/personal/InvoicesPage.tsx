@@ -744,8 +744,9 @@ export function InvoicesPage() {
             <DashboardCard dashboard={dashboard} />
           ) : null}
 
-          {/* Tab navigation */}
-          <div className="inv-tabs page__tabs" role="tablist" data-testid="inv-tabs">
+          {/* Tab navigation — .inv-tabs draws its own 2px underline, so the
+              page__tabs pill chassis would double it (business uses bare). */}
+          <div className="inv-tabs" role="tablist" data-testid="inv-tabs">
             <button
               role="tab"
               aria-selected={activeTab === "process"}

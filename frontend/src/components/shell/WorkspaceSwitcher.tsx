@@ -1,10 +1,13 @@
 import clsx from "clsx";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useNotification } from "@/state/notifications";
 import { WORKSPACES, useWorkspace, type WorkspaceId } from "@/state/workspace";
 
 export function WorkspaceSwitcher() {
-  const active = useWorkspace((s) => s.active);
+  // Active state follows the URL (deep links / back-forward included); the
+  // AppShell effect keeps the persisted store in sync for other readers.
+  const location = useLocation();
+  const active: WorkspaceId = location.pathname.startsWith("/business") ? "business" : "personal";
   const allowed = useWorkspace((s) => s.allowed);
   const switchTo = useWorkspace((s) => s.switchTo);
   const notify = useNotification((s) => s.show);
