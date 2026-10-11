@@ -100,11 +100,6 @@ describe("AssistantPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("displays the subtitle explaining the verified pipeline", () => {
-    renderWithRouter(<AssistantPage />);
-    expect(screen.getByText(/grounds every answer in official FBR law/)).toBeInTheDocument();
-  });
-
   it("submits a query and displays the response", async () => {
     const user = userEvent.setup();
     renderWithRouter(<AssistantPage />);
@@ -383,7 +378,10 @@ describe("AssistantPage", () => {
 
   it("shows empty state when no messages", () => {
     renderWithRouter(<AssistantPage />);
-    expect(screen.getByTestId("assistant-messages")).toBeInTheDocument();
+    // Start page: hero empty state + composer, no message list yet.
+    expect(screen.getByTestId("assistant-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("assistant-input")).toBeInTheDocument();
+    expect(screen.queryByTestId("assistant-messages")).not.toBeInTheDocument();
     expect(screen.getByText(/FBR AI Assistant/)).toBeInTheDocument();
   });
 
@@ -413,8 +411,12 @@ describe("AssistantPage", () => {
     const submitButton = screen.getByTestId("assistant-submit");
     await user.click(submitButton);
 
-    expect(input).toBeDisabled();
-    expect(submitButton).toBeDisabled();
+    // The composer remounts when the start page gives way to the chat
+    // layout, so re-query the live nodes before asserting disabled state.
+    await waitFor(() => {
+      expect(screen.getByTestId("assistant-input")).toBeDisabled();
+    });
+    expect(screen.getByTestId("assistant-submit")).toBeDisabled();
   });
 });
 

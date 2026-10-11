@@ -12,7 +12,7 @@ import {
   type SourceItem,
   type VerificationResult,
 } from "@/lib/api";
-import { loadChatHistory, saveChatHistory, clearChatHistory } from "@/lib/chatHistory";
+import { saveChatHistory, clearChatHistory } from "@/lib/chatHistory";
 import { renderBlocks } from "@/lib/richText";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { VerificationPanel } from "@/components/ui/VerificationPanel";
@@ -98,23 +98,6 @@ const ANSWER_LANGUAGE_PREFIX = "fbr.assistant.answer_language.";
 /** Only the three contract languages are honoured — anything else is dropped. */
 function normalizeAnswerLanguage(value: unknown): AnswerLanguage | undefined {
   return value === "en" || value === "roman_ur" || value === "ur" ? value : undefined;
-}
-
-function loadAnswerLanguages(variant: string): Record<string, AnswerLanguage> {
-  try {
-    const raw = window.localStorage.getItem(`${ANSWER_LANGUAGE_PREFIX}${variant}`);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    const out: Record<string, AnswerLanguage> = {};
-    for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
-      const lang = normalizeAnswerLanguage(value);
-      if (lang) out[id] = lang;
-    }
-    return out;
-  } catch {
-    return {};
-  }
 }
 
 function saveAnswerLanguages(variant: string, messages: ChatMessage[]): void {
@@ -674,16 +657,11 @@ export function AssistantChat({
   const reduced = useNoMotion();
   const { show: notify } = useNotification();
 
-  // Conversation persists across navigation and reloads (per workspace).
-  // Per-message answer languages are re-attached from their own map (see
-  // ANSWER_LANGUAGE_PREFIX) so restored answers keep the right direction.
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    const restored = loadChatHistory(variant);
-    const langs = loadAnswerLanguages(variant);
-    return restored.map((m) =>
-      m.messageId && langs[m.messageId] ? { ...m, answerLanguage: langs[m.messageId] } : m,
-    );
-  });
+  // Every visit starts on the simple start page — no old conversation is
+  // restored on mount (ChatGPT-style "new chat"). The in-session history
+  // stays in memory and is persisted so a reload/route-away keeps the
+  // current conversation only until the page is reopened.
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   // Reply language is detected backend-side from the query itself; the chat
   // never pins an override. Hide the page header once a conversation starts,
   // so the chat fills the viewport exactly like ChatGPT.
@@ -714,8 +692,8 @@ export function AssistantChat({
   }, [messages, loading]);
 
   // The surrounding page hides its big header while a conversation exists —
-  // the conversation restores from localStorage on mount, so the very first
-  // render already reflects the right mode (no header flash).
+  // since every mount starts empty, the hero/start page keeps it visible and
+  // the chat takes over the viewport exactly like ChatGPT after the first send.
   useEffect(() => {
     setChatActive(messages.length > 0);
     return () => setChatActive(false);
@@ -959,6 +937,18 @@ export function AssistantChat({
     clearAnswerLanguages(variant);
   }, [variant]);
 
+  // The first send swaps the hero start page for the chat layout, which
+  // remounts the composer subtree — the textarea is disabled during the
+  // request anyway, so refocus it once the answer has settled, like
+  // ChatGPT keeps the composer focused after sending.
+  const wasLoadingRef = useRef(false);
+  useEffect(() => {
+    if (wasLoadingRef.current && !loading && messages.length > 0) {
+      textareaRef.current?.focus();
+    }
+    wasLoadingRef.current = loading;
+  }, [loading, messages.length]);
+
   // Persist on every settled change. Mid-stream saves are throttled to at
   // most one write per 500ms (an SSE delta must not hammer localStorage);
   // once nothing is streaming the save always runs, so completion is always
@@ -1107,191 +1097,202 @@ export function AssistantChat({
     ? `You've used all your messages today — resets at ${resetLabel}`
     : "Send message";
 
-  return (
-    <div className="chat" data-testid={`${s}-chat`}>
-      {messages.length > 0 ? (
-        <button
-          type="button"
-          className="chat__clear-side"
-          onClick={clear}
-          title="Clear conversation"
-          aria-label="Clear conversation"
-          data-testid={`${s}-clear`}
-        >
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-          </svg>
-        </button>
+  /* ------- composer (shared: centred on the start page, docked after) ------- */
+
+  const composerArea = (
+    <div className="chat__composer-area">
+      {attached ? (
+        <div className="chat__file-chip" data-testid={`${s}-file-chip`}>
+          <span className="chat__file-icon" aria-hidden>📄</span>
+          <span className="chat__file-name" title={attached.name}>{attached.name}</span>
+          <span className="chat__file-size">{formatBytes(attached.size)}</span>
+          <button
+            type="button"
+            className="chat__file-remove"
+            onClick={() => setAttached(null)}
+            aria-label="Remove attachment"
+            data-testid={`${s}-file-remove`}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+      {composerNotice ? (
+        <p className="chat__mic-notice" role="status" data-testid={`${s}-notice`}>
+          {composerNotice}
+        </p>
+      ) : null}
+      {messagesExhausted ? (
+        <p className="chat__quota-banner" role="status" data-testid={`${s}-quota-banner`}>
+          Daily message limit reached — resets at {resetLabel}.
+        </p>
+      ) : uploadsExhausted ? (
+        <p className="chat__quota-banner" role="status" data-testid={`${s}-quota-banner`}>
+          Daily file upload limit reached — resets at {resetLabel}.
+        </p>
+      ) : null}
+      {/* ChatGPT-style nudge: only appears when the daily budget is nearly
+          spent — no permanent counter sits in the header. */}
+      {quotaEnabled && !messagesExhausted && !uploadsExhausted && quota ? (
+        quota.messages.remaining <= 2 || quota.uploads.remaining <= 1 ? (
+          <p className="chat__quota-hint" data-testid={`${s}-quota-hint`}>
+            {quota.messages.remaining <= 2
+              ? `You have ${quota.messages.remaining} ${
+                  quota.messages.remaining === 1 ? "message" : "messages"
+                } left today`
+              : `You have ${quota.uploads.remaining} ${
+                  quota.uploads.remaining === 1 ? "upload" : "uploads"
+                } left today`}
+            <span className="chat__quota-hint-reset"> · resets at {resetLabel}</span>
+          </p>
+        ) : null
       ) : null}
 
+      <form
+        className="chat__composer"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+        data-testid={`${s}-form`}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          hidden
+          accept={UPLOAD_ACCEPT + ",.txt,.md,.markdown,.csv,.tsv,.json,.xml,.yml,.yaml,.log"}
+          onChange={(e) => {
+            void onPickFile(e.target.files?.[0]);
+            e.target.value = "";
+          }}
+          data-testid={`${s}-file-input`}
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+        <button
+          type="button"
+          className="chat__composer-btn"
+          onClick={() => fileInputRef.current?.click()}
+          title={attachTitle}
+          aria-label="Attach a file"
+          disabled={attachDisabled}
+          data-testid={`${s}-attach`}
+        >
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+          </svg>
+        </button>
+
+        <label htmlFor={`${s}-input`} className="chat__label">
+          {inputLabel}
+        </label>
+        <textarea
+          id={`${s}-input`}
+          ref={textareaRef}
+          className="chat__composer-input"
+          value={input}
+          onChange={(e) => {
+            setInput(e.target.value);
+            autoGrow();
+          }}
+          onKeyDown={onKey}
+          placeholder={inputPlaceholder}
+          rows={1}
+          disabled={loading}
+          data-testid={`${s}-input`}
+        />
+
+        <button
+          type="button"
+          className={clsx("chat__composer-btn", listening && "chat__composer-btn--listening")}
+          onClick={toggleMic}
+          title={listening ? "Stop listening" : "Ask by voice"}
+          aria-label={listening ? "Stop listening" : "Ask by voice"}
+          aria-pressed={listening}
+          disabled={loading}
+          data-testid={`${s}-mic`}
+        >
+          {listening ? (
+            <span className="chat__mic-stop" aria-hidden />
+          ) : (
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+            </svg>
+          )}
+        </button>
+
+        <button
+          type="submit"
+          className="chat__composer-send"
+          disabled={sendDisabled}
+          title={sendTitle}
+          aria-label="Send message"
+          data-testid={`${s}-submit`}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        </button>
+      </form>
+
+      <p className="chat__composer-hint">
+        Press Enter to send · Shift+Enter for a new line · Attach any file (text, PDF, image) — the AI uses every backend tool to answer
+      </p>
+    </div>
+  );
+
+  /* ------- start page (no conversation yet): hero composer, centred ------- */
+
+  if (messages.length === 0) {
+    return (
+      <div className={clsx("chat", "chat--start")} data-testid={`${s}-chat`}>
+        <div className="chat__hero" data-testid={`${s}-empty`}>
+          <h1 className="chat__empty-title">FBR AI Assistant</h1>
+          <p className="chat__empty-text">{emptyDescription}</p>
+          {composerArea}
+          {suggestions && suggestions.length > 0 ? (
+            <div className="chat__suggestions" data-testid={`${s}-suggestions`}>
+              {suggestions.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  className="chat__suggestion"
+                  onClick={() => void submit(q)}
+                  disabled={loading}
+                  data-testid={`${s}-suggestion`}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="chat" data-testid={`${s}-chat`}>
+      <button
+        type="button"
+        className="chat__clear-side"
+        onClick={clear}
+        title="Clear conversation"
+        aria-label="Clear conversation"
+        data-testid={`${s}-clear`}
+      >
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+        </svg>
+      </button>
+
       <div className="chat__messages" data-testid={`${s}-messages`} ref={scrollRef}>
-        {messages.length === 0 ? (
-          <div className="chat__empty" data-testid={`${s}-empty`}>
-            <h1 className="chat__empty-title">FBR AI Assistant</h1>
-            <p className="chat__empty-text">{emptyDescription}</p>
-            {suggestions && suggestions.length > 0 ? (
-              <div className="chat__suggestions" data-testid={`${s}-suggestions`}>
-                {suggestions.map((q) => (
-                  <button
-                    key={q}
-                    type="button"
-                    className="chat__suggestion"
-                    onClick={() => void submit(q)}
-                    disabled={loading}
-                    data-testid={`${s}-suggestion`}
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          messages.map((m) => <MessageBubble key={m.id} message={m} reduced={reduced} ids={ids} />)
-        )}
+        {messages.map((m) => <MessageBubble key={m.id} message={m} reduced={reduced} ids={ids} />)}
         {loading ? <ThinkingIndicator testId={`${s}-thinking`} /> : null}
       </div>
 
-      <div className="chat__composer-area">
-        {attached ? (
-          <div className="chat__file-chip" data-testid={`${s}-file-chip`}>
-            <span className="chat__file-icon" aria-hidden>📄</span>
-            <span className="chat__file-name" title={attached.name}>{attached.name}</span>
-            <span className="chat__file-size">{formatBytes(attached.size)}</span>
-            <button
-              type="button"
-              className="chat__file-remove"
-              onClick={() => setAttached(null)}
-              aria-label="Remove attachment"
-              data-testid={`${s}-file-remove`}
-            >
-              ×
-            </button>
-          </div>
-        ) : null}
-        {composerNotice ? (
-          <p className="chat__mic-notice" role="status" data-testid={`${s}-notice`}>
-            {composerNotice}
-          </p>
-        ) : null}
-        {messagesExhausted ? (
-          <p className="chat__quota-banner" role="status" data-testid={`${s}-quota-banner`}>
-            Daily message limit reached — resets at {resetLabel}.
-          </p>
-        ) : uploadsExhausted ? (
-          <p className="chat__quota-banner" role="status" data-testid={`${s}-quota-banner`}>
-            Daily file upload limit reached — resets at {resetLabel}.
-          </p>
-        ) : null}
-        {/* ChatGPT-style nudge: only appears when the daily budget is nearly
-            spent — no permanent counter sits in the header. */}
-        {quotaEnabled && !messagesExhausted && !uploadsExhausted && quota ? (
-          quota.messages.remaining <= 2 || quota.uploads.remaining <= 1 ? (
-            <p className="chat__quota-hint" data-testid={`${s}-quota-hint`}>
-              {quota.messages.remaining <= 2
-                ? `You have ${quota.messages.remaining} ${
-                    quota.messages.remaining === 1 ? "message" : "messages"
-                  } left today`
-                : `You have ${quota.uploads.remaining} ${
-                    quota.uploads.remaining === 1 ? "upload" : "uploads"
-                  } left today`}
-              <span className="chat__quota-hint-reset"> · resets at {resetLabel}</span>
-            </p>
-          ) : null
-        ) : null}
-
-        <form
-          className="chat__composer"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit();
-          }}
-          data-testid={`${s}-form`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            hidden
-            accept={UPLOAD_ACCEPT + ",.txt,.md,.markdown,.csv,.tsv,.json,.xml,.yml,.yaml,.log"}
-            onChange={(e) => {
-              void onPickFile(e.target.files?.[0]);
-              e.target.value = "";
-            }}
-            data-testid={`${s}-file-input`}
-            aria-hidden="true"
-            tabIndex={-1}
-          />
-          <button
-            type="button"
-            className="chat__composer-btn"
-            onClick={() => fileInputRef.current?.click()}
-            title={attachTitle}
-            aria-label="Attach a file"
-            disabled={attachDisabled}
-            data-testid={`${s}-attach`}
-          >
-            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-            </svg>
-          </button>
-
-          <label htmlFor={`${s}-input`} className="chat__label">
-            {inputLabel}
-          </label>
-          <textarea
-            id={`${s}-input`}
-            ref={textareaRef}
-            className="chat__composer-input"
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              autoGrow();
-            }}
-            onKeyDown={onKey}
-            placeholder={inputPlaceholder}
-            rows={1}
-            disabled={loading}
-            data-testid={`${s}-input`}
-          />
-
-          <button
-            type="button"
-            className={clsx("chat__composer-btn", listening && "chat__composer-btn--listening")}
-            onClick={toggleMic}
-            title={listening ? "Stop listening" : "Ask by voice"}
-            aria-label={listening ? "Stop listening" : "Ask by voice"}
-            aria-pressed={listening}
-            disabled={loading}
-            data-testid={`${s}-mic`}
-          >
-            {listening ? (
-              <span className="chat__mic-stop" aria-hidden />
-            ) : (
-              <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
-              </svg>
-            )}
-          </button>
-
-          <button
-            type="submit"
-            className="chat__composer-send"
-            disabled={sendDisabled}
-            title={sendTitle}
-            aria-label="Send message"
-            data-testid={`${s}-submit`}
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M12 19V5M5 12l7-7 7 7" />
-            </svg>
-          </button>
-        </form>
-
-        <p className="chat__composer-hint">
-          Press Enter to send · Shift+Enter for a new line · Attach any file (text, PDF, image) — the AI uses every backend tool to answer
-        </p>
-      </div>
+      {composerArea}
     </div>
   );
 }

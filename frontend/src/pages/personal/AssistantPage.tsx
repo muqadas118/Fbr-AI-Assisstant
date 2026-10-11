@@ -35,12 +35,6 @@ export function AssistantPage() {
             <div>
               <div className="page__eyebrow page-eyebrow eyebrow">FBR · AI Assistant</div>
               <h2 className="page__title">AI Tax Assistant</h2>
-              <p className="page__subtitle">
-                Ask natural-language questions about FBR tax and compliance. The assistant uses
-                every backend tool for you — calculators, verification, notice and document
-                analysis — and grounds every answer in official FBR law (router + RAG +
-                verification).
-              </p>
             </div>
           </header>
         )}

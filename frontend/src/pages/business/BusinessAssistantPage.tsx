@@ -46,12 +46,6 @@ export function BusinessAssistantPage() {
                 FBR · Business AI Assistant
               </div>
               <h2 className="page__title">Business Tax Assistant</h2>
-              <p className="page__subtitle">
-                Ask natural-language questions about corporate income tax, sales tax returns,
-                withholding statements, and business compliance. The assistant uses every backend
-                tool for you — calculators, verification, notice and document analysis — and
-                grounds every answer in official FBR law (router + RAG + verification).
-              </p>
             </div>
           </header>
         )}

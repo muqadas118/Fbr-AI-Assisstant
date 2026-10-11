@@ -2231,3 +2231,30 @@
 .rt__pre-code { font-family: inherit; }
 /* Code stays LTR even inside an RTL (Urdu) answer. */
 .chat__bubble--rtl .rt__pre { direction: ltr; text-align: left; }
+
+/* ── Start page: hero fills the viewport, composer under the title ────── */
+
+/* Fresh visit (no conversation): title + composer centred like ChatGPT's
+   "Where should we begin?" screen. The first send swaps this hero for the
+   normal messages + docked composer layout. */
+.chat--start .chat__hero {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-4);
+  padding: var(--s-6) var(--s-4);
+  overflow-y: auto;
+}
+.chat--start .chat__hero .chat__empty-title { margin: 0; }
+.chat--start .chat__hero .chat__empty-text { margin: 0; }
+.chat--start .chat__hero .chat__composer-area {
+  width: min(48rem, 100%);
+  margin-inline: auto;
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+}
+.chat--start .chat__hero .chat__suggestions { margin-top: var(--s-2); }
