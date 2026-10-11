@@ -1316,10 +1316,11 @@
   color: var(--c-primary);
 }
 
-/* Local replies (greetings/hints): warm gold keyline, no error chrome. */
+/* Local replies (greetings/hints) render exactly like every other assistant
+   answer — ChatGPT-style plain text, no background keyline, no gold edge. */
 .chat__msg--local .chat__bubble {
-  border-left: 3px solid var(--fbr-gold);
-  background: linear-gradient(180deg, var(--c-surface) 0%, var(--c-gold-soft) 160%);
+  border-left: 0;
+  background: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {
