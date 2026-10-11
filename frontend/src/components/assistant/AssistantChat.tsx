@@ -208,8 +208,9 @@ function useNoMotion(): boolean {
 /* ChatGPT-style thinking indicator (no box, bare dots)                */
 /* ------------------------------------------------------------------ */
 
-const THINKING_WORDS = ["Thinking", "Analysing", "Searching", "Reading", "Composing"];
+const THINKING_WORDS = ["Thinking", "Searching", "Reading", "Composing"];
 
+/** Bare one-word status while waiting — ChatGPT-style, no dots, no box. */
 function ThinkingIndicator({ testId }: { testId: string }) {
   const [idx, setIdx] = useState(0);
   useEffect(() => {
@@ -219,11 +220,6 @@ function ThinkingIndicator({ testId }: { testId: string }) {
   return (
     <div className="chat__thinking" role="status" aria-live="polite" data-testid={testId}>
       <span className="chat__thinking-word">{THINKING_WORDS[idx]}…</span>
-      <span className="chat__thinking-dots" aria-hidden>
-        <span className="chat__thinking-dot" />
-        <span className="chat__thinking-dot" />
-        <span className="chat__thinking-dot" />
-      </span>
     </div>
   );
 }
@@ -274,6 +270,9 @@ function Typewriter({
 
   const done = count >= text.length;
   const showCaret = (streaming ?? false) || !done;
+  // An empty answer renders nothing — a lone caret on its own line just
+  // stacked a stray height above the "Searching…" indicator.
+  if (!text) return null;
   return (
     <div className="chat__answer" data-testid={testId} aria-label={text}>
       {renderBlocks(text.slice(0, count))}
