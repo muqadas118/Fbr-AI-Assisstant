@@ -2,7 +2,6 @@ import { useCallback } from "react";
 import { api, type AssistantAskResponse } from "@/lib/api";
 import { ErrorBoundary } from "@/components/shell/ErrorBoundary";
 import { AssistantChat } from "@/components/assistant/AssistantChat";
-import { useChatActive } from "@/state/chatActive";
 
 const SUGGESTED_QUESTIONS = [
   "What is the corporate income tax rate for a private limited company in Pakistan?",
@@ -14,9 +13,6 @@ const SUGGESTED_QUESTIONS = [
 ];
 
 export function BusinessAssistantPage() {
-  // While a conversation exists the big header collapses and the chat grows
-  // into the freed space — exactly like ChatGPT's sending view.
-  const chatActive = useChatActive((st) => st.active);
   // Smart mode: the AI plans and runs every backend tool (calculators,
   // verification, notices, documents, invoices, calendar, health) and
   // grounds the answer in the official FBR corpus. Attachments (text,
@@ -39,17 +35,6 @@ export function BusinessAssistantPage() {
   return (
     <ErrorBoundary>
       <section className="page page--assistant">
-        {chatActive ? null : (
-          <header className="page__header">
-            <div>
-              <div className="page__eyebrow page-eyebrow eyebrow">
-                FBR · Business AI Assistant
-              </div>
-              <h2 className="page__title">Business Tax Assistant</h2>
-            </div>
-          </header>
-        )}
-
         <AssistantChat
           variant="business"
           ask={ask}

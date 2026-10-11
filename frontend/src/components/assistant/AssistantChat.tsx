@@ -17,7 +17,6 @@ import { renderBlocks } from "@/lib/richText";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { VerificationPanel } from "@/components/ui/VerificationPanel";
 import { SourceList } from "@/components/ui/SourceCitation";
-import { useChatActive } from "@/state/chatActive";
 import { useNotification } from "@/state/notifications";
 
 /**
@@ -665,9 +664,7 @@ export function AssistantChat({
   // current conversation only until the page is reopened.
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // Reply language is detected backend-side from the query itself; the chat
-  // never pins an override. Hide the page header once a conversation starts,
-  // so the chat fills the viewport exactly like ChatGPT.
-  const setChatActive = useChatActive((st) => st.setActive);
+  // never pins an override.
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [attached, setAttached] = useState<{ name: string; size: number; excerpt: string } | null>(
@@ -692,14 +689,6 @@ export function AssistantChat({
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, loading]);
-
-  // The surrounding page hides its big header while a conversation exists —
-  // since every mount starts empty, the hero/start page keeps it visible and
-  // the chat takes over the viewport exactly like ChatGPT after the first send.
-  useEffect(() => {
-    setChatActive(messages.length > 0);
-    return () => setChatActive(false);
-  }, [messages.length, setChatActive]);
 
   useEffect(
     () => () => {

@@ -441,7 +441,7 @@ describe("BusinessAssistantPage", () => {
 
   it("renders the business assistant with suggestions", () => {
     renderWithRouter(<BusinessAssistantPage />);
-    expect(screen.getByText("Business Tax Assistant")).toBeInTheDocument();
+    expect(screen.getByText("FBR AI Assistant")).toBeInTheDocument();
     expect(screen.getByTestId("biz-assistant-input")).toBeInTheDocument();
     expect(screen.getAllByTestId("biz-assistant-suggestion").length).toBeGreaterThan(0);
     expect(screen.getByTestId("biz-assistant-empty")).toBeInTheDocument();
