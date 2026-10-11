@@ -486,9 +486,6 @@ function MessageBubble({
         )}
         dir={rtl ? "rtl" : "ltr"}
       >
-        {message.text ? (
-          <CopyButton text={message.text} testId={`${b}-copy`} />
-        ) : null}
         <Typewriter
           text={message.text}
           reduced={reduced}
@@ -521,6 +518,12 @@ function MessageBubble({
               />
             ) : null}
           </>
+        ) : null}
+
+        {/* ChatGPT-style action row sits under the answer (once it is done
+            typing) — just the copy button; no share/menu clutter. */}
+        {message.text && !message.streaming ? (
+          <CopyButton text={message.text} testId={`${b}-copy`} />
         ) : null}
       </div>
     </div>

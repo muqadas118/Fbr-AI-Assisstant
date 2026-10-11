@@ -978,11 +978,12 @@
   56%, 100% { opacity: 0; }
 }
 
-/* Copy button — quiet ghost affordance; floats right of the first line
-   (boxless assistant text has no bubble corner to pin to). */
+/* Copy button — quiet ghost affordance in the action row UNDER the answer,
+   ChatGPT-style (no float: it used to float beside the first line). */
 .chat__copy {
-  float: right;
-  margin-left: var(--s-3);
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--s-2);
   padding: 3px 10px;
   border: 1px solid var(--c-line);
   border-radius: 999px;
